@@ -235,11 +235,11 @@ because the game's in-place writes leave no other recovery (`coop/save/save_guar
 still learns of a save (`coop/save/save_notice`): when the engine writes the hosted world's save
 object under a slot of the game's own -- the player's save or the autosave, not a join's scratch
 capture or the save-slot menu's own writes -- the host puts "<host> saved the game" in its chat feed
-and sends `WorldSaved`, and each client shows the same line and plays the game's own save animation
-(`mainGamemode.saveAnim`) on its gamemode `[?]`. While the game counts an event as running, its save
+and sends `WorldSaved`, and each client shows the same line. The game's SAVED indicator stays the
+host's: `mainGamemode.saveAnim` called on a client's gamemode showed nothing, while the line showed
+`[V]` (a two-peer run, the host saving). While the game counts an event as running, its save
 still writes the slot but skips gathering the world, and the host sees the game's error; the line
-then says the host tried to save but the game cannot save during an event, and no client plays the
-animation `[RD]`.
+then says the host tried to save but the game cannot save during an event `[RD]`.
 
 On the P2P route a rejoin also depends on something the host does not think about: its own
 registration with the signaling relay, which is one long-lived TCP connection that carries no
@@ -469,7 +469,6 @@ not raise the game's own active-event counter, whose save and pause blocks the m
 | Limit | Evidence |
 |---|---|
 | A save the game refuses before it reaches the engine's write reaches no player as a line: the notice hears the write, and an event's save is reported only because the game still writes the slot then | `[RD]` `ue_wrap/engine/save_capture`: `saveObjects` returns without gathering while `lib_C::getEvent` is true, and `saveSlot_C::save` writes after it |
-| A client's SAVED animation is the game's `mainGamemode.saveAnim`, called with no arguments; whether that is what paints the host's SAVED indicator is not established, so a client may see only the chat line | `[?]` `coop/save/save_notice`; `coop/save/save_indicator_suppress` saw neither `saveAnim` nor `addHint` fire across a join capture while the indicator showed |
 | The transfer runs at a rate the mod measures per connection, climbing from about 145 KB/s to whatever the link acknowledges carrying; the transport itself contributes no bandwidth estimation, so a link that genuinely is slow is still a long download | `[V]` `coop/net/send_rate_control`, `coop/net/connection_tuning` |
 | The world load is capped by one absolute deadline on the probe; a load past it announces into a world that may still be churning, logged as degraded. The wait for the world's save replay has the loading phase's budget on a join, and 120 s on a world change | `[V]` `coop/session/world_load_episode` |
 | Keyless save-loaded objects are matched by position; the index-to-id sidecar is built and transferred, and its bind is off by default, behind the `save_identity_bind` developer flag | `[V]` `coop/config/config_registry_rows.inc`, `coop/props/save_identity_bind` |

@@ -8,12 +8,8 @@
 
 #include "ue_wrap/actors/inventory.h"           // ResolveSaveSlot: the hosted world's save object
 #include "ue_wrap/core/log.h"
-#include "ue_wrap/core/reflection.h"
-#include "ue_wrap/core/reflection_props.h"      // FunctionParams
 #include "ue_wrap/engine/save_capture.h"        // GameEventState: whether this save gathered the world
 #include "ue_wrap/engine/save_to_slot_hook.h"
-#include "ue_wrap/facts/function_row.h"
-#include "ue_wrap/world/world_singleton.h"      // Gamemode
 
 #include <atomic>
 #include <cstdint>
@@ -22,15 +18,10 @@
 namespace coop::save_notice {
 namespace {
 
-namespace R = ue_wrap::reflection;
-
-UE_FACT_FN(kRowSaveAnim, "save_notice", L"mainGamemode_C", L"saveAnim", Declared);
-
 std::atomic<coop::net::Session*> g_session{nullptr};
 bool     g_subscribed = false;
 uint32_t g_saves = 0;            // HOST: the save attempts this session
 uint32_t g_heard = 0;            // CLIENT: the host's save attempts this session
-bool     g_animSaid = false;     // CLIENT: a save animation that could not play is said once
 bool     g_unknownSaid = false;  // HOST: an event state that could not be read is said once
 
 coop::peer_action_feed::Action LineFor(coop::net::WorldSaveOutcome o) {
@@ -69,22 +60,6 @@ void OnWorldSaveWritten(void* saveObject, const wchar_t* slotName) {
             sent ? "sent" : "had no peer");
 }
 
-// CLIENT: the game's own save animation, on this peer's gamemode. It is called only as the game calls it, with
-// no arguments; a function that takes any is not the animation this lane knows, and is left alone.
-void PlaySaveAnim() {
-    void* const gm = ue_wrap::world_singleton::Gamemode();
-    const ue_wrap::facts::Resolved fn = ue_wrap::facts::Resolve(kRowSaveAnim);
-    const char* why = nullptr;
-    if (!gm) why = "no gamemode";
-    else if (!fn) why = "mainGamemode.saveAnim did not resolve";
-    else if (!R::FunctionParams(fn.Fn()).empty()) why = "mainGamemode.saveAnim takes arguments";
-    else if (!R::CallFunction(gm, fn.Fn(), nullptr)) why = "the call did not dispatch";
-    if (why && !g_animSaid) {
-        g_animSaid = true;
-        UE_LOGW("save_notice: the host's save is shown in the chat only -- %s (said once)", why);
-    }
-}
-
 }  // namespace
 
 void Install(coop::net::Session* session) {
@@ -98,7 +73,6 @@ void OnWorldSaved(const coop::net::WorldSavedPayload& p) {
     ++g_heard;
     const auto outcome = static_cast<coop::net::WorldSaveOutcome>(p.outcome);
     coop::peer_action_feed::AnnounceDirect(0, LineFor(outcome));
-    if (outcome == coop::net::WorldSaveOutcome::Saved) PlaySaveAnim();
     UE_LOGI("save_notice: the host %s (its #%u, heard #%u)",
             outcome == coop::net::WorldSaveOutcome::Saved ? "saved the world" : "tried to save during an event",
             p.saveNumber, g_heard);
@@ -108,7 +82,6 @@ void OnDisconnect() {
     if (g_saves || g_heard) UE_LOGI("save_notice: session end -- saved=%u heard=%u", g_saves, g_heard);
     g_saves = 0;
     g_heard = 0;
-    g_animSaid = false;
     g_unknownSaid = false;
 }
 

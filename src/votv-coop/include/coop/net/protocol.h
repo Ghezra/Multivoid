@@ -1196,7 +1196,7 @@ enum class ReliableKind : uint8_t {
     // or the autosave, written to its slot; a join's scratch capture and the save-slot menu's own writes are not.
     // While the game counts an event as running its save writes the slot without gathering the world, which is a
     // failed save, and the outcome says so. A client writes no world save of its own, so this is how it learns of
-    // one: it shows the chat line the host shows, and on a save that took plays the game's own save animation.
+    // one: it shows the chat line the host shows.
     // Host-authored: a client's copy is refused at the host's receive edge; never relayed; not pre-world. Late join:
     // none, a save is an act. WorldSavedPayload.
     WorldSaved = 209,

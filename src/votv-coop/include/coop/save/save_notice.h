@@ -6,8 +6,8 @@
 // object under a slot of the game's own, so a join's scratch capture and the save-slot menu's writes do
 // not count -- and puts one line in its chat feed and sends WorldSaved. A save made while the game counts
 // an event as running writes the slot without gathering the world, and its line says the save did not
-// take. A client puts the same line in its feed, naming the host, and on a save that took plays the
-// game's own save animation (mainGamemode.saveAnim) on its gamemode.
+// take. A client puts the same line in its feed, naming the host. The game's own SAVED indicator stays
+// the host's: calling mainGamemode.saveAnim on a client's gamemode was measured to show nothing.
 //
 // Game thread.
 
