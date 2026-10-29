@@ -231,7 +231,12 @@ menu and may rejoin. The host owns the save throughout. A client cannot write th
 native detour at the engine's one write chokepoint cancels the world-save container on a client
 (`coop/save/save_block`), the pause-menu Save button is greyed out to say so
 (`coop/save/save_button_disable`), and the host's save directory is backed up before a session
-because the game's in-place writes leave no other recovery (`coop/save/save_guard`).
+because the game's in-place writes leave no other recovery (`coop/save/save_guard`). Every player
+still learns of a save (`coop/save/save_notice`): when the engine writes the hosted world's save
+object under a slot of the game's own -- the player's save or the autosave, not a join's scratch
+capture or the save-slot menu's own writes -- the host puts "<host> saved the game" in its chat feed
+and sends `WorldSaved`, and each client shows the same line and plays the game's own save animation
+(`mainGamemode.saveAnim`) on its gamemode `[?]`.
 
 On the P2P route a rejoin also depends on something the host does not think about: its own
 registration with the signaling relay, which is one long-lived TCP connection that carries no
@@ -436,6 +441,7 @@ and it is the reason the relay's own silence stays.
 | `SnapshotBegin`, `PropSpawn`, `PropSnapPos`, `PropDestroy`, `SnapshotComplete` | host to one client | the bracket; a `PropSnapPos` carries the host's drive context for its prop, and the client drops one older than a drive END still on its copy `[?]` |
 | `EventSnapshot` | host to one client | one per in-flight event |
 | `ChatLine` | host to one client | the retained chat record, one line each |
+| `WorldSaved` | host to all | the hosted world was saved; the host's count of its saves this session |
 
 Every state lane adds its own kind for step 5.4; the family routers in `coop/dispatch/` own them.
 
@@ -459,6 +465,7 @@ not raise the game's own active-event counter, whose save and pause blocks the m
 
 | Limit | Evidence |
 |---|---|
+| A client's SAVED animation is the game's `mainGamemode.saveAnim`, called with no arguments; whether that is what paints the host's SAVED indicator is not established, so a client may see only the chat line | `[?]` `coop/save/save_notice`; `coop/save/save_indicator_suppress` saw neither `saveAnim` nor `addHint` fire across a join capture while the indicator showed |
 | The transfer runs at a rate the mod measures per connection, climbing from about 145 KB/s to whatever the link acknowledges carrying; the transport itself contributes no bandwidth estimation, so a link that genuinely is slow is still a long download | `[V]` `coop/net/send_rate_control`, `coop/net/connection_tuning` |
 | The world load is capped by one absolute deadline on the probe; a load past it announces into a world that may still be churning, logged as degraded. The wait for the world's save replay has the loading phase's budget on a join, and 120 s on a world change | `[V]` `coop/session/world_load_episode` |
 | Keyless save-loaded objects are matched by position; the index-to-id sidecar is built and transferred, and its bind is off by default, behind the `save_identity_bind` developer flag | `[V]` `coop/config/config_registry_rows.inc`, `coop/props/save_identity_bind` |
@@ -479,7 +486,7 @@ not raise the game's own active-event counter, whose save and pause blocks the m
 | the client join state machine and its screen | `coop/session/join_progress`, `ui/loading_screen`, `ui/join_curtain`, `ui/end_reason_dialog` |
 | why a join or a session ended, as a code | `coop/net/end_reason` |
 | the save transfer | `coop/save/save_transfer`, `ue_wrap/engine/save_capture`, `coop/props/save_identity_map`, `coop/props/save_identity_bind` |
-| the host owns the save | `coop/save/save_guard`, `coop/save/save_block`, `coop/save/save_button_disable`, `coop/save/save_indicator_suppress` |
+| the host owns the save | `coop/save/save_guard`, `coop/save/save_block`, `coop/save/save_button_disable`, `coop/save/save_notice`, `coop/save/save_indicator_suppress` |
 | the world-load episode and the probe | `coop/session/world_load_episode`, `coop/session/save_replay_watch` |
 | the announce, the placement, the edges | `coop/session/net_pump`, `coop/session/teleport_client` |
 | the connect replay | `coop/session/subsystems`, `coop/props/prop_snapshot`, `coop/props/snapshot_census`, `coop/session/join_seed` |

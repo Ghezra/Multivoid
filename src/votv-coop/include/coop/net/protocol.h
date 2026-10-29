@@ -30,7 +30,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 260;
+inline constexpr uint16_t kProtocolVersion = 261;
 
 // Default LAN port (overridable via multivoid.ini "net.port=").
 inline constexpr uint16_t kDefaultPort = 47621;
@@ -1192,6 +1192,12 @@ enum class ReliableKind : uint8_t {
     // is relayed to the other clients like the release it follows, and rides the same lane, so it never passes it.
     // Not pre-world. Late join: none, the snapshot carries the host's pose. PropSettlePayload.
     PropSettle = 208,
+    // HOST->CLIENTS: the host's world was saved -- the game's own save of the hosted world, by the player or the
+    // autosave, written to its slot; a join's scratch capture and the save-slot menu's own writes are not. A client
+    // writes no world save of its own, so this is how it learns one happened: it shows the chat line the host shows
+    // and plays the game's own save animation. Host-authored: a client's copy is refused at the host's receive
+    // edge; never relayed; not pre-world. Late join: none, a save is an act. WorldSavedPayload.
+    WorldSaved = 209,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
@@ -1830,6 +1836,14 @@ struct PropSettlePayload {
 static_assert(sizeof(PropSettlePayload) == 60, "PropSettlePayload must be 60 bytes");
 static_assert(sizeof(PropSettlePayload) <= 256 - 20 - 8,
               "PropSettlePayload must fit in one reliable datagram");
+
+// The host's world was saved (WorldSaved): the host's count of its world saves this session, for the logs.
+struct WorldSavedPayload {
+    uint32_t saveNumber;   // 4 -- 1 for the session's first save
+};
+static_assert(sizeof(WorldSavedPayload) == 4, "WorldSavedPayload must be 4 bytes");
+static_assert(sizeof(WorldSavedPayload) <= 256 - 20 - 8,
+              "WorldSavedPayload must fit in one reliable datagram");
 
 // One message of the drill filler (DevLoadFiller): its place in the run and the run's length; the rest is fill.
 struct DevLoadFillerPayload {

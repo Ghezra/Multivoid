@@ -218,6 +218,7 @@ set(VOTVCOOP_SOURCES
     src/coop/world/daily_task_sync.cpp
     src/coop/save/save_block.cpp
     src/coop/save/save_button_disable.cpp
+    src/coop/save/save_notice.cpp
     src/ui/multiplayer_menu.cpp
     src/coop/player/nameplate.cpp
     src/coop/player/nick_color.cpp
