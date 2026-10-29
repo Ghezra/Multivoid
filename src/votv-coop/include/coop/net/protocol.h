@@ -30,7 +30,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 259;
+inline constexpr uint16_t kProtocolVersion = 260;
 
 // Default LAN port (overridable via multivoid.ini "net.port=").
 inline constexpr uint16_t kDefaultPort = 47621;
@@ -1185,6 +1185,13 @@ enum class ReliableKind : uint8_t {
     // edge; never relayed; not pre-world. Late join: none, a refusal is an act; a joiner gets the kept hold's
     // stream. PropHoldRefusedPayload.
     PropHoldRefused = 207,
+    // ANY->ALL: a prop this peer let go of has come to rest here, and where. Each copy falls by its own physics
+    // from the release, so the copies can rest apart; the releaser's copy is the one its player watched, and every
+    // other peer whose copy no hold, drive or park moves puts it there. The holder sends it once per release, for a
+    // keyed prop that left the hand unfrozen; a new hold, a drive or a ten-second bound cancels it. A client's copy
+    // is relayed to the other clients like the release it follows, and rides the same lane, so it never passes it.
+    // Not pre-world. Late join: none, the snapshot carries the host's pose. PropSettlePayload.
+    PropSettle = 208,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
@@ -1809,6 +1816,20 @@ struct PropHoldRefusedPayload {
 static_assert(sizeof(PropHoldRefusedPayload) == 36, "PropHoldRefusedPayload must be 36 bytes");
 static_assert(sizeof(PropHoldRefusedPayload) <= 256 - 20 - 8,
               "PropHoldRefusedPayload must fit in one reliable datagram");
+
+// Where a released prop came to rest on its releaser (PropSettle): the prop by key, its world transform at rest,
+// its frozen and sleep there, and the hold whose release it follows.
+struct PropSettlePayload {
+    WireKey  key;                          // 32 -- the prop's Key
+    float    locX, locY, locZ;             // 12 -- world cm
+    float    rotPitch, rotYaw, rotRoll;    // 12 -- degrees
+    uint16_t holdGen;                      // 2  -- the released hold
+    uint8_t  physFlags;                    // 1  -- propspawn_flags of the copy at rest
+    uint8_t  _pad;                         // 1  -- zero
+};
+static_assert(sizeof(PropSettlePayload) == 60, "PropSettlePayload must be 60 bytes");
+static_assert(sizeof(PropSettlePayload) <= 256 - 20 - 8,
+              "PropSettlePayload must fit in one reliable datagram");
 
 // One message of the drill filler (DevLoadFiller): its place in the run and the run's length; the rest is fill.
 struct DevLoadFillerPayload {

@@ -72,7 +72,8 @@ bool HandleEconomyEvent(net::Session& session,
 // and answer. PropDriveEnd on the host is a syncing client's End, handed to the claim judge; on a client
 // it is the host's End, applied by the stream's receiver. PropSyncClaim checks role()==Host AND a client
 // sender slot; PropSyncAnswer is the HOST->CLIENT verdict, refused from a client at the host's edge, and
-// PropHoldRefused the host's refusal of a second hold, to every client. DevLoadFiller
+// PropHoldRefused the host's refusal of a second hold, to every client; PropSettle is where a released prop
+// rests, from its releaser to all. DevLoadFiller
 // is the developer filler of the syncer drill's load arm, host to client; DevParityReport is the pile deferral
 // drill's report, client to host; DevContainerParity is the container join drill's.
 bool HandlePropDriveEvent(net::Session& session,

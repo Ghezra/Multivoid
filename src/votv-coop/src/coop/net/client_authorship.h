@@ -36,6 +36,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     switch (k) {
     case ReliableKind::Join:
     case ReliableKind::PropRelease:
+    case ReliableKind::PropSettle:
     case ReliableKind::PropSpawn:
     case ReliableKind::PropDestroy:
     case ReliableKind::LightState:
