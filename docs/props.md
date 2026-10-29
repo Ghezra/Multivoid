@@ -207,6 +207,16 @@ produced on this peer (`coop/props/prop_wire_parity`); a fresh mirror starts kin
 is remote-owned. A spawn or destroy the receiver applied is marked so the symmetric observer
 does not broadcast it back (`coop/props/prop_echo_suppress`).
 
+### Frozen and static by the toolgun
+
+A toolgun tool is a `tool_*_C` actor whose `init(toolgun)` acts on the prop the toolgun's `outHit`
+names, on its user's machine alone. Every class's `init` is watched at the script gate, so a tool
+the lane never named is covered (`coop/props/prop_tool_flags`): before a tool's body runs its
+target's static, frozen and sleep are read, after it they are read again, and a change goes out as
+`PropToolFlags`. Every other peer sets the same flags through `prop_C`'s own setter unless its own
+player holds the prop, whose release carries its flags anyway. A tool that changes no flag, the
+remover among them, sends nothing.
+
 ### Sticking to a wall
 
 A prop sticks through its wall-attach component, which the wall-attachable props (the cameras, the
@@ -383,6 +393,7 @@ is built; concrete and food are designed and not built.
 | `PropPose` (stream) | the holder to all | the held prop's world transform, per frame, and its hold's generation |
 | `PropSpawn`, `PropDestroy` | the host to all; a destroy from either role | class, key, id, transform, physics flags, the birth scalar; the key and id |
 | `PropRelease` | the holder to all | the prop's transform, its inherited linear and angular velocity and its frozen and sleep at the edge, and the hold it closes |
+| `PropToolFlags` | the tool's user to all | a prop's static, frozen and sleep as a toolgun tool left them `[?]` |
 | `PropSettle` | the releaser to all | where its released copy rests: the transform, its frozen and sleep, and the hold whose release it follows `[?]` |
 | `PropHoldRefused` | the host to every client | a hold the host refused, by its holder's slot and generation, the prop's key, and the slot whose hold keeps the prop |
 | `PropDrivePose` (stream) | the host to all; a syncing client to the host | the poses of the props under a hook's drive or a broom's push that moved since their last one, with the claim generation; a client's rows of the prop its own interaction moves, which the host judges before it relays one `[?]` |
@@ -419,7 +430,7 @@ prop resolves.
 | Two players who grab one keyed prop inside one round trip both hold it until the host's refusal reaches the one it did not keep, so the refused player sees the prop in hand for that round trip before it is taken away. A swinger's drag has no such judge: two peers dragging one lid each move their own copy. A release delayed past another peer's whole later hold of the prop still puts it back where the first holder let go, and a join's snapshot row read before a live stick, unstick or release can reach the joiner after it and undo it there, until the window's late re-flush corrects the prop | `[V]` the grab race (`coop/dev/director/grab_race_probe`): both peers fired the grab within 20 ms of each other, three runs; the host refused the client's hold each time, the client let go with no release, and over a 4 s watch no sample on either peer had two holders and the client's copy followed the host's stream in 138 of 139; `[V]` `coop/props/remote_prop_drive` leaves a door the local player drags to that drag; `[RD]` the rows carry no version; the join gate holds a live stick or release behind the snapshot rows, so a joiner applies the rows first `[?]` |
 | A prop let go of flies by each peer's own physics from the same release transform and velocity, so the copies can take different paths before the releaser's rest corrects the others: a fire extinguisher dropped from the hand ended between 0.2 and 152.6 cm apart on the two peers over fourteen drops before that correction existed, the widest where the client's copy stayed on a surface about a metre up that the host's copy landed on and rolled off. A copy that rests apart moves there in one step, a visible jump; one still moving ten seconds after its release is not corrected, and past sixteen released props at once the rest falls uncorrected. What the flying copy knocks on one peer stays knocked there alone | `[V]` the fire extinguisher drill (`coop/dev/fireext_drill`): the host's rest line against the client's last watch line; `[?]` `coop/props/prop_settle`, not yet measured in a two-peer run |
 | A prop whose own grab prelude adds to the base one gets only the base one on a receiver: the sprinkler's also detaches its hose, so the hose stays tied to a sprinkler another peer carries away. The glowstick's replaces the base one with its own release, and a receiver runs the base one | `[V]` the sprinkler and glowstick Blueprints: `prop_sprinkler_C`'s prelude calls `prop_C::playerGrabbed_pre` and `hose->detachSprinkler`, `prop_glowstick_C`'s calls `releaseGlowstick` alone; `coop/props/remote_prop` runs the base prelude |
-| A prop the toolgun freezes, unfreezes or makes static changes on the tool user's machine only; the next hold of it converges frozen and sleep, never static, and a copy static on one peer, without a wall-attach component's unstick, is not driven there while another peer holds the prop -- a refusal that lasts until a lane carries static | `[V]` no lane under `src/coop` catches `setPropProps`; `coop/props/remote_prop` refuses a stream for a copy static here |
+| A toolgun flag change reaches the others only when the tool sets the flags inside its own `init`; a tool that sets them later, from a timer or another event, stays on its user's copy. A change that crosses a hold of the prop on another peer is left to that hold, and the hold's release puts its own flags on every copy | `[?]` `coop/props/prop_tool_flags`, not yet measured in a two-peer run; which tools change flags, and when, is not established |
 | Another peer's hold can carry away the chair this peer sits in at the laptop, which single player never allows: the laptop freezes the seat only on the machine whose player sits | `[V]` the laptop Blueprint: `stabilizeSeat` sets the seat frozen, and the exit's `setPropProps` clears it; `coop/props/remote_prop` unfreezes a held copy at the hold's first pose |
 | A keyed prop a client creates outside the intent door (a place after a pickup, the whitelisted births, a container extract, a player's own spawn verb) never reaches the host. It is logged now: the drain names its exit, and `[dev] prop_birth_key_probe` tallies every exit by name | `[V]` `coop/props/prop_drop_intent` drops it at the drain; `coop/dev/prop_birth_key_probe` |
 | Concrete, food and every other local-accumulator prop drift between peers; only the tape reel has its corrector | `[V]` `coop/interactables/tape_caddy_sync` is the only corrector |
@@ -439,6 +450,7 @@ prop resolves.
 | the receivers | `coop/props/remote_prop` (held), `coop/props/remote_prop_spawn` (birth: adopt, converge, create), `coop/props/prop_fresh_spawn` (the materialiser), `coop/props/prop_wire_parity`, `coop/props/active_drive`, `coop/props/prop_sound` |
 | one holder per prop | `coop/props/prop_hold_claim`, `coop/props/prop_hold` (who holds a prop on the host) |
 | where a released prop rests | `coop/props/prop_settle` |
+| the toolgun's flags | `coop/props/prop_tool_flags` |
 | a client's intents | `coop/props/prop_drop_intent` |
 | the stick | `coop/props/prop_stick_sync` |
 | a prop under a hook's drive or a broom's push | `coop/props/prop_drive_host` (the host's set and stream), `coop/props/prop_drive_stream` (the receiver), `coop/items/hook_prop_claim` (the hook lane feeding it), `coop/items/hook_constraint` (the tie itself, host-only), `coop/items/broom_push` (the broom's push feeding it) |
