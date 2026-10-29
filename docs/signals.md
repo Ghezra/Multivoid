@@ -188,11 +188,15 @@ compass, its terminal, the desk's radar filter and sounds on its machine -- runs
 ### Upgrades
 
 The signal upgrades are one persistent struct of eighteen levels that parametrise the download,
-ping, coordinate, refiner, radar and detector simulations. No lane mirrors them: they ride only
-the transferred save, once, so a level bought mid-session diverges silently. The desk routes
-around it by streaming the derived frequency and polarity data, but the struct itself, and the
-purchase as an intent the host validates against the shared research points, are designed and
-not built. The ATV's physical modules are on [vehicles.md](vehicles.md).
+ping, coordinate, refiner, radar and detector simulations. The host polls the struct every tick and
+broadcasts all eighteen levels when any moves, so a purchase, a sale and a cheat-menu write converge
+by one route; a client writes the host's levels and runs the gamemode's own re-derive
+(`coop/interactables/upgrade_sync`). A client's buy or sell button is cancelled at the script-body
+gate and sent as an intent: the host checks that the sender holds the laptop, re-derives the price
+and the bounds from its own table and level, charges the shared balance and writes the level, and
+its next broadcast is the answer. A module row (a one-shot unlock such as the RC module) is not a
+level, and runs on the presser's machine as in single player. The ATV's physical modules are on
+[vehicles.md](vehicles.md).
 
 ## Who owns what
 
@@ -215,7 +219,7 @@ not built. The ATV's physical modules are on [vehicles.md](vehicles.md).
 | the tape accrual | each peer, host-adjusted | a one-hertz re-snap |
 | the servers | the host | state driven into each box |
 | a SAT console command that rests on the world | the host, on a terminal kept for its typist | the typed line up; the printed lines and the busy state back |
-| the upgrade levels | the host's save, once | not mirrored |
+| the upgrade levels | the host | polled and broadcast on change; a client's buy or sell is an intent the host charges and writes |
 
 ## Wire messages
 
@@ -240,6 +244,7 @@ not built. The ATV's physical modules are on [vehicles.md](vehicles.md).
 | `LaptopState`, `LaptopQuad` | the presser and the host | the power edge and the portable PC's lid; the file buffer, with the slot's generation |
 | `ServerState` | the host to all | the servers' broken set |
 | `SatConsole` | a client to the host; the host to that client | a typed line with its terminal's context; the lines the host's run printed, and its busy state |
+| `UpgradeLevels`, `UpgradeIntent` | the host to all and to a joiner; a client to the host | the eighteen levels; a buy or sell of one level row |
 
 ## Late join
 
@@ -258,13 +263,13 @@ mid-command while another client keeps the session leaves the command running on
 is bound to its terminal and its busy state as its world is ready; the last client's leave ends the
 session, and every such terminal is discarded with it, its command stopping there. An eraser press's
 show lasts its 3 s and is not replayed; its wipe arrives as the drive's row. The upgrade levels
-arrive with the save and never again.
+are sent at the joiner's ready edge, since its save was taken at the handshake.
 
 ## Known limits
 
 | Limit | Evidence |
 |---|---|
-| The upgrade levels are not mirrored; a level bought mid-session diverges until the next join | `[V]` no lane exists; `coop/interactables/desk_sim_sync` names the gap |
+| A module row of the upgrade panel (the RC module and the other one-shot unlocks) is bought on the presser's machine alone: a client's purchase debits only its own balance, which the host's next balance broadcast puts back, and the unlock stays on that machine | `[RD]` `coop/interactables/upgrade_sync` lets a module row run locally, since the lane carries no module store |
 | The coordinate log's animated line families are generated per peer from inputs that never mirror, so the host's and a client's logs differ; only the eight one-shot lines ride the wire, the reset's line written by each peer's own reset | `[V]` `coop/interactables/console_state_sync` |
 | A signal whose download's `begin` spawns a world prop (lifecrystal's crystal at the ROZ ship) spawns it on each peer, and a client's own is a world birth it does not author: the host's arriving birth adopts it when the arm's row came first, and it stays beside the host's when the host sent its birth before the arm's row (both ride the Default lane, so they arrive in send order) | `[RD]` `objectRenderer.begin`'s fourth step; the arriving birth's same-class match within 30 cm (`coop/props/remote_prop_spawn`) |
 | The signal camera's trigger runs on each peer, as its arm's `begin` does; the main map's one, the locker looker, watches that peer's own camera and ends that player's game as in single player | `[RD]` `mainGamemode.deleteActiveSignal`, `objectRenderer.begin`, `trigger_lockerLooker`; by design until decided |
@@ -288,6 +293,7 @@ arrive with the save and never again.
 | drives, racks, modules, tapes | `coop/interactables/drive_sync`, `coop/interactables/drive_payload_sync`, `coop/interactables/eraser_press_intent`, `coop/interactables/drive_rack_sync`, `coop/interactables/physmods_sync`, `coop/interactables/tape_caddy_sync` |
 | the laptop, the crate, the database, the servers | `coop/interactables/laptop_sync`, `coop/interactables/floppy_slot_sync`, `coop/interactables/laptop_buffer_sync`, `coop/interactables/floppybox_sync`, `coop/interactables/meadow_db_sync`, `coop/interactables/serverbox_sync` |
 | the SAT console | `coop/interactables/sat_console_sync`, `coop/interactables/sat_console_table` |
+| the upgrade levels | `coop/interactables/upgrade_sync`, `ue_wrap/world/upgrades` |
 | the engine wrappers | `ue_wrap/desk/` (the dish, the console, the coordinate panel, the refiner pane, the drive chain, the tape caddy, the modules, the saved signals, the database, the audio, the SAT console) |
 | the join seeds | `coop/session/join_seed` |
 | tests and instruments | `coop/dev/drive_selftest`, `coop/dev/drive_drill`, `coop/dev/download_drill`, `coop/dev/desk_diag`, `coop/dev/sat_console_drill`, `coop/dev/calib_drill`, `coop/dev/desk_ping_drill`, `harness/autotest/autotest_seeddrill.cpp`, `harness/autotest/autotest_driveslot.cpp` (a drive taken out on one peer is out and carried on the other) |

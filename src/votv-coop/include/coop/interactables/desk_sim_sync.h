@@ -11,8 +11,7 @@
 //
 // The knob INTENTS (speeds, active, dir) stay occupant-authored on DeskState and the host's own
 // blueprint integrates the offset, so this vector is host-down only: one author. frData and poData
-// ride it rather than converging natively -- they read a filter-size upgrade with no sync lane of
-// its own.
+// ride it rather than converging natively.
 
 #pragma once
 
