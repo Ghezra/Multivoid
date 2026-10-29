@@ -4,8 +4,10 @@
 // shows its SAVED indicator on the host only and a client never knew a save happened. The host hears its
 // own world saves at the engine's write (ue_wrap/engine/save_to_slot_hook) -- the hosted world's save
 // object under a slot of the game's own, so a join's scratch capture and the save-slot menu's writes do
-// not count -- and puts one line in its chat feed and sends WorldSaved. A client puts the same line in its
-// feed, naming the host, and plays the game's own save animation (mainGamemode.saveAnim) on its gamemode.
+// not count -- and puts one line in its chat feed and sends WorldSaved. A save made while the game counts
+// an event as running writes the slot without gathering the world, and its line says the save did not
+// take. A client puts the same line in its feed, naming the host, and on a save that took plays the
+// game's own save animation (mainGamemode.saveAnim) on its gamemode.
 //
 // Game thread.
 
@@ -21,7 +23,7 @@ namespace coop::save_notice {
 // Cache the session and subscribe to the engine's world-save notice. Idempotent. Game thread.
 void Install(coop::net::Session* session);
 
-// CLIENT: the host's world was saved. Validated at the router.
+// CLIENT: the host saved its world, or tried to during an event. Validated at the router.
 void OnWorldSaved(const coop::net::WorldSavedPayload& p);
 
 // Session end: the save count and the once-said latches. Game thread.

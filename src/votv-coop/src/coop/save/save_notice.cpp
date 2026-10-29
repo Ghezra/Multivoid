@@ -10,6 +10,7 @@
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/reflection_props.h"      // FunctionParams
+#include "ue_wrap/engine/save_capture.h"        // GameEventState: whether this save gathered the world
 #include "ue_wrap/engine/save_to_slot_hook.h"
 #include "ue_wrap/facts/function_row.h"
 #include "ue_wrap/world/world_singleton.h"      // Gamemode
@@ -27,9 +28,15 @@ UE_FACT_FN(kRowSaveAnim, "save_notice", L"mainGamemode_C", L"saveAnim", Declared
 
 std::atomic<coop::net::Session*> g_session{nullptr};
 bool     g_subscribed = false;
-uint32_t g_saves = 0;            // HOST: the world saves this session
-uint32_t g_heard = 0;            // CLIENT: the host's saves this session
+uint32_t g_saves = 0;            // HOST: the save attempts this session
+uint32_t g_heard = 0;            // CLIENT: the host's save attempts this session
 bool     g_animSaid = false;     // CLIENT: a save animation that could not play is said once
+bool     g_unknownSaid = false;  // HOST: an event state that could not be read is said once
+
+coop::peer_action_feed::Action LineFor(coop::net::WorldSaveOutcome o) {
+    return o == coop::net::WorldSaveOutcome::Saved ? coop::peer_action_feed::Action::SavedGame
+                                                   : coop::peer_action_feed::Action::SaveBlockedByEvent;
+}
 
 // HOST: the engine wrote a world save. Only THE world counts -- the live save object under a slot of the
 // game's own: the join capture writes it to a zcoop_ scratch slot, and the save-slot menu writes save objects
@@ -39,11 +46,26 @@ void OnWorldSaveWritten(void* saveObject, const wchar_t* slotName) {
     if (!s || !s->connected() || s->role() != coop::net::Role::Host) return;
     if (std::wcsncmp(slotName, L"zcoop_", 6) == 0) return;
     if (saveObject != ue_wrap::inventory::ResolveSaveSlot()) return;
+    // The write is the tail of the game's save, in the same call as its world gather, which skips while the game
+    // counts an event as running: the slot is then written with the world as the last gather left it, and the
+    // host sees the game's error. The answer now is the one the gather got. One that cannot be read is not taken
+    // for an event.
+    const ue_wrap::save_capture::EventState ev = ue_wrap::save_capture::GameEventState();
+    if (ev == ue_wrap::save_capture::EventState::Unknown && !g_unknownSaid) {
+        g_unknownSaid = true;
+        UE_LOGW("save_notice: whether an event is running could not be read -- this save is reported as saved "
+                "(said once)");
+    }
+    const coop::net::WorldSaveOutcome outcome = ev == ue_wrap::save_capture::EventState::On
+                                                    ? coop::net::WorldSaveOutcome::EventRunning
+                                                    : coop::net::WorldSaveOutcome::Saved;
     coop::net::WorldSavedPayload p{};
     p.saveNumber = ++g_saves;
+    p.outcome = static_cast<uint8_t>(outcome);
     const bool sent = s->SendReliable(coop::net::ReliableKind::WorldSaved, &p, sizeof(p));
-    coop::peer_action_feed::AnnounceDirect(0, coop::peer_action_feed::Action::SavedGame);
-    UE_LOGI("save_notice: the host's world was saved to '%ls' (#%u) -- WorldSaved %s", slotName, g_saves,
+    coop::peer_action_feed::AnnounceDirect(0, LineFor(outcome));
+    UE_LOGI("save_notice: the host's save to '%ls' (#%u) %s -- WorldSaved %s", slotName, g_saves,
+            outcome == coop::net::WorldSaveOutcome::Saved ? "took" : "did not gather the world: an event is running",
             sent ? "sent" : "had no peer");
 }
 
@@ -74,9 +96,12 @@ void OnWorldSaved(const coop::net::WorldSavedPayload& p) {
     auto* s = g_session.load(std::memory_order_acquire);
     if (!s || s->role() != coop::net::Role::Client) return;
     ++g_heard;
-    coop::peer_action_feed::AnnounceDirect(0, coop::peer_action_feed::Action::SavedGame);
-    PlaySaveAnim();
-    UE_LOGI("save_notice: the host saved the world (its #%u, heard #%u)", p.saveNumber, g_heard);
+    const auto outcome = static_cast<coop::net::WorldSaveOutcome>(p.outcome);
+    coop::peer_action_feed::AnnounceDirect(0, LineFor(outcome));
+    if (outcome == coop::net::WorldSaveOutcome::Saved) PlaySaveAnim();
+    UE_LOGI("save_notice: the host %s (its #%u, heard #%u)",
+            outcome == coop::net::WorldSaveOutcome::Saved ? "saved the world" : "tried to save during an event",
+            p.saveNumber, g_heard);
 }
 
 void OnDisconnect() {
@@ -84,6 +109,7 @@ void OnDisconnect() {
     g_saves = 0;
     g_heard = 0;
     g_animSaid = false;
+    g_unknownSaid = false;
 }
 
 }  // namespace coop::save_notice

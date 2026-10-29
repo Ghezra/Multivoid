@@ -297,7 +297,7 @@ bool HandleWorldEvent(const net::Session::ReliableMessage& msg) {
         break;
     }
     case net::ReliableKind::WorldSaved: {
-        // The host's world was saved, host to client. Only the host authors: the host's receive edge refuses a
+        // The host saved its world or tried to, host to client. Only the host authors: the host's receive edge refuses a
         // client's copy (client_authorship.h).
         if (msg.payloadLen < sizeof(net::WorldSavedPayload)) {
             UE_LOGW("event_feed: WorldSaved payload too short (%zu < %zu)",
@@ -306,6 +306,11 @@ bool HandleWorldEvent(const net::Session::ReliableMessage& msg) {
         }
         net::WorldSavedPayload sp{};
         std::memcpy(&sp, msg.payload, sizeof(sp));
+        if (sp.outcome < static_cast<uint8_t>(net::WorldSaveOutcome::Saved) ||
+            sp.outcome > static_cast<uint8_t>(net::WorldSaveOutcome::EventRunning)) {
+            UE_LOGW("event_feed: WorldSaved outcome=%u unknown -- dropping", static_cast<unsigned>(sp.outcome));
+            break;
+        }
         coop::save_notice::OnWorldSaved(sp);
         break;
     }

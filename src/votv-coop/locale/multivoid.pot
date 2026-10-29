@@ -191,6 +191,11 @@ msgid_plural "%1$s sold it for %2$lld points (the host's price)"
 msgstr[0] ""
 msgstr[1] ""
 
+#: src/coop/comms/peer_action_feed.cpp
+#, c-format
+msgid "%1$s tried to save the game, but it cannot be saved during an event"
+msgstr ""
+
 #: src/coop/session/player_handshake_version.cpp
 #, c-format
 msgid "%1$s was turned away: Game version mismatch: server plays VOTV %2$s, client has VOTV %3$s. [%4$s]"
