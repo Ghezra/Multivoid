@@ -184,6 +184,7 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // The beam sweep: the client sweeps a lit flashlight; the host records its puppet's beam each tick.
     SpawnIf("VOTVCOOP_RUN_BEAM_SWEEP", "flashlight beam sweep", &BeamSweepThread, role);
     SpawnIf("VOTVCOOP_RUN_BEAM_LOOK", "flashlight beam look (shadow flags, captures)", &BeamLookThread, role);
+    SpawnIf("VOTVCOOP_RUN_CLASS_DUMP", "Blueprint class dump", &ClassDumpThread, role);
 
     // The bot-director halt probe, solo: measures the path query over the baked NavMesh and a
     // reflected AddMovementInput moving the possessed body.

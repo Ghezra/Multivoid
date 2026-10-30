@@ -248,6 +248,10 @@ DWORD WINAPI BeamSweepThread(LPVOID arg);
 // host captures its window on the spot that beam lands. Gated by VOTVCOOP_RUN_BEAM_LOOK. See autotest_beam_look.cpp.
 DWORD WINAPI BeamLookThread(LPVOID arg);
 
+// The class dump: named Blueprint classes' parent chains, fields, functions and calls, to the log. Gated by
+// VOTVCOOP_RUN_CLASS_DUMP; the names in VOTVCOOP_CLASS_DUMP. See autotest_class_dump.cpp.
+DWORD WINAPI ClassDumpThread(LPVOID arg);
+
 // The event force-now smoke (harness/autotest/autotest_eventforce.cpp), host: the volume-gate
 // feature (coop/dev/event_force) on obelisk, the badge snapshot resolving (armed 0, shots 1),
 // ForceNow arming through HostFire and driving the box's own BeginOverlap with the local pawn, and
