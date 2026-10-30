@@ -14,11 +14,14 @@
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/core/script_calls.h"
+#include "ue_wrap/core/script_fingerprint.h"
 
 
 #include <windows.h>
 
 #include <atomic>
+#include <cwctype>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -61,6 +64,47 @@ void DumpClass(const std::wstring& name) {
 DWORD WINAPI ClassDumpThread(LPVOID /*arg*/) {
     const std::string list = coop::config::ReadEnv("VOTVCOOP_CLASS_DUMP");
     ::Sleep(15000);   // the world up: the class set is what the game loads
+    // A substring search over every loaded Blueprint class's own fields and functions, for a state whose class is
+    // not yet known. VOTVCOOP_CLASS_GREP, lower case.
+    const std::string grep = coop::config::ReadEnv("VOTVCOOP_CLASS_GREP");
+    if (!grep.empty()) {
+        const std::wstring needle(grep.begin(), grep.end());
+        auto has = [&needle](std::wstring s) {
+            for (wchar_t& c : s) c = static_cast<wchar_t>(::towlower(c));
+            return s.find(needle) != std::wstring::npos;
+        };
+        ue_wrap::game_thread::RunAndWait([&](std::atomic<int>& d) {
+            for (void* cls : R::FindObjectsByClass(L"BlueprintGeneratedClass")) {
+                const std::wstring name = R::ToString(R::NameOf(cls));
+                if (has(name)) UE_LOGI("class_dump: grep class %ls", name.c_str());
+                for (const R::StructFieldInfo& f : R::EnumerateStructFields(cls))
+                    if (has(f.name)) UE_LOGI("class_dump: grep %ls field %ls size=%d", name.c_str(), f.name.c_str(), f.size);
+                for (const R::ObjectRef& o : R::ChildObjectsOf(cls))
+                    if (o.className == L"Function" && has(o.name)) UE_LOGI("class_dump: grep %ls fn %ls", name.c_str(), o.name.c_str());
+            }
+            d.store(1);
+        });
+    }
+    // Every function of one loaded class as readable bytecode text, to a file: the way to read which body writes
+    // a field. VOTVCOOP_CLASS_SCRIPT names the class, VOTVCOOP_CLASS_SCRIPT_OUT the file.
+    const std::string scriptCls = coop::config::ReadEnv("VOTVCOOP_CLASS_SCRIPT");
+    const std::string scriptOut = coop::config::ReadEnv("VOTVCOOP_CLASS_SCRIPT_OUT");
+    if (!scriptCls.empty() && !scriptOut.empty()) {
+        const std::wstring w(scriptCls.begin(), scriptCls.end());
+        ue_wrap::game_thread::RunAndWait([&](std::atomic<int>& d) {
+            std::ofstream out(scriptOut, std::ios::binary | std::ios::trunc);
+            void* cls = R::FindClass(w.c_str());
+            if (cls) {
+                for (const R::ObjectRef& o : R::ChildObjectsOf(cls)) {
+                    if (o.className != L"Function") continue;
+                    const ue_wrap::script_fingerprint::Result r = ue_wrap::script_fingerprint::Of(o.object);
+                    out << "=== " << std::string(o.name.begin(), o.name.end()) << '\n' << r.text << '\n';
+                }
+            }
+            UE_LOGI("class_dump: script of %ls written (class %hs)", w.c_str(), cls ? "found" : "NOT loaded");
+            d.store(1);
+        });
+    }
     std::stringstream ss(list);
     std::string one;
     while (std::getline(ss, one, ',')) {
