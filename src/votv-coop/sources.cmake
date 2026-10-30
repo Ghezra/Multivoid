@@ -380,6 +380,7 @@ set(VOTVCOOP_SOURCES
     src/coop/props/prop_container_extract.cpp
     src/coop/props/prop_food_state.cpp
     src/coop/props/prop_record_refresh.cpp
+    src/coop/props/prop_can_state.cpp
     src/coop/props/pack_trash_intent.cpp
     src/coop/props/prop_drop_intent.cpp
     src/coop/props/prop_spawn_authoring.cpp
@@ -770,6 +771,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_beam_sweep.cpp
     src/harness/autotest/autotest_beam_look.cpp
     src/harness/autotest/autotest_class_dump.cpp
+    src/harness/autotest/autotest_can_state.cpp
     src/harness/autotest/autotest_saveui.cpp
     src/ui/input_focus.cpp
     src/harness/screenshot.cpp

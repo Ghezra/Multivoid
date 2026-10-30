@@ -79,6 +79,7 @@
 #include "coop/creatures/kerfur_entity.h"  // the stable-KerfurId authority table
 #include "coop/creatures/kerfur_form_assembler.h"  // script-body gate consumer (observe-only + containment counter)
 #include "coop/props/prop_hold_claim.h"
+#include "coop/props/prop_can_state.h"
 #include "coop/props/prop_settle.h"
 #include "coop/props/prop_tool_flags.h"
 #include "coop/props/prop_stick_sync.h"  // wall-attachable stick mirror (camera-on-wall)
@@ -275,6 +276,7 @@ void Install(coop::net::Session& session) {
     coop::floppybox_sync::Install(&session);  // the disc crate stack
     coop::props::container_contents_sync::Install(&session);  // container contents
     coop::props::prop_record_refresh::Install(&session);  // drive box + reel case republish their own record
+    coop::props::prop_can_state::Install(&session);  // a canned food's lid and contents: its record on a change
     coop::props::prop_food_state::Install();  // the food family claims its own live state off the record lane
     coop::desk_cursor_sync::Install(&session);  // coords-panel live-cursor unreliable motion stream (interpolated mirror)
     coop::desk_input_sync::Install(&session);  // the claim-free field-granular desk input lane
@@ -505,6 +507,7 @@ DisconnectStats DisconnectAll() {
     coop::floppybox_sync::OnDisconnect();  // box shadows + taken-ring + canonical retries
     coop::props::container_contents_sync::OnDisconnect();  // dirty set + retry + parked + assembler
     coop::props::prop_record_refresh::OnDisconnect();  // per-prop coalescing state
+    coop::props::prop_can_state::OnDisconnect();  // what is known of every can
     coop::dev::dev_lanes::RearmSelftests();  // [dev] the selftests re-arm for the next session
     coop::desk_cursor_sync::OnDisconnect();
     coop::desk_ping_sync::OnDisconnect();
@@ -611,8 +614,9 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:hook"}; coop::hook_sync::Tick(); }  // hook: one activeHook read, then a gated 4/20 Hz head poll only while a hook exists
     if (isHost) { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:explosion_coast"}; coop::explosion_parking::Tick(&session); }  // HOST: the props a blast flung, handed to the driven-prop channel (before its tick below; an empty list costs one size check)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:prop_drive_host"}; coop::prop_drive_host::Pump(session, isHost); }  // the driven props, both roles: HOST judges a syncing client's rows, publishes the props that moved, closes the streams that rested (after the hook poll that feeds it); then both park + drive what the host streams (an empty set costs one size check)
-    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:prop_settle"}; coop::prop_settle::Tick(session); }
-    coop::prop_tool_flags::Tick();  // the init watch's names resolve until it is live (one flag test after)  // the props this peer let go of: where each comes to rest goes out (an empty list costs one size check)
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:prop_settle"}; coop::prop_settle::Tick(session); }  // the props this peer let go of: where each comes to rest goes out (an empty list costs one size check)
+    coop::prop_tool_flags::Tick();  // the init watch's names resolve until it is live (one flag test after)
+    coop::props::prop_can_state::Tick();  // the same, for the can lane's watch
     coop::dev::dev_lanes::TickDrills(session);  // [dev] the drills' and censuses' legs (a single read each when off)
     coop::player_damage::Tick();  // impact-entry PRE cancels lazy install (non-local bodies)
     coop::player_handshake::TickSkinConverge();  // heal a join-window deferred skin apply (~2 s throttle)
