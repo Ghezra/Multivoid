@@ -78,7 +78,14 @@ as much from frame to frame as the client's own commanded view, a turn in place 
 nothing into it, and the same held over a link with 40 ms of lag and 15 ms of jitter `[V]`
 (`harness/autotest/autotest_beam_sweep.cpp`). One sweep in seven, a wide one, caught a hitch in the stream
 itself, upstream of the cone: 18 frames standing still and one 41 degree step in the interpolated
-aim, not repeated on the next run `[V]`. A carried trash clump is driven to the puppet's hand on
+aim, not repeated on the next run `[V]`. The cone
+starts inside the head, so a body casting shadows from it cuts its own silhouette out of the beam,
+which flickers as the body animates. The game leaves a real player's two body meshes
+(`CharacterMesh0`, `mesh_playerVisible`) casting no shadow; a puppet kept the class's casting default
+and drew that silhouette on every other peer's screen, so its spawn switches both off
+(`ue_wrap/actors/puppet_spawn`) `[V]` (`harness/autotest/autotest_beam_look.cpp`: the flags of both
+bodies logged side by side, and the host's captures of a client's beam on the floor, the silhouette
+there before and gone after). A carried trash clump is driven to the puppet's hand on
 the host each tick (`coop/player/puppet_carry_drive`); a held physics prop is on the props lane.
 
 ### Name, colour and nameplate
@@ -316,6 +323,7 @@ dead peer through the ragdoll bit of its next pose.
 
 | Limit | Evidence |
 |---|---|
+| A remote player casts no shadow from any light, as a real player's own body casts none on its own screen: the game turns that off for a player, and a puppet follows it so its flashlight is not shadowed by its own body | `[V]` `ue_wrap/actors/puppet_spawn` sets `SetCastShadow(false)` on both body meshes; `harness/autotest/autotest_beam_look.cpp` |
 | No chat line announces a death | `[V]` `coop/comms/chat_sync` carries no such kind |
 | After a revive the player can drift horizontally from the base gate, metres over seconds; the cause is unmeasured | `[V]` `harness/autotest/death_state_probe.cpp` reads the position back |
 | Damage a puppet takes on another machine is dropped by design; only the victim's own contacts count | `[V]` `coop/player/player_damage` |
