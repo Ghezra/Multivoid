@@ -13,6 +13,7 @@
 #include "coop/player/players_registry.h"
 #include "coop/props/prop_drive_stream.h"
 #include "coop/session/join_progress.h"
+#include "coop/props/container_act_request.h"  // dev:: act counters
 #include "coop/props/container_contents_sync.h"  // DevRecordHashes
 #include "coop/session/net_pump.h"  // HasAnnouncedWorldReady
 #include "ue_wrap/actors/container_inventory.h"
@@ -64,6 +65,54 @@ void* HeldActor(void* player) {
     return E::ReadMainPlayerGrabState(player, hand) ? hand.holdingActor : nullptr;
 }
 
+// The screen's hovered container slot cleared the way the game's own unhover does (setHoverContainerSlot with no
+// object), and read back: em_take presses the hovered slot first, so a stale hover makes the take key an R1.
+bool ClearHover(void* ui) {
+    namespace R = ue_wrap::reflection;
+    void* fn = ui ? R::FindDispatchFunctionCached(R::ClassOf(ui), L"setHoverContainerSlot") : nullptr;
+    ue_wrap::ParamFrame f(fn);
+    const int32_t off = ui ? R::FindPropertyOffset(R::ClassOf(ui), L"hoverContainerSlot") : -1;
+    if (!fn || !f.valid() || off < 0 || !f.Set<void*>(L"containerSlot", nullptr) || !ue_wrap::Call(ui, f)) return false;
+    return *reinterpret_cast<void* const*>(static_cast<const uint8_t*>(ui) + off) == nullptr;
+}
+
+// hold+run with the held prop: playerUsedOn with the player's input_run raised. The act replays the verb after the
+// host's grant, and the BP reads input_run live then, so the flag stays raised until the route's act ends (LowerRun).
+namespace {
+ue_wrap::CachedObjRef g_runPlayer;
+int32_t g_runOff = -1;
+uint8_t g_runMask = 0, g_runWas = 0;
+}  // namespace
+
+void LowerRun() {
+    if (void* player = g_runPlayer.Get(); player && g_runOff >= 0) {
+        uint8_t* flag = static_cast<uint8_t*>(player) + g_runOff;
+        *flag = static_cast<uint8_t>((*flag & ~g_runMask) | (g_runWas & g_runMask));
+    }
+    g_runPlayer.Reset();
+}
+
+bool UseWithRun(void* player, void* pack, void* hold) {
+    namespace R = ue_wrap::reflection;
+    int32_t off = -1;
+    uint8_t mask = 0;
+    void* fn = R::FindDispatchFunctionCached(R::ClassOf(pack), L"playerUsedOn");
+    ue_wrap::ParamFrame f(fn);
+    if (!fn || !f.valid() || !R::FindBoolProperty(R::ClassOf(player), L"input_run", off, mask) || off < 0 ||
+        !f.Set<void*>(L"player", player) || !f.Set<void*>(L"holdObject", hold))
+        return false;
+    uint8_t* flag = static_cast<uint8_t*>(player) + off;
+    const uint8_t was = *flag;
+    *flag = static_cast<uint8_t>(was | mask);
+    g_runPlayer.Set(player);
+    g_runOff = off;
+    g_runMask = mask;
+    g_runWas = was;
+    const bool ok = ue_wrap::Call(pack, f);
+    if (!ok) LowerRun();
+    return ok;
+}
+
 namespace {
 
 namespace E   = ue_wrap::engine;
@@ -71,22 +120,22 @@ namespace R   = ue_wrap::reflection;
 namespace CV  = ue_wrap::container_view;
 namespace DV  = coop::dev::drive_drill_verbs;
 namespace cs  = coop::props::container_contents_sync;
+namespace car = coop::props::container_act_request;
 
 constexpr uint64_t kFindBoundMs   = 60000;   // world-ready to the fixtures' mirrors
 constexpr uint64_t kSettleBoundMs = 30000;   // the mirrors' first sight to rest and the host's drive ended
 constexpr uint64_t kViewBoundMs   = 5000;    // the open verb to the screen showing the backpack
-constexpr uint64_t kSliceBoundMs  = 6000;    // a route's write to the slice it sends (the sweep is 250 ms)
-constexpr uint64_t kBackBoundMs   = 8000;    // the refused slice to the host's truth coming back
+constexpr uint64_t kActBoundMs    = 12000;   // a route's verb to the end of its act, and to the host's truth in the mirror
+constexpr uint64_t kBackBoundMs   = 8000;    // the settle watches the count this long for a rise after the act (there is none)
 constexpr int      kRestChecks    = 4;
-constexpr int      kEmTakeCalls   = 4;       // the first em_take ever only initialises the screen
 
 uint64_t g_next = 0;
 uint32_t g_eid = static_cast<uint32_t>(coop::element::kInvalidId);
 ue_wrap::FVector g_last[2] = {};
 int      g_rest = 0;
-uint64_t g_slice0 = 0;
+uint32_t g_act0[3] = {};            // the act counters (done, aborted, refused) when the route began
+int32_t  g_base = 0;               // the mirror's record count when the route began
 int      g_inv0 = 0;
-int      g_calls = 0;
 int32_t  g_count0 = 0, g_countTaken = 0;
 int      g_slots0 = 0;
 void*    g_slot0 = nullptr;      // the screen's first slot widget at the view-regen baseline
@@ -98,7 +147,7 @@ bool     g_refilled = false;     // the host said it handed the backpack its fre
 uint64_t g_r2Add0 = 0, g_r1Add0 = 0;   // the add verbs counted under R2 / R1 before the R2 calls
 std::vector<uint64_t> g_hashes;  // the backpack's record hashes at the last baseline (R1, then R2)
 uint64_t g_r1Took = 0;           // the record R1's press took, by hash
-uint64_t g_pressMs = 0, g_pressToSliceMs = 0;   // the take's press, and its press-to-slice time
+uint64_t g_pressMs = 0, g_pressToActMs = 0;   // the take's press, and its press-to-act time
 
 bool Due() {
     const uint64_t now = ::GetTickCount64();
@@ -113,13 +162,55 @@ void Fail(const char* why) {
     Abandon("client", why);
     g_step = Step::Done;
 }
-// The write is sent as a slice within the lane's sweep, or the step says it was not.
-bool SliceSent(const char* route) {
-    if (cen::SlicesSent() > g_slice0) return true;
-    if (!Expired(kSliceBoundMs)) return false;
-    char phase[96];
-    std::snprintf(phase, sizeof(phase), "%s sent no slice within %llu ms", route, static_cast<unsigned long long>(kSliceBoundMs));
-    RouteFail(phase);
+// A route on a shared container goes through the container act: the client asks the host, replays its verb on the grant
+// and commits. The act's own end is read from the client's counters (container_act_request::dev), by their delta since
+// the route began; the slice a native write would have sent is not sent (a latched replay ships none).
+enum class Act : uint8_t { None, Done, Aborted, Refused };
+// False when the mirror's count does not read (-1): the route has no base to be judged against.
+bool ActBaseline() {
+    g_act0[0] = car::dev::ActsDone();
+    g_act0[1] = car::dev::ActsAborted();
+    g_act0[2] = car::dev::ActsRefused();
+    g_base = RecordCount(g_eid);
+    return g_base >= 0;
+}
+Act ActOutcome() {
+    if (car::dev::ActsDone() > g_act0[0]) return Act::Done;
+    if (car::dev::ActsAborted() > g_act0[1]) return Act::Aborted;
+    if (car::dev::ActsRefused() > g_act0[2]) return Act::Refused;
+    return Act::None;
+}
+const char* ActName(Act a) {
+    switch (a) {
+        case Act::Done:    return "done";
+        case Act::Aborted: return "aborted";
+        case Act::Refused: return "refused";
+        case Act::None:    break;
+    }
+    return "none";
+}
+// The route's act ended, and the mirror's record count moved as the route moves it (R1 -1, R2 +1, R3 +1) once the host's
+// truth is in, or the step says what it saw. True when the step is over, whatever came of it.
+bool ActJudged(const char* route, int32_t delta) {
+    const Act a = ActOutcome();
+    char phase[112];
+    if (a == Act::None) {
+        if (!Expired(kActBoundMs)) return false;
+        std::snprintf(phase, sizeof(phase), "%s act -> none within %llu ms", route, static_cast<unsigned long long>(kActBoundMs));
+        RouteFail(phase);
+        return true;
+    }
+    const int32_t now = RecordCount(g_eid);
+    if (a == Act::Done && now != g_base + delta && !Expired(kActBoundMs)) return false;
+    UE_LOGI("[CI-CENSUS] drill client: route %s act -> %s (the mirror holds %d record(s), %d before)", route, ActName(a), now,
+            g_base);
+    if (a != Act::Done) {
+        std::snprintf(phase, sizeof(phase), "%s act -> %s", route, ActName(a));
+        RouteFail(phase);
+    } else if (now != g_base + delta) {
+        std::snprintf(phase, sizeof(phase), "%s act done, the mirror holds %d record(s), expected %d", route, now, g_base + delta);
+        RouteFail(phase);
+    }
     return true;
 }
 
@@ -133,16 +224,6 @@ bool PressSlot(void* ui, int index) {
     return CallNoArg(slot, L"pressButton");
 }
 
-// The screen's hovered container slot cleared the way the game's own unhover does (setHoverContainerSlot with no
-// object), and read back: em_take presses the hovered slot first, so a stale hover makes the take key an R1.
-bool ClearHover(void* ui) {
-    void* fn = ui ? R::FindDispatchFunctionCached(R::ClassOf(ui), L"setHoverContainerSlot") : nullptr;
-    ue_wrap::ParamFrame f(fn);
-    const int32_t off = ui ? R::FindPropertyOffset(R::ClassOf(ui), L"hoverContainerSlot") : -1;
-    if (!fn || !f.valid() || off < 0 || !f.Set<void*>(L"containerSlot", nullptr) || !ue_wrap::Call(ui, f)) return false;
-    return *reinterpret_cast<void* const*>(static_cast<const uint8_t*>(ui) + off) == nullptr;
-}
-
 // The first hash of `a` that `b` does not hold (a record `b` lacks), or 0 when `b` holds them all.
 uint64_t FirstMissing(const std::vector<uint64_t>& a, std::vector<uint64_t> b) {
     for (uint64_t h : a) {
@@ -152,23 +233,6 @@ uint64_t FirstMissing(const std::vector<uint64_t>& a, std::vector<uint64_t> b) {
         if (!found) return h;
     }
     return 0;
-}
-
-// hold+run with the held prop: playerUsedOn with the player's input_run raised for the call.
-bool UseWithRun(void* player, void* pack, void* hold) {
-    int32_t off = -1;
-    uint8_t mask = 0;
-    void* fn = R::FindDispatchFunctionCached(R::ClassOf(pack), L"playerUsedOn");
-    ue_wrap::ParamFrame f(fn);
-    if (!fn || !f.valid() || !R::FindBoolProperty(R::ClassOf(player), L"input_run", off, mask) || off < 0 ||
-        !f.Set<void*>(L"player", player) || !f.Set<void*>(L"holdObject", hold))
-        return false;
-    uint8_t* flag = static_cast<uint8_t*>(player) + off;
-    const uint8_t was = *flag;
-    *flag = static_cast<uint8_t>(was | mask);
-    const bool ok = ue_wrap::Call(pack, f);
-    *flag = static_cast<uint8_t>((*flag & ~mask) | (was & mask));
-    return ok;
 }
 
 struct Gather {
@@ -207,10 +271,10 @@ void GatherFixtures(void* player, Gather& g) {
 void StepFind(void* player) {
     Gather g;
     GatherFixtures(player, g);
-    if (g.pack && (cen::IsBeforeOnly() || g.nDrives == 1)) {
+    if (g.pack && g.nDrives == 1) {
         g_pack.Set(g.pack);
         g_eid = EidOf(g.pack);
-        if (!cen::IsBeforeOnly()) g_drive.Set(g.drives[0]);
+        g_drive.Set(g.drives[0]);
         g_rest = 0;
         UE_LOGI("[CI-CENSUS] drill client: the backpack's mirror holds the host's %d records, eid=%u", kItems, g_eid);
         LogHashes("client", g_eid, "published");
@@ -223,9 +287,8 @@ void StepFind(void* player) {
 
 void StepSettle() {
     void* actors[2] = {g_pack.Get(), g_drive.Get()};
-    const int n = cen::IsBeforeOnly() ? 1 : 2;
     bool still = true, parked = false;
-    for (int i = 0; i < n; ++i) {
+    for (int i = 0; i < 2; ++i) {
         ue_wrap::FVector at{};
         if (!actors[i] || !E::TryGetActorLocation(actors[i], at)) { Fail("a fixture's mirror died"); return; }
         still = still && std::fabs(at.X - g_last[i].X) + std::fabs(at.Y - g_last[i].Y) + std::fabs(at.Z - g_last[i].Z) < 1.f;
@@ -248,14 +311,14 @@ void StepOpen() {
 void StepOpenWait() {
     if (CV::Viewed() == g_pack.Get() && SlotCount(Screen()) >= 1) {
         UE_LOGI("[CI-CENSUS] drill client: the screen shows the backpack, %d container slot(s)", SlotCount(Screen()));
-        Next(cen::IsBeforeOnly() ? Step::BeforeReady : Step::R1);
+        Next(Step::R1);
         return;
     }
     if (Expired(kViewBoundMs)) Fail("the screen never showed the backpack");
 }
 
 void StepR1() {
-    g_slice0 = cen::SlicesSent();
+    if (!ActBaseline()) { RouteFailTo("R1 the mirror's record count does not read", Step::R1Done); return; }
     g_inv0 = ue_wrap::inventory::LivePersonalStoreCount();
     uint64_t whole = 0;
     cs::DevRecordHashes(g_eid, g_hashes, whole);
@@ -265,11 +328,11 @@ void StepR1() {
 }
 
 void StepR1Wait() {
-    if (SliceSent("R1")) Finish("R1", Step::R1Done);
+    if (ActJudged("R1", -1)) Finish("R1", Step::R1Done);
 }
 
-// R1 is over: the record its press took is named by what the backpack lost, and the host is told how many slices this
-// peer has sent so it hands the backpack two fresh records only after it has judged them.
+// R1 is over (its act ended and the mirror followed): the record its press took is named by what the backpack lost, and
+// the host is told, so it checks its own copy and hands the backpack two fresh records.
 void StepR1Done() {
     std::vector<uint64_t> after;
     uint64_t whole = 0;
@@ -279,13 +342,13 @@ void StepR1Done() {
     UE_LOGI("[CI-CENSUS] drill client: R1 took record hash=%016llx, the backpack holds %d record(s)",
             static_cast<unsigned long long>(g_r1Took), g_count0);
     char say[64];
-    std::snprintf(say, sizeof(say), "%ssent=%llu", kPrefixR1Done, static_cast<unsigned long long>(cen::SlicesSent()));
+    std::snprintf(say, sizeof(say), "%sact=%s", kPrefixR1Done, ActName(ActOutcome()));
     coop::dev::drill_chat::Say(say);
     Next(Step::R2Refill);
 }
 
-// The host hands the backpack two fresh records once it has judged R1's slice; the put-back goes on the base that
-// carries them, never on a stale one.
+// The host hands the backpack two fresh records once it has checked its own copy after R1; the put-back goes on the base
+// that carries them, never on a stale one.
 void StepR2Refill() {
     if (!g_refilled) {
         if (!Said(kLineRefilled)) {
@@ -316,8 +379,7 @@ void StepR2() {
     std::memcpy(static_cast<uint8_t*>(ui) + off, &sel, sizeof(sel));
     CallNoArg(ui, L"updSelect");
     g_inv0 = inv;
-    g_calls = 0;
-    g_slice0 = cen::SlicesSent();
+    if (!ActBaseline()) { RouteFailTo("R2 the mirror's record count does not read", Step::R3); return; }
     g_r2Add0 = cen::RouteVerbs(1, false);
     g_r1Add0 = cen::RouteVerbs(0, false);
     uint64_t whole = 0;
@@ -327,23 +389,22 @@ void StepR2() {
     Next(Step::R2Call);
 }
 
+// One em_take: the act's seat cancels it, asks the host and replays it on the grant (the first call acts too).
 void StepR2Call() {
-    if (ue_wrap::inventory::LivePersonalStoreCount() < g_inv0) { Next(Step::R2Wait); return; }
-    if (g_calls >= kEmTakeCalls) { RouteFailTo("R2 four em_take calls put nothing back", Step::R3); return; }
-    ++g_calls;
-    CallNoArg(Screen(), L"em_take");
+    if (!CallNoArg(Screen(), L"em_take")) { RouteFailTo("R2 em_take did not dispatch", Step::R3); return; }
+    Next(Step::R2Wait);
 }
 
 void StepR2Wait() {
-    if (!SliceSent("R2")) return;
+    if (!ActJudged("R2", +1)) return;
     std::vector<uint64_t> after;
     uint64_t whole = 0;
     cs::DevRecordHashes(g_eid, after, whole);
     const uint64_t put = FirstMissing(after, g_hashes);
     const uint64_t r2Adds = cen::RouteVerbs(1, false) - g_r2Add0;
-    UE_LOGI("[CI-CENSUS] drill client: R2 put the selected item back after %d em_take call(s): record hash=%016llx "
+    UE_LOGI("[CI-CENSUS] drill client: R2 put the selected item back: record hash=%016llx "
             "(R1 took %016llx), the backpack %zu -> %zu record(s), add verbs counted R2 +%llu, R1 +%llu",
-            g_calls, static_cast<unsigned long long>(put), static_cast<unsigned long long>(g_r1Took), g_hashes.size(),
+            static_cast<unsigned long long>(put), static_cast<unsigned long long>(g_r1Took), g_hashes.size(),
             after.size(), static_cast<unsigned long long>(r2Adds),
             static_cast<unsigned long long>(cen::RouteVerbs(0, false) - g_r1Add0));
     if (!r2Adds) UE_LOGW("[CI-CENSUS] drill client: R2 put a record and the census counted no add under R2");
@@ -353,6 +414,7 @@ void StepR2Wait() {
 
 // R3 failed: its FAIL line, the hand emptied as R3's own end empties it, and on to R4.
 void R3Fail(const char* phase) {
+    LowerRun();
     coop::dev::drill_hand::TakeIntoHandNow(L"None", nullptr);
     RouteFailTo(phase, Step::R4Close);
 }
@@ -364,7 +426,7 @@ void StepR3() {
 
 void StepR3Use(void* player) {
     void* hand = HeldActor(player);
-    g_slice0 = cen::SlicesSent();
+    if (!ActBaseline()) { R3Fail("R3 the mirror's record count does not read"); return; }
     if (!hand || !UseWithRun(player, g_pack.Get(), hand)) { R3Fail("R3 no hand actor, or playerUsedOn did not dispatch"); return; }
     UE_LOGI("[CI-CENSUS] drill client: R3 hold+run used on the backpack (route entries %llu)",
             static_cast<unsigned long long>(cen::RouteEntries(2)));
@@ -372,7 +434,8 @@ void StepR3Use(void* player) {
 }
 
 void StepR3Wait() {
-    if (!SliceSent("R3")) return;
+    if (!ActJudged("R3", +1)) return;
+    LowerRun();
     LogSizes("client", "after R3", g_pack.Get());
     coop::dev::drill_hand::TakeIntoHandNow(L"None", nullptr);
     Finish("R3", Step::R4Close);
@@ -464,27 +527,28 @@ void StepBeforeWait() {
     }
     g_count0 = RecordCount(g_eid);
     g_inv0 = ue_wrap::inventory::LivePersonalStoreCount();
-    g_slice0 = cen::SlicesSent();
+    if (!ActBaseline()) { BeforeFailed("before the mirror's record count does not read"); return; }
     if (!PressSlot(Screen(), 0)) { BeforeFailed("before the take's slot press did not dispatch"); return; }
     g_pressMs = ::GetTickCount64();
     UE_LOGI("[CI-CENSUS] drill client: the take pressed on a base the host has moved past (%d record(s) here)", g_count0);
     Next(Step::BeforeTaken);
 }
 
-// The press's own local apply has run by the next check: the count the take left here, read before the slice can leave
-// and before the host's truth can come back.
+// The press goes through the act: the grant is a round trip away, so the count read at the next check is the one before
+// the verb replays and before the host's answer can come back.
 void StepBeforeTaken() {
     g_countTaken = RecordCount(g_eid);
     Next(Step::BeforeTake);
 }
 
 void StepBeforeTake() {
-    if (!SliceSent("the take")) return;
-    g_pressToSliceMs = ::GetTickCount64() - g_pressMs;
+    if (ActOutcome() == Act::None && !Expired(kActBoundMs)) return;   // a measurement: no outcome is said, not failed
+    UE_LOGI("[CI-CENSUS] drill client: the take on a stale base: act -> %s", ActName(ActOutcome()));
+    g_pressToActMs = ::GetTickCount64() - g_pressMs;
     Next(Step::BeforeSettle);
 }
 
-// The host refuses the stale slice and answers with its truth: the record is back when the count rises again.
+// The act ends and the mirror follows the host: the settle waits to see whether the count rises again (it should not).
 void StepBeforeSettle() {
     const int32_t now = RecordCount(g_eid);
     if (now <= g_countTaken && !Expired(kBackBoundMs)) return;
@@ -505,8 +569,8 @@ void StepDoneWait() {
         if (Expired(kHostBoundMs)) { RouteFail("before the host never answered the take"); ClientDone(); }
         return;
     }
-    UE_LOGI("[CI-CENSUS] before record-back=%d item-client=%d item-host=%d press->slice %llu ms", g_rb, g_ic, ih,
-            static_cast<unsigned long long>(g_pressToSliceMs));
+    UE_LOGI("[CI-CENSUS] before record-back=%d item-client=%d item-host=%d press->act %llu ms", g_rb, g_ic, ih,
+            static_cast<unsigned long long>(g_pressToActMs));
     ClientDone();
 }
 
@@ -563,6 +627,7 @@ void ClientTick(coop::net::Session*) {
 }
 
 void ClientReset() {
+    LowerRun();   // first: a session that ends inside R3's act window must not leave input_run raised
     g_step = Step::Arm;
     g_stepMs = g_next = 0;
     g_pack.Reset();
@@ -570,13 +635,15 @@ void ClientReset() {
     HandReset();
     g_eid = static_cast<uint32_t>(coop::element::kInvalidId);
     for (ue_wrap::FVector& v : g_last) v = {};
-    g_rest = g_calls = g_inv0 = g_slots0 = g_rb = g_ic = 0;
-    g_slice0 = g_gen0 = g_changedMs = 0;
+    g_rest = g_inv0 = g_slots0 = g_rb = g_ic = 0;
+    g_gen0 = g_changedMs = 0;
+    g_act0[0] = g_act0[1] = g_act0[2] = 0;
+    g_base = 0;
     g_refilled = false;
     g_count0 = g_countTaken = 0;
     g_slot0 = nullptr;
     g_slotText0.clear();
-    g_r2Add0 = g_r1Add0 = g_r1Took = g_pressMs = g_pressToSliceMs = 0;
+    g_r2Add0 = g_r1Add0 = g_r1Took = g_pressMs = g_pressToActMs = 0;
     g_hashes.clear();
 }
 

@@ -6,6 +6,7 @@
 #include "coop/config/config_registry.h"
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
+#include "coop/net/throw_bounds.h"
 #include "coop/player/hand_item.h"            // IsHandAxisActor: the hotbar hand and its mirrors
 #include "coop/player/local_streams.h"        // LastHeldActor: this player's grab slot
 #include "coop/props/active_drive.h"          // NowMs
@@ -87,7 +88,7 @@ size_t PublishAdmitted(coop::net::Session& s, Driven& d) {
     }
     const coop::net::PoseTurn turn = s.PropDrivePoseTurn(d.eid);
     if (turn == coop::net::PoseTurn::Wait) return 0;   // the pose waiting in the queue is refreshed on a later tick
-    coop::net::PropPoseSnapshot pp{};
+    coop::net::PropDriveRow pp{};
     pp.key       = d.key;
     pp.elementId = d.eid;
     pp.ctx       = d.gen;
@@ -95,6 +96,8 @@ size_t PublishAdmitted(coop::net::Session& s, Driven& d) {
     pp.pitch = ue_wrap::NormalizeAxis(d.admitRot.Pitch);
     pp.yaw   = ue_wrap::NormalizeAxis(d.admitRot.Yaw);
     pp.roll  = ue_wrap::NormalizeAxis(d.admitRot.Roll);
+    pp.vel[0] = d.admitVel.X; pp.vel[1] = d.admitVel.Y; pp.vel[2] = d.admitVel.Z;
+    pp.sendTimeMs = d.admitSendMs;
     // A broadcast, the syncer included: MTA relays the accepted sync to every joined player but its source
     // (CUnoccupiedVehicleSync.cpp:472). The pose batch is one shared datagram per tick, so the source is not left out
     // here; its client skips the echo (prop_syncer::SkipsHostPose). The End is sent to the others alone.
@@ -134,7 +137,7 @@ Driven* Open(void* actor, bool claimed, const char* why, uint8_t syncer = 0) {
     for (size_t i = 0; i < keyW.size() && i < sizeof(d.key.data); ++i)
         d.key.data[d.key.len++] = static_cast<char>(keyW[i]);
     d.gen = BumpGen(d.eid);
-    d.lastMoveMs = coop::active_drive::NowMs();
+    d.openMs = d.lastMoveMs = coop::active_drive::NowMs();
     g_driven.push_back(std::move(d));
     UE_LOGI("[PROP-DRIVE] HOST %s eid=%u gen=%u key='%ls' (%s) -- %zu driven",
             syncer ? "GRANT" : (claimed ? "CLAIM" : "COAST"), g_driven.back().eid,
@@ -170,9 +173,8 @@ coop::net::PropDriveEndPayload EndFromBody(void* actor, uint32_t eid, uint8_t ge
     p.roll  = ue_wrap::NormalizeAxis(rot.Roll);
     // The body's velocity at this instant. At rest it is noise below kRestVelCmS and goes out as
     // zero, so no receiver wakes a resting body by writing a velocity into it. MTA's syncer
-    // (CUnoccupiedVehicleSync.cpp, bSyncVelocity) streams a velocity in every packet it moved in;
-    // ours rides the end edge only, since the receiver interpolates a parked body and has no use
-    // for one before that.
+    // (CUnoccupiedVehicleSync.cpp, bSyncVelocity) streams a velocity in every packet it moved in; a drive's rows carry
+    // the copy's velocity too (PropDriveRow), and this End carries the body's angular velocity as well, which no row does.
     const PR::VelocityState v = PR::GetPhysicsVelocity(actor);
     const float lin = std::sqrt(v.linearCmS.X * v.linearCmS.X + v.linearCmS.Y * v.linearCmS.Y +
                                 v.linearCmS.Z * v.linearCmS.Z);
@@ -189,6 +191,40 @@ Driven* OpenClientRow(void* actor, uint8_t slot, const char* why) {
     if (!actor || slot == 0) return nullptr;
     Driven* d = Open(actor, /*claimed=*/true, why ? why : "", slot);
     if (d) d->admitMs = d->lastMoveMs;   // the silence clock starts at the grant
+    return d;
+}
+
+Driven* ElectClientRow(void* actor, uint8_t slot, const char* why) {
+    UE_ASSERT_GAME_THREAD("prop_drive_host::ElectClientRow");
+    if (!actor || slot == 0) return nullptr;
+    Driven* d = Find(actor);
+    if (!d) return OpenClientRow(actor, slot, why);
+    if (InAHand(actor)) return nullptr;   // the held-prop lane owns a prop in a hand, as at Open
+    // A host verb's row wins, as at OnClaim (a verb or push in flight is MTA's persistent syncer); the thrown prop
+    // stays the host's. A host row that only coasts (no verb's claim) does not: a throw or a swing into a moving prop
+    // is a player moving a moving prop, and takes it. Another client's row is stopped first, as MTA's OverrideSyncer calls StopSync on the old syncer
+    // (CUnoccupiedVehicleSync.cpp:74): that client is told Revoked and stops streaming.
+    if (d->syncer == 0 && d->claimed) return nullptr;
+    if (d->syncer != 0 && d->syncer != slot) coop::prop_syncer_host::EndClientRow(*d, coop::prop_syncer_host::Ending::HostVerb);
+    const uint64_t now = coop::active_drive::NowMs();
+    d->syncer       = slot;
+    d->claimed      = true;
+    d->gen          = BumpGen(d->eid);
+    d->everSent     = false;
+    d->resend       = false;
+    d->unreadSaid   = false;
+    d->openMs       = now;
+    d->lastMoveMs   = now;
+    d->nextProbeMs  = 0;
+    d->admittedEver = false;
+    d->freshAdmit   = false;
+    d->admitMs      = now;   // the silence clock starts at the grant
+    d->admitSendMs  = 0;
+    d->admitVel     = ue_wrap::FVector{};
+    d->claimSeq     = 0;
+    d->streamBucket.Reset();
+    UE_LOGI("[PROP-DRIVE] HOST GRANT eid=%u gen=%u (%s) -- the host row on it becomes slot %u's", d->eid,
+            static_cast<unsigned>(d->gen), why ? why : "", static_cast<unsigned>(slot));
     return d;
 }
 
@@ -248,6 +284,18 @@ void OverrideClientSyncer(void* actor, const char* reason) {
     UE_ASSERT_GAME_THREAD("prop_drive_host::OverrideClientSyncer");
     const Driven* d = actor ? Find(actor) : nullptr;
     if (d && d->syncer != 0) Coast(actor, reason);
+}
+
+uint8_t ClientSyncerOf(uint32_t eid) {
+    UE_ASSERT_GAME_THREAD("prop_drive_host::ClientSyncerOf");
+    const Driven* d = FindByEid(eid);
+    return d ? d->syncer : 0;
+}
+
+bool ClientRowElected(uint32_t eid) {
+    UE_ASSERT_GAME_THREAD("prop_drive_host::ClientRowElected");
+    const Driven* d = FindByEid(eid);
+    return d && d->syncer != 0 && d->elected;
 }
 
 size_t CoastingCount() {
@@ -333,6 +381,15 @@ static void Tick(coop::net::Session& s) {
             continue;
         }
         if (d.syncer != 0) {   // a client's row ends by its own rules (prop_syncer_host), never by the rest clock
+            // A thrown prop's thrower that falls silent mid-flight is replaced at once, as MTA moves a silent unoccupied
+            // syncer on its pulse (CUnoccupiedVehicleSync.cpp:171-260); a claim's row keeps the pass's 5 s rule.
+            const float v2 = d.admitVel.X * d.admitVel.X + d.admitVel.Y * d.admitVel.Y + d.admitVel.Z * d.admitVel.Z;
+            const float rest = coop::net::throw_bounds::kThrowRestCmS;
+            if (d.elected && d.admittedEver && v2 > rest * rest &&
+                now - d.admitMs >= coop::net::throw_bounds::kThrowSilenceMs) {
+                coop::prop_syncer_host::EndClientRow(d, coop::prop_syncer_host::Ending::Silence);
+                continue;
+            }
             joined += PublishAdmitted(s, d);
             continue;
         }
@@ -353,7 +410,7 @@ static void Tick(coop::net::Session& s) {
                     "rests", d.eid);
         }
         if (poseRead && Moved(d, loc, rot)) {
-            coop::net::PropPoseSnapshot pp{};
+            coop::net::PropDriveRow pp{};
             pp.key       = d.key;
             pp.elementId = d.eid;
             pp.ctx       = d.gen;
@@ -361,6 +418,10 @@ static void Tick(coop::net::Session& s) {
             pp.pitch = ue_wrap::NormalizeAxis(rot.Pitch);
             pp.yaw   = ue_wrap::NormalizeAxis(rot.Yaw);
             pp.roll  = ue_wrap::NormalizeAxis(rot.Roll);
+            // The copy's velocity and the row's age: a receiver's override of this stream starts from them.
+            ue_wrap::FVector lin{};
+            if (E::GetActorRootLinearVelocity(d.rootComp, actor, lin)) { pp.vel[0] = lin.X; pp.vel[1] = lin.Y; pp.vel[2] = lin.Z; }
+            pp.sendTimeMs = static_cast<uint32_t>(now - d.openMs);
             s.PublishPropDrivePose(pp);   // queued: it goes out in its turn, refreshed until then
             if (turn == coop::net::PoseTurn::Join) ++joined;
             d.everSent    = true;

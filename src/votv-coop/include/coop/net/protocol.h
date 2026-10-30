@@ -30,7 +30,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 264;
+inline constexpr uint16_t kProtocolVersion = 265;
 
 // Default LAN port (overridable via multivoid.ini "net.port=").
 inline constexpr uint16_t kDefaultPort = 47621;
@@ -113,7 +113,7 @@ enum class MsgType : uint8_t {
     // Host to all: props in motion under something other than a hand -- a hook's constraint, a
     // body still sliding after the hook let go -- keyed by key and eid, ctx carrying the claim
     // generation; an entry only for a prop that moved since its last one. EntityPoseBatchHeader
-    // plus N PropPoseSnapshot; PropDriveEnd closes each eid's stream. A client that syncs a prop its
+    // plus N PropDriveRow; PropDriveEnd closes each eid's stream. A client that syncs a prop its
     // interaction moves (PropSyncClaim) sends the same batch to the host alone, which judges every
     // row by the sender, the eid's row and its generation before it relays one.
     PropDrivePose = 41,
@@ -138,8 +138,8 @@ enum class ReliableKind : uint8_t {
 
     // The holder released a held prop: the prop by key, the inherited linear and angular velocity,
     // and for a keyless trash entity the eid and its generation. The receiver re-enables physics,
-    // writes the velocities and fires the prop's own thrown event above kThrownLinVelThreshold.
-    // PropReleasePayload.
+    // writes the velocities and, when the release carries a throw sequence, fires the prop's own thrown
+    // event. PropReleasePayload.
     PropRelease = 2,
 
     // A prop was born: an inventory drop, a spawner, a container extract, or a save-loaded prop in
@@ -607,10 +607,11 @@ enum class ReliableKind : uint8_t {
     // peer: a denial. Chunked blob, eid-addressed.
     FloppyBoxState = 117,
 
-    // A world container's contents as state, eid-addressed. The peer whose take or add ran authors
-    // the slice with the base hash it last applied; the host accepts it only against its current
-    // truth, then relays it to everyone but the author. Chunked blob; personal inventories are
-    // skipped.
+    // A world container's contents as state, eid-addressed. The host publishes it; a client authors
+    // one kind only, the birth slice of a container it threw, which the host applies and relays to
+    // everyone but the author. Any other client slice is refused and answered with the host's truth.
+    // Chunked blob; personal inventories are skipped. The blob's header is [u8 op][u32 eid][u16 n][u8 flags]: the
+    // flags byte is the host's reading of the container's overlap arming (bit 0 armed; coop/props/container_arming).
     ContainerContents = 118,
 
     // Host to all, the origin included: one chat line with the host-assigned sequence that orders
@@ -631,8 +632,8 @@ enum class ReliableKind : uint8_t {
     // from its own copy, mints the coins and destroys the prop itself. CoinGunSellPayload.
     CoinGunSell = 122,
 
-    // Client to host: I collected this coin (a host-minted world actor, named by eid); the host
-    // runs the coin's own verb. CoinCollectPayload.
+    // Client to host: I pressed this coin (a host-minted world actor, named by eid; the client's
+    // own press is cancelled); the host runs the coin's own verb. CoinCollectPayload.
     CoinCollect = 124,
 
     // Host to one client: what your sale did: sold with the host's price, or a named refusal.
@@ -1071,14 +1072,17 @@ enum class ReliableKind : uint8_t {
     // receive edge. Late join: the host's widget index to the joiner, after its world-ready. LaptopTabPayload.
     LaptopTabState = 186,
 
-    // Client to host: my player's swing hit this creature's mirror. The client plays the hit's feedback at once, a
-    // cosmetic prediction, and cancels the mirror's own body; the host judges the swing (the sender's held item, its
-    // reach, its sight, the point on the creature) and runs the verb on its real creature. The verb is generic
-    // (0 addDamage, 1 exploded, 2 ignite) and the host judges 0 only. Never relayed; no answer: the creature's
-    // state is the host's and its death arrives as its destroy. Late join: none -- a request is an act. Trust:
-    // the id must name a live host creature of a parked family, the damage is clamped to the held item's, and
-    // intents run from a bounded queue at a bounded rate. CreatureHitIntentPayload.
-    CreatureHitIntent = 187,
+    // Client to host: my player's swing hit the mirror of an entity the host owns. A creature: the client plays the
+    // hit's feedback at once, a cosmetic prediction, and cancels the mirror's own body; the host judges the swing (the
+    // sender's held item, its reach, its sight, the point on the target) and runs the verb on its real entity. A prop:
+    // the swing runs on the client's copy, which the shove moves, and the intent carries the swing's sequence; the host
+    // judges the same way and elects the sender the prop's syncer (PropSyncAnswer, kind Throw, echoing the sequence),
+    // or streams the prop's own pose back when it refuses. The verb is generic (0 addDamage, 1 exploded, 2 ignite) and
+    // the host judges 0 only. Never relayed; a creature's death arrives as its destroy. Late join: none -- a request
+    // is an act. Trust: the id must name a live host element that is a hit target (a creature of a parked family, or a
+    // prop), the damage is clamped to the held item's, and intents run from a bounded queue at a bounded rate.
+    // HitIntentPayload.
+    HitIntent = 187,
     // Host to client: an explosion the host's game ran, with its class, transform and parameters; the client
     // spawns its own copy there in the lane's scope (its own game's explosions are dissolved at birth). Never
     // relayed. Late join: none -- a one-shot cue. Trust: host-authored only (a client's copy is refused at the
@@ -1184,14 +1188,15 @@ enum class ReliableKind : uint8_t {
     // every other peer drops that hold's drive. Host-authored: a client's copy is refused at the host's receive
     // edge; never relayed; not pre-world. Late join: none, a refusal is an act; a joiner gets the kept hold's
     // stream. PropHoldRefusedPayload.
-    PropHoldRefused = 207,
+    PropHoldRefused = 210,
     // ANY->ALL: a prop this peer let go of has come to rest here, and where. Each copy falls by its own physics
     // from the release, so the copies can rest apart; the releaser's copy is the one its player watched, and every
     // other peer whose copy no hold, drive or park moves puts it there. The holder sends it once per release, for a
-    // keyed prop that left the hand unfrozen; a new hold, a drive or a ten-second bound cancels it. A client's copy
-    // is relayed to the other clients like the release it follows, and rides the same lane, so it never passes it.
+    // keyed prop that left the hand unfrozen and was not thrown (a throw is streamed to rest); a new hold, a drive or
+    // a ten-second bound cancels it. A client's copy is relayed to the other clients, on the lane of the release it
+    // follows by at least the rest time; a settle that still passes its release is dropped as no released hold.
     // Not pre-world. Late join: none, the snapshot carries the host's pose. PropSettlePayload.
-    PropSettle = 208,
+    PropSettle = 211,
     // HOST->CLIENTS: the host saved the world, or tried to -- the game's own save of the hosted world, by the player
     // or the autosave, written to its slot; a join's scratch capture and the save-slot menu's own writes are not.
     // While the game counts an event as running its save writes the slot without gathering the world, which is a
@@ -1199,13 +1204,13 @@ enum class ReliableKind : uint8_t {
     // one: it shows the chat line the host shows.
     // Host-authored: a client's copy is refused at the host's receive edge; never relayed; not pre-world. Late join:
     // none, a save is an act. WorldSavedPayload.
-    WorldSaved = 209,
+    WorldSaved = 212,
     // ANY->ALL: a toolgun tool this peer's player used changed a keyed prop's static, frozen or sleep (the freeze,
     // the unfreeze, the make-static). The tool runs on its user's machine alone, so every other copy kept the old
     // flags; the user sends the prop's flags as the tool left them, and every peer whose player does not hold the
     // prop sets them through prop_C's own setter. A client's copy is relayed to the other clients. Not pre-world.
     // Late join: none, the snapshot rows carry the host's flags. PropToolFlagsPayload.
-    PropToolFlags = 210,
+    PropToolFlags = 213,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
@@ -1226,6 +1231,22 @@ enum class ReliableKind : uint8_t {
     // a press whose sender has no body on the host yet waits in its queue. Late join: none, a press is an act.
     // CoffeeActionIntentPayload.
     CoffeeActionIntent = 194,
+
+    // CLIENT->HOST: a client asks to take a record out of a world container, or to put one in, before its own verb runs
+    // (coop::props::container_act_host): a chunked blob, coop::props::container_act_wire's request. Never relayed; not
+    // pre-world; rides the Default lane. Late join: a request before the sender's world is ready waits in the host's
+    // queue. Trust: the host re-judges every field (the family, the container, the record's address, the reach); a
+    // put's record is the client's word, bounded at the host's judge.
+    ContainerActRequest = 207,
+
+    // HOST->CLIENT: the host's answer to one ContainerActRequest: granted (the host holds the record in escrow, or room
+    // in a reservation, for the sender) or refused with a reason. ContainerActReplyPayload. Never relayed; not pre-world.
+    ContainerActReply = 208,
+
+    // CLIENT->HOST: the client's verb ran (committed) or did not (aborted), closing the host's hold: a chunked blob,
+    // coop::props::container_act_wire's commit. Never relayed; not pre-world; the same lane as the request, so an act's
+    // end cannot overtake its start.
+    ContainerActCommit = 209,
 };
 
 #pragma pack(push, 1)
@@ -1409,6 +1430,18 @@ struct PropPoseSnapshot {
 };
 static_assert(sizeof(PropPoseSnapshot) == 64, "PropPoseSnapshot must be 64 bytes");
 
+// One row of a PropDrivePose batch: the pose above plus the copy's linear velocity (cm/s) when it was read, and the
+// syncer's clock when the row was sent: ms since that syncer's row opened (a thrown prop's client syncer counts from
+// its throw, a host row from its opening). The host relays a client row's value unchanged and writes its own on a host
+// row, so one field has one meaning: the syncer's clock. MTA's syncer packet carries velocity under a time context
+// too, but the context is an epoch, not a clock (CUnoccupiedVehicleSync.cpp:263-340, CElement.cpp:1281-1305). The held
+// PropPose stream is not a drive row and stays 64 B.
+struct PropDriveRow : PropPoseSnapshot {
+    float    vel[3];
+    uint32_t sendTimeMs;
+};
+static_assert(sizeof(PropDriveRow) == 80, "PropDriveRow must be 80 bytes");
+
 struct PropPosePacket {
     PacketHeader     header;  // 20
     PropPoseSnapshot pose;    // 64
@@ -1504,14 +1537,14 @@ inline constexpr int kTrashCarryPoseDatagramMax =
     static_cast<int>(sizeof(PacketHeader) + sizeof(EntityPoseBatchHeader)) +
     kMaxTrashCarryBatchEntries * static_cast<int>(sizeof(TrashClumpPoseSnapshot));
 
-// Max props per PropDrivePose datagram: 20 + 4 + 16*64 = 1048 B, under the 1400 MTU budget. The
+// Max props per PropDrivePose datagram: 20 + 4 + 16*80 = 1304 B, under the 1400 MTU budget. The
 // host's pending batch is a queue merged by eid and drained from the front, so more moving props
 // than fit go out over the following sends rather than being dropped. Reuses EntityPoseBatchHeader
-// and PropPoseSnapshot (RULE 2).
+// and PropDriveRow (RULE 2).
 inline constexpr int kMaxPropDriveBatchEntries = 16;
 inline constexpr int kPropDrivePoseDatagramMax =
     static_cast<int>(sizeof(PacketHeader) + sizeof(EntityPoseBatchHeader)) +
-    kMaxPropDriveBatchEntries * static_cast<int>(sizeof(PropPoseSnapshot));
+    kMaxPropDriveBatchEntries * static_cast<int>(sizeof(PropDriveRow));
 
 // A ragdolling player's pelvis: world location and rotation, linear and angular velocity, read off
 // the sender's own ragdoll actor and sent unreliably while ragdolled. The receiver writes the
@@ -1734,17 +1767,17 @@ struct PropReleasePayload {
     float    locX, locY, locZ;           // world cm at the edge
     float    rotPitch, rotYaw, rotRoll;  // degrees at the edge
     uint8_t  hasPose;    // 0: the prop was gone at the edge (pocketed), and the transform is unset
-    uint8_t  _pad[3];
+    uint8_t  _pad;
+    // The throw's sequence: the game's own throw ran on the holder's copy (throwShit, which sets the launch
+    // velocity) and minted this number, never 0; 0 = the release was not a throw. A receiver plays the thrown
+    // event and the swing only for a nonzero one, and the host's grant of a thrown prop echoes it.
+    uint16_t throwSeq;
 };
 static_assert(sizeof(PropReleasePayload) == 92, "PropReleasePayload must be 92 bytes");
 // Every reliable payload carries this guard: a payload past one datagram's budget would be
 // refused at send time, so catch it at compile time.
 static_assert(sizeof(PropReleasePayload) <= 256 - 20 - 8,
               "PropReleasePayload must fit in one reliable datagram (kMaxReliablePayload)");
-
-// Velocity magnitude (cm/s) above which a release counts as a throw on the receiver and fires the
-// prop's thrown event. 2 m/s is well above a walking drop's residual and well below a flick.
-inline constexpr float kThrownLinVelThreshold = 200.f;
 
 // The end of a host-driven prop's stream (PropDriveEnd): the eid, the claim generation the stream
 // carried in PropPoseSnapshot.ctx, the host's physics flags at that instant (propspawn_flags, the
@@ -1805,15 +1838,26 @@ enum class PropSyncRefusal : uint8_t {
     Paced = 7,          // the sender's claim bucket is empty
 };
 
+// Which opening a PropSyncAnswer answers. Wire-visible: the values are stable. Claim (0) is the answer to a PropSyncClaim
+// the client sent; Throw (1) is the host's unasked grant of a thrown prop's syncer right (and the Revoked that ends it),
+// whose `seq` is the throw sequence. The client matches a Throw grant only to a throw it has pending and a Claim grant
+// only to a claim it has pending, so the two uint16 counters never meet.
+enum class PropSyncKind : uint8_t {
+    Claim = 0,
+    Throw = 1,
+};
+
 // The host's verdict on one PropSyncClaim, or the end of a row it granted (PropSyncAnswer), to the claim's sender
-// alone. `seq` echoes the claim that opened the row; `gen` is the granted or the ended generation (0 on a refusal).
+// alone; or its grant of a thrown prop's syncer right (kind Throw). `seq` echoes the claim that opened the row, or is
+// the throw's sequence for a Throw; `gen` is the granted or the ended generation (0 on a refusal).
 struct PropSyncAnswerPayload {
     uint32_t eid;         // 4 -- the claim's eid
     uint16_t seq;         // 2
     uint8_t  gen;         // 1 -- the granted or the ended generation
     uint8_t  result;      // 1 -- a PropSyncResult
     uint8_t  refusal;     // 1 -- a PropSyncRefusal; None unless result is Refused
-    uint8_t  _pad[3];     // 3 -- zero
+    uint8_t  kind;        // 1 -- a PropSyncKind
+    uint8_t  _pad[2];     // 2 -- zero
 };
 static_assert(sizeof(PropSyncAnswerPayload) == 12, "PropSyncAnswerPayload must be 12 bytes");
 static_assert(sizeof(PropSyncAnswerPayload) <= 256 - 20 - 8,
@@ -1980,7 +2024,8 @@ static_assert(sizeof(PropDestroyPayload) == 40, "PropDestroyPayload must be 40 b
 
 // A placement intent (PropDropIntent), client to host: the identity the host needs to spawn the
 // authoritative prop by key (class, key, row name), the placement transform and scale, and the
-// parity flags. No element id (the host allocates its own) and no velocity (a placed prop rests).
+// parity flags, and the velocity of the placed actor's root when the intent was authored (a place carries about
+// zero; a thrown prop its launch, with `throwSeq` nonzero). No element id (the host allocates its own).
 struct PropDropIntentPayload {
     WireClassName className;                    // 64 -- "prop_rock_C" etc. (R::ClassNameOf of the placed actor)
     WireKey       key;                          // 32 -- the persistent cross-peer save Key (loadData-restored)
@@ -1988,10 +2033,13 @@ struct PropDropIntentPayload {
     float         locX, locY, locZ;             // 12 -- placement world cm
     float         rotPitch, rotYaw, rotRoll;    // 12 -- placement FRotator
     float         scaleX, scaleY, scaleZ;       // 12 -- placed actor's GetActorScale3D
+    float         linVel[3];                    // 12 -- the root's linear velocity (cm/s) at the drain
+    float         angVel[3];                    // 12 -- the root's angular velocity (deg/s) at the drain
     uint8_t       physFlags;                    // 1  -- propspawn_flags (kStatic/kFrozen/kSleep/kRemoveWOrespawn parity)
-    uint8_t       _pad[3];                      // 3  -- 4-byte alignment; zero on the wire
+    uint8_t       _pad;                         // 1  -- zero on the wire
+    uint16_t      throwSeq;                     // 2  -- the throw's sequence (PropReleasePayload::throwSeq); 0 = a place
 };
-static_assert(sizeof(PropDropIntentPayload) == 168, "PropDropIntentPayload must be 168 bytes");
+static_assert(sizeof(PropDropIntentPayload) == 192, "PropDropIntentPayload must be 192 bytes");
 static_assert(sizeof(PropDropIntentPayload) <= 256 - 20 - 8, "PropDropIntentPayload must fit one datagram");
 
 // --- The save transfer ---
@@ -2373,6 +2421,24 @@ struct PropActCommitPayload {
     uint32_t eid;        // 4 -- the prop's Element id
 };
 static_assert(sizeof(PropActCommitPayload) == 8, "PropActCommitPayload must be 8 bytes");
+
+// A client's ask to take a record out of a world container, or to put one in (ContainerActRequest), the host's
+// answer (ContainerActReply) and the client's closing word (ContainerActCommit). The request and the commit are
+// chunked blobs (coop::props::container_act_wire), since a put carries a record; only the answer is a fixed payload.
+// `id` is the client's own, nonzero, and pairs the three. The family names the verb, and the host judges each by its
+// own conditions; a family it does not serve is answered WrongFamily.
+enum class ContainerActFamily : uint8_t { Take = 1, PutRecord = 2 };
+enum class ContainerActReason : uint8_t { Granted = 0, Gone = 1, Reach = 2, NoSpace = 3, Locked = 4, Refused = 5,
+                                          QueueFull = 6, WrongFamily = 7, Lapsed = 8 };
+// Lapsed: the sender let a reservation of the host's run out its deadline, so its next put is refused for a spell.
+inline constexpr uint8_t kContainerActReasons = 9;   // Granted..Lapsed: the per-reason counter width
+
+struct ContainerActReplyPayload {
+    uint16_t id;       // 2 -- the request's id
+    uint8_t  granted;  // 1 -- 1 with reason 0, or 0 with reason 1..8
+    uint8_t  reason;   // 1 -- ContainerActReason
+};
+static_assert(sizeof(ContainerActReplyPayload) == 4, "ContainerActReplyPayload must be 4 bytes");
 
 // The server upgrades lane (ServerUpgradeState). Ops 0 (install) and 1 (take-out) name a box by its
 // servers[] index; op 2, the canonical, carries every box's level in servers[] order (a farm past 64
@@ -3982,25 +4048,26 @@ static_assert(sizeof(GeomOctaEventPayload) == 15, "GeomOctaEventPayload must be 
 static_assert(sizeof(GeomOctaEventPayload) <= 256 - 20 - 8,
               "GeomOctaEventPayload must fit in one reliable datagram");
 
-// A client's hit on a creature (CreatureHitIntent): the creature's host-allocated element id, the verb, the damage the
+// A client's hit on an entity the host owns (HitIntent): the target's element id, the verb, the damage the
 // client's swing claimed, the point the hit struck and the hit's impulse, in world centimetres. The host judges all of
 // it; none is trusted.
-inline constexpr uint8_t kCreatureHitVerbAddDamage = 0;
-inline constexpr uint8_t kCreatureHitVerbExploded  = 1;
-inline constexpr uint8_t kCreatureHitVerbIgnite    = 2;
-inline constexpr uint8_t kCreatureHitVerbCount     = 3;
+inline constexpr uint8_t kHitVerbAddDamage = 0;
+inline constexpr uint8_t kHitVerbExploded  = 1;
+inline constexpr uint8_t kHitVerbIgnite    = 2;
+inline constexpr uint8_t kHitVerbCount     = 3;
 
-struct CreatureHitIntentPayload {
-    uint32_t creatureEid;  // 4  -- the creature's Element id (host-allocated)
-    uint8_t  verb;         // 1  -- kCreatureHitVerb*
-    uint8_t  pad[3];       // 3  -- zeroed
+struct HitIntentPayload {
+    uint32_t targetEid;    // 4  -- the target's Element id
+    uint8_t  verb;         // 1  -- kHitVerb*
+    uint8_t  pad;          // 1  -- zeroed
+    uint16_t seq;          // 2  -- a prop target's swing sequence (prop_throw::MintFor), 0 for a creature
     float    damage;       // 4  -- the claimed amount
     float    hitLoc[3];    // 12 -- the impact point
     float    impact[3];    // 12 -- the hit's impulse
 };
-static_assert(sizeof(CreatureHitIntentPayload) == 36, "CreatureHitIntentPayload must be 36 bytes");
-static_assert(sizeof(CreatureHitIntentPayload) <= 256 - 20 - 8,
-              "CreatureHitIntentPayload must fit in one reliable datagram");
+static_assert(sizeof(HitIntentPayload) == 36, "HitIntentPayload must be 36 bytes");
+static_assert(sizeof(HitIntentPayload) <= 256 - 20 - 8,
+              "HitIntentPayload must fit in one reliable datagram");
 
 // A lightning strike (LightningStrike): the strike's world location; the receiver spawns the
 // strike actor there, and it destroys itself.
@@ -4266,25 +4333,13 @@ inline bool PropPoseInBounds(const PropPoseSnapshot& p) {
     return std::fabs(p.pitch) <= 180.f && std::fabs(p.yaw) <= 180.f && std::fabs(p.roll) <= 180.f;
 }
 
-// The bounds of a client's prop velocity, for values already known finite: real throws peak at a few thousand cm/s
-// and a fast tumble at a few thousand deg/s; 1e6 is generous headroom, below anything that would teleport a body in
-// one tick. One rule for a client's PropRelease and for the End a syncing client sends the host. true == in bounds.
-inline constexpr float kMaxPropLinVel = 1.0e6f;
-inline constexpr float kMaxPropAngVel = 1.0e6f;
-inline bool PropVelocityInBounds(float linX, float linY, float linZ, float angX, float angY, float angZ) {
-    return std::fabs(linX) <= kMaxPropLinVel && std::fabs(linY) <= kMaxPropLinVel &&
-           std::fabs(linZ) <= kMaxPropLinVel && std::fabs(angX) <= kMaxPropAngVel &&
-           std::fabs(angY) <= kMaxPropAngVel && std::fabs(angZ) <= kMaxPropAngVel;
-}
-
-// A syncing client's PropDriveEnd for the host's body: the pose within the world bounds of a held pose, the
-// velocities within the release's. Floats already known finite. true == in bounds.
+// A syncing client's PropDriveEnd for the host's body: the pose within the world bounds of a held pose. Floats
+// already known finite. The velocities are clamped, not refused (coop/net/throw_bounds.h). true == in bounds.
 inline bool PropDriveEndInBounds(const PropDriveEndPayload& p) {
     PropPoseSnapshot pose{};
     pose.x = p.x; pose.y = p.y; pose.z = p.z;
     pose.pitch = p.pitch; pose.yaw = p.yaw; pose.roll = p.roll;
-    return PropPoseInBounds(pose) &&
-           PropVelocityInBounds(p.linVelX, p.linVelY, p.linVelZ, p.angVelX, p.angVelY, p.angVelZ);
+    return PropPoseInBounds(pose);
 }
 
 // Reject a clock sample no clock can hold, BEFORE it is stored: a NaN or absurd value written into the

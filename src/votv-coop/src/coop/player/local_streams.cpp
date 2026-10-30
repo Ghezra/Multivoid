@@ -21,7 +21,9 @@
 #include "coop/props/prop_element_tracker.h"
 #include "coop/props/prop_hold_claim.h"    // AdmitLocalGrab, IsOwnHoldRefused: one hold per keyed prop
 #include "coop/props/prop_settle.h"        // Watch: where a released prop rests
+#include "coop/props/prop_drive_host.h"    // Coast: the host's own throw streams to rest
 #include "coop/props/prop_syncer.h"        // Claim: a dragged swinger's parent prop
+#include "coop/props/prop_throw.h"        // ThrowSeqFor: a release of a prop the game's throw launched
 #include "coop/props/prop_wire_parity.h"  // PhysFlagsOf, the flags a release carries
 #include "coop/props/remote_prop.h"     // ResolveMirrorEidByActor (the bound-clump held-pose eid fallback)
 #include "coop/props/trash_collect_sync.h"
@@ -300,6 +302,7 @@ void SendHeldRelease(coop::net::Session& session) {
     // cache without a PropRelease; a non-trash prop keeps its velocity release.
     const uint32_t relEid = (g_lastHeldEid == coop::element::kInvalidId)
                                 ? 0u : static_cast<uint32_t>(g_lastHeldEid);
+    uint16_t throwSeq = 0;   // the release's throw sequence, when the game threw the prop
     const bool isTrashEid = (g_lastHeldEid != coop::element::kInvalidId &&
                              coop::trash_channel::CtxForEid(g_lastHeldEid) != 0);
     if (isTrashEid) {
@@ -338,6 +341,8 @@ void SendHeldRelease(coop::net::Session& session) {
         rel.angVelX = vel.angularDegS.X; rel.angVelY = vel.angularDegS.Y; rel.angVelZ = vel.angularDegS.Z;
         rel.elementId = relEid;  // a keyless clump is routed by eid (key None cannot disambiguate)
         rel.holdGen = g_holdGen;
+        // The game's own throw ran on this copy (prop_throw): the release says so, and every receiver plays the throw.
+        if (g_lastHeldProp.Alive()) rel.throwSeq = throwSeq = coop::prop_throw::ThrowSeqFor(g_lastHeldProp.Raw());
         if (g_lastHeldProp.Alive()) {
             rel.physFlags = coop::prop_wire_parity::PhysFlagsOf(g_lastHeldProp.Raw());
             // Where the hold let go, so a receiver whose last poses were lost lets go from here;
@@ -352,8 +357,8 @@ void SendHeldRelease(coop::net::Session& session) {
             }
         }
         session.SendPropRelease(rel);
-        // Every copy falls by its own physics from here; where this one rests goes out once it does.
-        if (rel.hasPose) coop::prop_settle::Watch(g_lastHeldProp.Raw(), g_holdGen, g_lastHeldKey);
+        // Unthrown, every copy falls by its own physics from here; where this one rests goes out once it does.
+        if (rel.hasPose && throwSeq == 0) coop::prop_settle::Watch(g_lastHeldProp.Raw(), g_holdGen, g_lastHeldKey);
         coop::dev::swinger_drill::NoteReleased(g_lastHeldProp.Raw());
         // This peer's own release: a join-window correction armed before the hold is older than
         // where the prop was put down, and would snap it back once the drain's grab deferral ends.
@@ -364,11 +369,16 @@ void SendHeldRelease(coop::net::Session& session) {
                 coop::element::quiescence_drain::SupersedePosCorrection(heldEid, "own release");
         }
     }
+    // The host's own throw of a prop it held: its copy flies on, and the driven-prop stream follows it to rest so every
+    // mirror lands where the host does. Opened after the hold state clears (a prop in a hand opens no row); a client's
+    // throw is the thrower's to stream, elected by the host.
+    void* const thrown = (throwSeq != 0 && g_lastHeldProp.Alive()) ? g_lastHeldProp.Raw() : nullptr;
     g_lastHeldProp.Reset();
     g_lastHeldKey = {};
     g_heldSwinger = false;
     g_coasting = false;
     g_lastHeldEid = coop::element::kInvalidId;  // the cached held eid goes with the release
+    if (thrown && session.role() == coop::net::Role::Host) coop::prop_drive_host::Coast(thrown, "throw");
 }
 
 }  // namespace

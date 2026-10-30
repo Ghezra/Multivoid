@@ -423,6 +423,16 @@ struct ApplyingScope {
 
 bool IsApplying() { return g_applying > 0; }
 
+bool CaptureOwnRecord(void* actor, SaveRecord& out) {
+    if (!actor) return false;
+    const ClassVerbs* v = VerbsFor(R::ClassOf(actor));
+    return v && v->getData && CallForRecord(actor, v->getData, out);
+}
+
+bool IsPropClass(void* cls) {
+    return cls && EnsurePropClass() && R::IsDescendantOfAny(cls, &g_propCls, 1);
+}
+
 bool ApplyRecord(void* actor, const SaveRecord& r, ClassResolver resolve) {
     const ApplyingScope applying;
     if (!actor || !EnsurePropClass() || !g_baseGetData) return false;

@@ -1,10 +1,9 @@
-// coop/creatures/creature_hit_intent.cpp -- see coop/creatures/creature_hit_intent.h.
+// coop/player/hit_intent.cpp -- see coop/player/hit_intent.h.
 
-#include "coop/creatures/creature_hit_intent.h"
+#include "coop/player/hit_intent.h"
 
-#include "coop/creatures/npc_mirror_brain.h"
+#include "coop/creatures/hit_target_creature.h"
 #include "coop/element/element.h"
-#include "coop/element/registry.h"
 #include "coop/net/intent_queue.h"
 #include "coop/net/net_clock.h"
 #include "coop/net/protocol.h"
@@ -14,15 +13,12 @@
 #include "coop/player/puppet_drive.h"
 #include "coop/player/remote_player.h"
 #include "coop/player/roster_ledger.h"
+#include "coop/props/hit_target_prop.h"
 
-#include "ue_wrap/actors/int_objects.h"
-#include "ue_wrap/actors/zombie.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/obj_keyed_cache.h"
-#include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/script_gate.h"
-#include "ue_wrap/core/sdk_profile.h"
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/hit_result.h"
@@ -33,21 +29,18 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
-#include <cwchar>
 #include <string>
 #include <utility>
 
-namespace coop::creature_hit_intent {
+namespace coop::hit_intent {
 namespace {
 
 namespace R  = ue_wrap::reflection;
 namespace E  = ue_wrap::engine;
-namespace EL = coop::element;
-namespace P  = ue_wrap::profile;
 namespace sg = ue_wrap::script_gate;
 using ue_wrap::FVector;
 
-UE_FACT_FN(kRowAddDamage, "creature_hit_intent", nullptr, L"addDamage", AnyClass);
+UE_FACT_FN(kRowAddDamage, "hit_intent", nullptr, L"addDamage", AnyClass);
 constexpr int kTag = 0x43484954;  // 'CHIT'
 
 std::atomic<coop::net::Session*> g_session{nullptr};
@@ -60,33 +53,7 @@ float Dist(const FVector& a, const FVector& b) {
 
 // ---- client ---------------------------------------------------------------------------------------------------
 
-// The functions the zombie family's prediction played, said once each per session.
-constexpr int kMaxPredicted = 4;
-const wchar_t* g_predicted[kMaxPredicted] = {};
-int            g_predictedCount = 0;
-bool           g_paramsWarned = false;
-
-void SayPredicted(const wchar_t* function) {
-    for (int i = 0; i < g_predictedCount; ++i)
-        if (std::wcscmp(g_predicted[i], function) == 0) return;
-    if (g_predictedCount < kMaxPredicted) g_predicted[g_predictedCount++] = function;
-    UE_LOGI("creature_hit_intent: predicted %ls", function);
-}
-
-// The cosmetic half of a hit: the family's feedback at once, so the swing does not wait on the host. Only the zombie
-// family has one; the fossilhound's single hit sound sits in a refused resume.
-// Source plays a melee swing's impact effect on both sides and its damage on the server alone
-// (reference/source-sdk-2013/src/game/shared/hl2mp/weapon_hl2mpbasebasebludgeon.cpp:149-172), and withholds the
-// server's copy of the shooter's own sounds from the shooter (reference/source-sdk-2013/src/game/shared/
-// basecombatweapon_shared.cpp:1925-1930). This takes the first half: the swinger's feedback is local, health and
-// death are the host's. The second half, delivering the server's copy to every peer but the swinger, is not taken: the
-// host's own call plays its own feedback, a third client sees none, and a swing the host refuses has already shown its
-// feedback.
-void Predict(void* mirror, const FVector& hitLoc) {
-    void* zombie = ue_wrap::object_index::ClassByName(P::name::NpcClass_Zombie);
-    if (!zombie || !R::IsDescendantOfAny(R::ClassOf(mirror), &zombie, 1)) return;
-    if (const wchar_t* played = ue_wrap::zombie::PlayHitFeedback(mirror, hitLoc)) SayPredicted(played);
-}
+bool g_paramsWarned = false;
 
 // A parameter's storage in the call: the caller's, for an out or reference parameter, else the frame's own slot.
 const uint8_t* ParamBytes(const sg::Call& c, int32_t offset) {
@@ -96,13 +63,14 @@ const uint8_t* ParamBytes(const sg::Call& c, int32_t offset) {
 }
 
 // Where addDamage's parameters sit in one class's function. The watch is on every class's addDamage, and the
-// families' functions alternate, so each is held on its own.
+// functions of the creature families and of the prop classes that declare their own alternate, so each is held on
+// its own.
 struct ParamLayout {
     int32_t actor = -1, damage = -1, impact = -1, hit = -1, hitSize = -1;
 };
 
 const ParamLayout& LayoutOf(void* function) {
-    static ue_wrap::ObjKeyedCache<ParamLayout, 4> sLayouts;
+    static ue_wrap::ObjKeyedCache<ParamLayout, 16> sLayouts;
     if (const ParamLayout* held = sLayouts.Find(function)) return *held;
     ParamLayout l;
     l.actor = R::FindParamOffset(function, L"actor");
@@ -130,51 +98,38 @@ FVector HitPoint(const sg::Call& c, const ParamLayout& layout) {
 sg::Verdict OnAddDamagePre(const sg::Call& c) {
     coop::net::Session* s = LoadSession();
     if (!s || !s->connected() || s->role() != coop::net::Role::Client) return sg::Verdict::Run;
-    if (!c.object || !coop::npc_mirror_brain::IsMarkedMirror(c.object) ||
-        !coop::npc_mirror_brain::IsParkedClass(R::ClassOf(c.object)))
-        return sg::Verdict::Run;
-
-    const ParamLayout& layout = LayoutOf(c.function);
-    const uint8_t* actorAt = ParamBytes(c, layout.actor);
-    const uint8_t* damageAt = ParamBytes(c, layout.damage);
-    const uint8_t* impactAt = ParamBytes(c, layout.impact);
-    if (!actorAt || !damageAt || !impactAt) {
-        if (!g_paramsWarned) {
-            g_paramsWarned = true;
-            UE_LOGW("creature_hit_intent: the addDamage parameters did not resolve -- a client's hit on a creature "
-                    "is not sent");
-        }
-        return sg::Verdict::Run;
+    // The targets are asked in turn; a claim has read the swing as this machine's own player's, and hands it back.
+    Swing swing;
+    bool byProp = false;
+    uint32_t eid = coop::hit_target_creature::ClientClaim(c, swing);
+    if (eid == coop::element::kInvalidId) {
+        eid = coop::hit_target_prop::ClientClaim(c, swing);
+        byProp = true;
     }
-    // Only this machine's own player authors a hit here, whoever called: the drill's reflected call too.
-    void* actor = nullptr;
-    std::memcpy(&actor, actorAt, sizeof(actor));
-    if (!coop::players::Registry::Get().IsLocal(actor)) return sg::Verdict::Run;
+    if (eid == coop::element::kInvalidId) return sg::Verdict::Run;
+    if (eid == kClaimedUnsent) return sg::Verdict::Cancel;
 
-    const EL::ElementId eid = EL::Registry::Get().EidForActor(c.object);
-    if (eid == EL::kInvalidId) return sg::Verdict::Run;
+    coop::net::HitIntentPayload p{};
+    p.targetEid = eid;
+    p.verb = coop::net::kHitVerbAddDamage;
+    p.seq = swing.seq;
+    p.damage = swing.damage;
+    p.hitLoc[0] = swing.hitLoc.X;
+    p.hitLoc[1] = swing.hitLoc.Y;
+    p.hitLoc[2] = swing.hitLoc.Z;
+    p.impact[0] = swing.impact.X;
+    p.impact[1] = swing.impact.Y;
+    p.impact[2] = swing.impact.Z;
 
-    const FVector hitLoc = HitPoint(c, layout);
-    float damage = 0.f;
-    FVector impact{};
-    std::memcpy(&damage, damageAt, sizeof(damage));
-    std::memcpy(&impact, impactAt, sizeof(impact));
-
-    coop::net::CreatureHitIntentPayload p{};
-    p.creatureEid = static_cast<uint32_t>(eid);
-    p.verb = coop::net::kCreatureHitVerbAddDamage;
-    p.damage = damage;
-    p.hitLoc[0] = hitLoc.X;
-    p.hitLoc[1] = hitLoc.Y;
-    p.hitLoc[2] = hitLoc.Z;
-    p.impact[0] = impact.X;
-    p.impact[1] = impact.Y;
-    p.impact[2] = impact.Z;
-
-    Predict(c.object, hitLoc);
-    if (!s->SendReliableToSlot(0, coop::net::ReliableKind::CreatureHitIntent, &p, sizeof(p)))
-        UE_LOGW("creature_hit_intent: the hit on creature %u was not sent", p.creatureEid);
-    return sg::Verdict::Cancel;
+    if (!s->SendReliableToSlot(0, coop::net::ReliableKind::HitIntent, &p, sizeof(p))) {
+        UE_LOGW("creature_hit_intent: the hit on target %u was not sent", p.targetEid);
+        if (byProp) coop::hit_target_prop::NoteUnsent(c.object);   // the minted record ends, so the next swing mints again
+        return sg::Verdict::Cancel;
+    }
+    if (!byProp) return sg::Verdict::Cancel;
+    // A swing at a prop runs on the copy, as a throw does: the host's election of the swinger decides whose it is.
+    coop::hit_target_prop::NoteSent(eid, swing.damage, swing.seq);
+    return sg::Verdict::Run;
 }
 
 // ---- host -----------------------------------------------------------------------------------------------------
@@ -187,7 +142,7 @@ constexpr size_t kMaxPending = 8;
 // An intent with the sender's eye and its unit aim vector as the host held them when the intent arrived: it is judged
 // against the pose the swing was made at, not the pose of the tick that serves it.
 struct Queued {
-    coop::net::CreatureHitIntentPayload req;
+    coop::net::HitIntentPayload req;
     FVector eye{};
     FVector aim{};
     bool haveEye = false;
@@ -210,8 +165,8 @@ ue_wrap::ObjKeyedCache<bool, 24> g_appliedSaid;   // the classes whose first app
 
 // `facing` is the measured facing cosine when the refusal is the facing bound's, else NaN; the reason's first line
 // carries it, so the bound's margin reads off the log.
-void Refuse(int slot, const char* why, float facing = std::nanf("")) {
-    if (slot < 1 || slot >= coop::players::kMaxPeers) return;
+bool Refuse(int slot, const char* why, float facing = std::nanf("")) {
+    if (slot < 1 || slot >= coop::players::kMaxPeers) return false;
     Slot& sl = g_slots[slot];
     for (Reason& r : sl.reasons) {
         if (r.why && std::strcmp(r.why, why) != 0) continue;
@@ -224,55 +179,65 @@ void Refuse(int slot, const char* why, float facing = std::nanf("")) {
                 UE_LOGI("creature_hit_intent: slot=%d refused %s", slot, why);
         }
         ++r.count;
-        return;
+        return false;
     }
+    return false;
 }
 
-// The creature the intent names: a live host Npc element of a parked family, else null.
-void* CreatureOf(uint32_t eid) {
-    void* actor = EL::LiveActorOfType(static_cast<EL::ElementId>(eid), EL::ElementType::Npc);
-    return actor && coop::npc_mirror_brain::IsParkedClass(R::ClassOf(actor)) ? actor : nullptr;
-}
-
-void Serve(coop::net::Session& s, int slot, const Queued& q) {
-    const coop::net::CreatureHitIntentPayload& p = q.req;
+// True when the intent was served; false when it was refused (counted, and said once per reason).
+bool Serve(coop::net::Session& s, int slot, const Queued& q) {
+    const coop::net::HitIntentPayload& p = q.req;
     if (!s.IsSlotWorldReady(slot)) return Refuse(slot, "slot not world-ready");
     if (!q.haveEye) return Refuse(slot, "no eye");
-    if (p.verb != coop::net::kCreatureHitVerbAddDamage) return Refuse(slot, "unjudged verb");
-    void* creature = CreatureOf(p.creatureEid);
-    if (!creature) return Refuse(slot, "no such creature");
+    if (p.verb != coop::net::kHitVerbAddDamage) return Refuse(slot, "unjudged verb");
+    // The element's type picks the target: a creature of a parked family, else a prop.
+    void* target = coop::hit_target_creature::HostTarget(p.targetEid);
+    const bool isCreature = target != nullptr;
+    if (!target) target = coop::hit_target_prop::HostTarget(p.targetEid);
+    if (!target) return Refuse(slot, "not a hit target");
 
     const FVector hitLoc{p.hitLoc[0], p.hitLoc[1], p.hitLoc[2]};
-    const FVector impact{p.impact[0], p.impact[1], p.impact[2]};
     float damage = 0.f;
     const char* why = nullptr;
-    if (!coop::hit_judge::JudgeHit(slot, q.eye, q.aim, hitLoc, creature, p.damage, damage, why)) {
+    if (!coop::hit_judge::JudgeHit(slot, q.eye, q.aim, hitLoc, target, p.damage, damage, why)) {
+        if (!isCreature) coop::hit_target_prop::OnRefused(p.targetEid);   // the copy the swinger shoved is converged
         const bool notFacing = std::strcmp(why, "not facing") == 0;
         return Refuse(slot, why, notFacing ? coop::hit_judge::FacingCosine(q.aim, q.eye, hitLoc) : std::nanf(""));
     }
 
+    coop::net::HitIntentPayload judged = p;
+    judged.damage = damage;
+    if (!isCreature) {
+        const char* applyWhy = nullptr;
+        if (!coop::hit_target_prop::HostApply(p.targetEid, static_cast<uint8_t>(slot), judged, applyWhy)) {
+            coop::hit_target_prop::OnRefused(p.targetEid);
+            return Refuse(slot, applyWhy);
+        }
+        return true;
+    }
+
     // The first applied hit of a class says what it measured; the rest are counted (g_applied). Read before the
     // hit, which may kill the creature.
-    void* const cls = R::ClassOf(creature);
+    void* const cls = R::ClassOf(target);
     const bool say = !g_appliedSaid.Find(cls);
-    float reach = 0.f, target = 0.f, facing = 0.f;
+    float reach = 0.f, away = 0.f, facing = 0.f;
     std::wstring name;
     if (say) {
         FVector at{};
-        E::TryGetActorLocation(creature, at);
+        E::TryGetActorLocation(target, at);
         reach = Dist(q.eye, hitLoc);
-        target = Dist(hitLoc, at);
+        away = Dist(hitLoc, at);
         facing = coop::hit_judge::FacingCosine(q.aim, q.eye, hitLoc);
-        name = R::ClassNameOf(creature);
+        name = R::ClassNameOf(target);
     }
-    if (!ue_wrap::int_objects::InvokeAddDamage(creature, nullptr, damage, hitLoc, impact))
-        return Refuse(slot, "addDamage did not run");
+    if (!coop::hit_target_creature::HostApply(p.targetEid, judged)) return Refuse(slot, "addDamage did not run");
     ++g_applied;
     if (say) {
         g_appliedSaid.Insert(cls, true);
         UE_LOGI("creature_hit_intent: slot=%d creature=%ls damage=%.1f reach=%.0f target=%.0f facing=%.3f applied "
-                "(first of its class; the rest are counted)", slot, name.c_str(), damage, reach, target, facing);
+                "(first of its class; the rest are counted)", slot, name.c_str(), damage, reach, away, facing);
     }
+    return true;
 }
 
 void ServeQueues(coop::net::Session& s) {
@@ -296,6 +261,30 @@ bool g_settled = false;
 
 }  // namespace
 
+bool ReadLocalSwing(const sg::Call& c, Swing& out) {
+    const ParamLayout& layout = LayoutOf(c.function);
+    const uint8_t* actorAt = ParamBytes(c, layout.actor);
+    const uint8_t* damageAt = ParamBytes(c, layout.damage);
+    const uint8_t* impactAt = ParamBytes(c, layout.impact);
+    if (!actorAt || !damageAt || !impactAt) {
+        if (!g_paramsWarned) {
+            g_paramsWarned = true;
+            UE_LOGW("creature_hit_intent: the addDamage parameters did not resolve -- a client's hit on a host "
+                    "entity is not sent");
+        }
+        return false;
+    }
+    // Only this machine's own player authors a hit here, whoever called: the drill's reflected call too.
+    void* actor = nullptr;
+    std::memcpy(&actor, actorAt, sizeof(actor));
+    if (!coop::players::Registry::Get().IsLocal(actor)) return false;
+
+    out.hitLoc = HitPoint(c, layout);
+    std::memcpy(&out.damage, damageAt, sizeof(out.damage));
+    std::memcpy(&out.impact, impactAt, sizeof(out.impact));
+    return true;
+}
+
 void Install(coop::net::Session* session) {
     g_session.store(session, std::memory_order_release);
     if (!session || session->role() != coop::net::Role::Client || g_reg != Reg::Pending) return;
@@ -311,24 +300,27 @@ void Tick() {
             UE_LOGI("creature_hit_intent: the watch on addDamage is live");
         } else if (g_reg == Reg::Refused || sg::NameWatchSettled(kRowAddDamage, kTag)) {
             g_settled = true;
-            UE_LOGE("creature_hit_intent: the watch on addDamage is dead -- a client's hit on a creature reaches the "
-                    "host's creature by no route");
+            UE_LOGE("creature_hit_intent: the watch on addDamage is dead -- a client's hit on a host entity reaches "
+                    "the host's copy by no route");
         }
     }
     coop::net::Session* s = LoadSession();
     if (s && s->running() && s->role() == coop::net::Role::Host) ServeQueues(*s);
 }
 
-void OnIntent(int senderSlot, const coop::net::CreatureHitIntentPayload& payload) {
+void OnIntent(int senderSlot, const coop::net::HitIntentPayload& payload) {
     coop::net::Session* s = LoadSession();
     if (!s || s->role() != coop::net::Role::Host) {
-        UE_LOGW("creature_hit_intent: CreatureHitIntent received on a non-host -- dropping");
+        UE_LOGW("creature_hit_intent: HitIntent received on a non-host -- dropping");
         return;
     }
     // Slot 0 is the host, whose own swings never arrive over the wire.
     if (senderSlot < 1 || senderSlot >= coop::players::kMaxPeers) return;
     // A full queue refuses before anything is read: a flood must not pay the eye read per message.
-    if (g_slots[senderSlot].queue.size() >= kMaxPending) return Refuse(senderSlot, "queue full");
+    if (g_slots[senderSlot].queue.size() >= kMaxPending) {
+        Refuse(senderSlot, "queue full");
+        return;
+    }
     Queued q;
     q.req = payload;
     // Only a puppet that has had its first pose has an eye: before it, it stands at its spawn point. The aim is the
@@ -340,7 +332,8 @@ void OnIntent(int senderSlot, const coop::net::CreatureHitIntentPayload& payload
 }
 
 void OnDisconnect() {
-    g_predictedCount = 0;
+    coop::hit_target_creature::OnDisconnect();
+    coop::hit_target_prop::OnDisconnect();
     g_paramsWarned = false;
     g_appliedSaid.Clear();
 }
@@ -354,4 +347,4 @@ uint32_t RefusedCount(int slot, const char* reason) {
     return 0;
 }
 
-}  // namespace coop::creature_hit_intent
+}  // namespace coop::hit_intent

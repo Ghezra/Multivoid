@@ -16,7 +16,8 @@ struct Actor {
     int record = 0;
 };
 inline std::vector<int> records;
-inline bool publishOk = true, quiesced = true;
+inline bool publishOk = true, quiesced = true, peerReady = true;
+inline int keyReads = 0;
 }
 
 namespace coop::net {
@@ -26,7 +27,22 @@ struct Session {
     bool live = true;
     bool connected() const { return live; }
     Role role() const { return side; }
+    bool AnyWorldReadyPeer() const { return fixture::peerReady; }
 };
+}
+namespace coop::net { inline uint64_t NowMs() { return 0; } }
+namespace coop::config_registry {
+struct EnumRow {};
+struct IntRow {};
+namespace rows {
+inline constexpr EnumRow pr64_drill{};
+inline constexpr IntRow pr64_record_window_red_ms{};
+}
+}
+namespace coop::config {
+// The drill's red rows stay off here: the production publish path is what the assertions run.
+inline std::string ResolveEnum(const coop::config_registry::EnumRow&) { return "off"; }
+inline long ResolveInt(const coop::config_registry::IntRow&) { return 0; }
 }
 namespace coop::join_membership_sweep {
 inline bool HasLoadTailQuiesced() { return fixture::quiesced; }
@@ -60,6 +76,7 @@ inline int32_t FindPropertyOffset(void*, const wchar_t* name) {
 namespace ue_wrap::prop {
 inline std::wstring GetPropNameString(void*) { return L"drivebox_s"; }
 inline std::wstring GetInteractableKeyString(void* actor) {
+    ++fixture::keyReads;
     return static_cast<fixture::Actor*>(actor)->key;
 }
 }

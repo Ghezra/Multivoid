@@ -31,14 +31,15 @@ void Tick(coop::net::Session& session);
 // channel), converges the copy's frozen and sleep to the holder's at the edge, puts it at the
 // holder's transform at the edge (a stuck wall-attachable stays where its stick put it),
 // re-enables simulation and applies the launch velocity unless it ended frozen, and fires the
-// prop's own thrown event when the launch speed exceeds the threshold, so a passive drop stays
+// prop's own thrown event when the release carries a throw sequence (its holder's game ran throwShit), so a passive drop stays
 // silent and a real throw plays the game's own sound and trail. Clears the cached pointer, so the
 // next pose re-resolves. `senderSlot` is the sender's slot from the reliable header, which
 // identifies which slot's drive to clear (a scan by key returned the first match and could clear
 // the wrong slot when two slots briefly held a prop with the same key). `localPlayer` gives the
 // thrown event a non-null player; the game's throw statistics credit the local player, a minor
-// inaccuracy for the natural effects.
-void OnRelease(int senderSlot, const coop::net::PropReleasePayload& payload, void* localPlayer);
+// inaccuracy for the natural effects. `replayed` is a release the bracket kept for a waiting spawn: it was counted
+// when it arrived.
+void OnRelease(int senderSlot, const coop::net::PropReleasePayload& payload, void* localPlayer, bool replayed = false);
 
 // Close hold `holdGen` of the peer in `slot` (PropPoseSnapshot::holdGen): a pose of it that
 // arrives later is the tail of an ended stream and starts no drive. The release closes its own
@@ -56,6 +57,14 @@ void CloseHold(int slot, uint16_t holdGen);
 // on held props; otherwise the convergence write would stomp the active pose stream for one
 // frame, a visible pop.
 bool IsActorUnderAnyDrive(void* actor);
+
+// The drive of `slot` ends because the host files its prop (a put by overlap, container_act_host_overlap): the copy
+// simulates again and the drive clears, as an implicit release does, so the container's body finds a simulating body.
+// A no-op for a slot with no drive. Game thread.
+void EndDriveForPut(int slot);
+
+// The hold generation of `slot`'s drive, 0 when it has none: a new hold is a new generation. Game thread.
+uint16_t HoldGenOf(int slot);
 
 // True while this peer, not the wire, moves `actor`: a peer's drive targets it, the host's driven-prop
 // channel holds it parked, or the LOCAL player has it in its hands. The holder is the authority while
@@ -200,6 +209,12 @@ namespace dev {   // called only from src/coop/dev/ (the act drills); compiled a
 void WatchWireDestroys(int slot, coop::element::ElementId a, coop::element::ElementId b);
 // The PropDestroy messages the watch counted for `eid`: the count for `a` or `b`, 0 for any other eid.
 uint32_t WireDestroysNaming(coop::element::ElementId eid);
+// The PropRelease messages received this session that carried a throw sequence, and the throw swings played for them.
+uint32_t ThrowReleasesReceived();
+uint32_t ThrowWhooshesPlayed();
+// The throw releases whose velocity this peer applied to a simulating copy, and the speed in cm/s of the latest.
+uint32_t ReleaseLaunchesApplied();
+float LastReleaseLaunch();
 }  // namespace dev
 
 }  // namespace coop::remote_prop

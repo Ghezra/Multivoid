@@ -6,6 +6,7 @@
 #include "coop/props/remote_prop_spawn.h"
 
 #include "coop/props/trash_pile_sync.h"  // the sweep's death-watch unwatch
+#include "coop/props/bracket_position_wait.h"  // a position match inside the snapshot bracket waits
 
 #include "coop/element/element.h"
 #include "coop/element/registry.h"
@@ -36,6 +37,7 @@
 #include "coop/props/prop_fresh_spawn.h"   // the deferred-spawn materialiser
 #include "coop/props/prop_lifecycle.h"
 #include "coop/props/prop_stick_sync.h"    // ConvergeStuck, a wall-attach copy's stuck state
+#include "coop/props/prop_throw.h"         // SeqFor: the actor this peer just threw or swung is not converged
 #include "coop/props/prop_wire_parity.h"   // the shared physics and collision helpers
 #include "coop/props/remote_prop.h"
 #include "coop/props/trash_mirror.h"  // a rooted real chipPile native as the pile mirror
@@ -124,6 +126,97 @@ static bool HostAuthorityHandback_(void* actor, const std::wstring& keyW,
     }
     coop::prop_snapshot::ExpressIncrementalSpawn(actor);
     return true;
+}
+
+// The adopt of a position match: the actor the caller chose within the fuzzy radius becomes the
+// mirror of the wire prop. The host-authority gate, the claim, the held and drive guards, the
+// converge, the rekey and the mirror binding; every path ends the spawn.
+void AdoptByPosition(const coop::net::PropSpawnPayload& payload, int senderSlot,
+                     void* fuzzy, void* localPlayer) {
+    using ue_wrap::ParamFrame;
+    using ue_wrap::Call;
+    const std::wstring classW = ClassNameToWString(payload.className);
+    const std::wstring keyW   = coop::remote_prop::KeyToWString(payload.key);
+    // Host authority before the fuzzy rekey: the setKey below would rekey the host's own actor
+    // to the peer's key, an identity theft no later wall can undo.
+    if (HostAuthorityHandback_(fuzzy, keyW, classW, senderSlot, "fuzzy")) return;
+    // The claim, as on the exact-key path; it covers the early returns below.
+    coop::join_membership_sweep::RecordClaimIfTracking(fuzzy);
+    // Past every gate: this actor is the adoption, whichever of the three bindings below runs.
+    float takenDistCm = -1.f;
+    if (coop::dev::spawn_match_probe::IsEnabled()) {
+        ue_wrap::FVector at{};
+        if (ue_wrap::engine::TryGetActorLocation(fuzzy, at)) {
+            const float dx = at.X - payload.locX, dy = at.Y - payload.locY, dz = at.Z - payload.locZ;
+            takenDistCm = std::sqrt(dx * dx + dy * dy + dz * dz);
+        }
+    }
+    coop::dev::spawn_match_probe::NoteFuzzyBound(fuzzy, payload.elementId, keyW, takenDistCm);
+    // The local-held guard, as on the exact-key path (reached when an earlier bracket rekeyed
+    // the held prop and this one fuzzy-matches it); the rekey is skipped too, and correctness
+    // rides the eid binding.
+    if (ue_wrap::engine::IsMainPlayerGrabbing(localPlayer, fuzzy)) {
+        UE_LOGI("remote_prop::OnSpawn: fuzzy match '%ls' is held by the LOCAL player -- skipping reconcile/converge/rekey (local grab owns it)",
+                classW.c_str());
+        coop::remote_prop::RegisterPropMirror(payload.elementId, fuzzy, keyW, classW, senderSlot);
+        return;
+    }
+    // The exact-key drive guard's mirror: a match under active kinematic drive is not
+    // converged.
+    if (coop::remote_prop::IsActorUnderAnyDrive(fuzzy) || coop::prop_drive_stream::IsParked(fuzzy)) {
+        UE_LOGI("remote_prop::OnSpawn: Gap-I-1 fuzzy match '%ls' -> under a held or driven stream -- skipping (the stream owns position)",
+                classW.c_str());
+        // The mirror binding on the drive-skip path too, or Registry::Get(eid) would never
+        // resolve for a fuzzy, drive-skipped prop.
+        coop::remote_prop::RegisterPropMirror(payload.elementId, fuzzy, keyW, classW, senderSlot);
+        return;
+    }
+    UE_LOGI("remote_prop::OnSpawn: Gap-I-1 FUZZY MATCH '%ls' (wire key '%ls') -> existing actor %p within %.1f cm -- de-duping, converging transform + rekeying",
+            classW.c_str(), keyW.c_str(), fuzzy, kFuzzyRadiusCm);
+    // The kinematic converge and restore, as on the exact-key diverged branch.
+    ReconcileToHostPhysics(fuzzy, payload.physFlags);
+    ue_wrap::engine::SetActorLocation(fuzzy,
+        ue_wrap::FVector{payload.locX, payload.locY, payload.locZ});
+    ue_wrap::engine::SetActorRotation(fuzzy,
+        ue_wrap::FRotator{payload.rotPitch, payload.rotYaw, payload.rotRoll});
+    coop::prop_stick_sync::ConvergeStuck(fuzzy, payload.physFlags);
+    ConvergeFrozenSleep(fuzzy, payload.physFlags);
+    RestoreSpParityPhysicsAfterConverge(fuzzy, payload.physFlags);
+    // Rekey the matched actor to the wire Key: it otherwise keeps its client-local Key while
+    // the host's PropPose carries the wire one, and the host's grab and move stream would be
+    // dropped, a prop that de-duped but is invisible to the authoritative position stream.
+    // Aprop_C.setKey updates the gamemode's key map; the old entry is harmless.
+    if (void* propSetKeyFn = coop::prop_fresh_spawn::PropSetKeyFn()) {
+        const R::FName keyFName = ue_wrap::fname_utils::StringToFName(keyW);
+        if (keyFName.ComparisonIndex != 0) {
+            ParamFrame sk(propSetKeyFn);
+            if (sk.SetRaw(L"Key", &keyFName, sizeof(keyFName))) {
+                if (Call(fuzzy, sk)) {
+                    UE_LOGI("remote_prop::OnSpawn: Gap-I-1 rekey ok -- actor %p now has wire key '%ls' (FName idx=%u); subsequent PropPose resolves correctly",
+                            fuzzy, keyW.c_str(), keyFName.ComparisonIndex);
+                } else {
+                    UE_LOGW("remote_prop::OnSpawn: Gap-I-1 rekey setKey ProcessEvent call failed -- prop unreachable via host PropPose");
+                }
+            } else {
+                UE_LOGW("remote_prop::OnSpawn: Gap-I-1 rekey setKey 'Key' param not found");
+            }
+        } else {
+            UE_LOGW("remote_prop::OnSpawn: Gap-I-1 rekey StringToFName('%ls') -> NAME_None; skipped",
+                    keyW.c_str());
+        }
+    } else {
+        UE_LOGW("remote_prop::OnSpawn: Gap-I-1 rekey skipped -- setKey UFunction unresolved");
+    }
+    // Track the matched actor under the wire key, as the other peers count it. The key index follows
+    // the setKey above on its own; if setKey failed the actor does not carry the wire key and is
+    // found by the eid binding below instead.
+    coop::prop_element_tracker::TrackActorKey(fuzzy, keyW);
+    // The collision restore, as on the exact-key path: the match came through the client's own
+    // spawner with no collision, and the host's release would drop it through the floor.
+    RestoreCollisionIfNeeded(L"fuzzy", classW, fuzzy);
+    // The mirror binding: the actor now carries the wire Key, so PropPose and PropDestroy
+    // resolve by key or eid.
+    coop::remote_prop::RegisterPropMirror(payload.elementId, fuzzy, keyW, classW, senderSlot);
 }
 
 void OnSpawn(const coop::net::PropSpawnPayload& payload, int senderSlot,
@@ -241,8 +334,7 @@ void OnSpawn(const coop::net::PropSpawnPayload& payload, int senderSlot,
     }
     // The dedupe: a local Aprop_C with the same Key already exists (both peers loaded the same
     // save, or a prior PropSpawn created it), so it is converged to the host's transform rather
-    // than duplicated. The host-authority gate comes first: a peer PropSpawn (a container extract,
-    // a held-item express) can resolve onto an actor the host already owns, and the old flow
+    // than duplicated. The host-authority gate comes first: a peer PropSpawn (a held-item express) can resolve onto an actor the host already owns, and the old flow
     // rekeyed it to the peer's key or stacked a peer-band mirror over it, unbinding the host's own
     // identity (its destroy observer silenced). The actor is enrolled host-side under its own key
     // and re-expressed under the host identity; the sender adopts the host eid. A client-band
@@ -297,6 +389,16 @@ void OnSpawn(const coop::net::PropSpawnPayload& payload, int senderSlot,
             UE_LOGI("remote_prop::OnSpawn: key '%ls' is under a held or driven stream -- skipping convergence (the stream owns position)",
                     keyW.c_str());
             // The mirror is still registered, so the sender's PropDestroy resolves by eid.
+            coop::remote_prop::RegisterPropMirror(payload.elementId, existing, keyW, classW, senderSlot);
+            return;
+        }
+        // The actor this peer threw or swung a moment ago (a throw's is the one the host spawned from the thrower's drop
+        // intent): its copy is the flight, and the host's spawn pose is where it began. A converge here (the kinematic
+        // toggle zeroes the body's velocity, then the teleport) would end the flight it is about to be the syncer of.
+        // Bound, nothing else.
+        if (coop::prop_throw::SeqFor(existing) != 0) {
+            UE_LOGI("remote_prop::OnSpawn: key '%ls' is the prop this peer just threw or swung -- skipping convergence (its flight is the truth)",
+                    keyW.c_str());
             coop::remote_prop::RegisterPropMirror(payload.elementId, existing, keyW, classW, senderSlot);
             return;
         }
@@ -376,7 +478,6 @@ void OnSpawn(const coop::net::PropSpawnPayload& payload, int senderSlot,
     // spawners (mushrooms, underground garbage) place the same logical entity with different Keys
     // at slightly different positions on each peer, and without this the host's broadcast would
     // spawn a second prop beside the client's. Same class within 30 cm.
-    constexpr float kFuzzyRadiusCm = 30.f;
     // A clump skips the fuzzy dedupe (its rekey through setKey is meaningless) and goes to a fresh
     // eid-bound spawn.
     const ue_wrap::FVector fuzzyAnchor{payload.locX, payload.locY, payload.locZ};
@@ -421,6 +522,15 @@ void OnSpawn(const coop::net::PropSpawnPayload& payload, int senderSlot,
             fuzzy = nullptr;
         }
     }
+    // Inside the snapshot bracket a position match waits for the bracket's end, where every waiting spawn is matched
+    // to the free candidates nearest first: a neighbour whose own key has not arrived yet reads as unbound here, so
+    // binding on arrival would let the bracket's eid order decide whose actor each key gets. Only the wire receive
+    // edge waits (the convert and kerfur callers pass one of these arguments); it sits after the kerfur gate, so a
+    // different-key kerfur never waits, and before the steal gate, which would judge by what has arrived so far.
+    if (fuzzy && deferKerfur && !fromConvert && !outSpawned && !skipBind &&
+        coop::props::bracket_position_wait::IsWaiting() &&
+        coop::props::bracket_position_wait::Wait(payload, senderSlot))
+        return;
     // The identity-steal gate: a fuzzy match already mirror-bound to a different eid is an
     // established cross-peer identity, a different prop within 30 cm (N same-spot placements arrive
     // back to back and the quiescence drain applies them in one batch); stealing it would chain N
@@ -442,80 +552,7 @@ void OnSpawn(const coop::net::PropSpawnPayload& payload, int senderSlot,
         }
     }
     if (fuzzy) {
-        // Host authority before the fuzzy rekey: the setKey below would rekey the host's own actor
-        // to the peer's key, an identity theft no later wall can undo.
-        if (HostAuthorityHandback_(fuzzy, keyW, classW, senderSlot, "fuzzy")) return;
-        // The claim, as on the exact-key path; it covers the early returns below.
-        coop::join_membership_sweep::RecordClaimIfTracking(fuzzy);
-        // Past every gate: this actor is the adoption, whichever of the three bindings below runs.
-        coop::dev::spawn_match_probe::NoteFuzzyBound(
-            fuzzy, payload.elementId, keyW,
-            fuzzyTrace.candidates.empty() ? -1.f : fuzzyTrace.candidates[0].distCm);
-        // The local-held guard, as on the exact-key path (reached when an earlier bracket rekeyed
-        // the held prop and this one fuzzy-matches it); the rekey is skipped too, and correctness
-        // rides the eid binding.
-        if (ue_wrap::engine::IsMainPlayerGrabbing(localPlayer, fuzzy)) {
-            UE_LOGI("remote_prop::OnSpawn: fuzzy match '%ls' is held by the LOCAL player -- skipping reconcile/converge/rekey (local grab owns it)",
-                    classW.c_str());
-            coop::remote_prop::RegisterPropMirror(payload.elementId, fuzzy, keyW, classW, senderSlot);
-            return;
-        }
-        // The exact-key drive guard's mirror: a match under active kinematic drive is not
-        // converged.
-        if (coop::remote_prop::IsActorUnderAnyDrive(fuzzy) || coop::prop_drive_stream::IsParked(fuzzy)) {
-            UE_LOGI("remote_prop::OnSpawn: Gap-I-1 fuzzy match '%ls' -> under a held or driven stream -- skipping (the stream owns position)",
-                    classW.c_str());
-            // The mirror binding on the drive-skip path too, or Registry::Get(eid) would never
-            // resolve for a fuzzy, drive-skipped prop.
-            coop::remote_prop::RegisterPropMirror(payload.elementId, fuzzy, keyW, classW, senderSlot);
-            return;
-        }
-        UE_LOGI("remote_prop::OnSpawn: Gap-I-1 FUZZY MATCH '%ls' (wire key '%ls') -> existing actor %p within %.1f cm -- de-duping, converging transform + rekeying",
-                classW.c_str(), keyW.c_str(), fuzzy, kFuzzyRadiusCm);
-        // The kinematic converge and restore, as on the exact-key diverged branch.
-        ReconcileToHostPhysics(fuzzy, payload.physFlags);
-        ue_wrap::engine::SetActorLocation(fuzzy,
-            ue_wrap::FVector{payload.locX, payload.locY, payload.locZ});
-        ue_wrap::engine::SetActorRotation(fuzzy,
-            ue_wrap::FRotator{payload.rotPitch, payload.rotYaw, payload.rotRoll});
-        coop::prop_stick_sync::ConvergeStuck(fuzzy, payload.physFlags);
-        ConvergeFrozenSleep(fuzzy, payload.physFlags);
-        RestoreSpParityPhysicsAfterConverge(fuzzy, payload.physFlags);
-        // Rekey the matched actor to the wire Key: it otherwise keeps its client-local Key while
-        // the host's PropPose carries the wire one, and the host's grab and move stream would be
-        // dropped, a prop that de-duped but is invisible to the authoritative position stream.
-        // Aprop_C.setKey updates the gamemode's key map; the old entry is harmless.
-        if (void* propSetKeyFn = coop::prop_fresh_spawn::PropSetKeyFn()) {
-            const R::FName keyFName = ue_wrap::fname_utils::StringToFName(keyW);
-            if (keyFName.ComparisonIndex != 0) {
-                ParamFrame sk(propSetKeyFn);
-                if (sk.SetRaw(L"Key", &keyFName, sizeof(keyFName))) {
-                    if (Call(fuzzy, sk)) {
-                        UE_LOGI("remote_prop::OnSpawn: Gap-I-1 rekey ok -- actor %p now has wire key '%ls' (FName idx=%u); subsequent PropPose resolves correctly",
-                                fuzzy, keyW.c_str(), keyFName.ComparisonIndex);
-                    } else {
-                        UE_LOGW("remote_prop::OnSpawn: Gap-I-1 rekey setKey ProcessEvent call failed -- prop unreachable via host PropPose");
-                    }
-                } else {
-                    UE_LOGW("remote_prop::OnSpawn: Gap-I-1 rekey setKey 'Key' param not found");
-                }
-            } else {
-                UE_LOGW("remote_prop::OnSpawn: Gap-I-1 rekey StringToFName('%ls') -> NAME_None; skipped",
-                        keyW.c_str());
-            }
-        } else {
-            UE_LOGW("remote_prop::OnSpawn: Gap-I-1 rekey skipped -- setKey UFunction unresolved");
-        }
-        // Track the matched actor under the wire key, as the other peers count it. The key index follows
-        // the setKey above on its own; if setKey failed the actor does not carry the wire key and is
-        // found by the eid binding below instead.
-        coop::prop_element_tracker::TrackActorKey(fuzzy, keyW);
-        // The collision restore, as on the exact-key path: the match came through the client's own
-        // spawner with no collision, and the host's release would drop it through the floor.
-        RestoreCollisionIfNeeded(L"fuzzy", classW, fuzzy);
-        // The mirror binding: the actor now carries the wire Key, so PropPose and PropDestroy
-        // resolve by key or eid.
-        coop::remote_prop::RegisterPropMirror(payload.elementId, fuzzy, keyW, classW, senderSlot);
+        AdoptByPosition(payload, senderSlot, fuzzy, localPlayer);
         return;
     }
     // No exact and no fuzzy match. A kerfur prop's save-loaded twin may still be async-loading (the

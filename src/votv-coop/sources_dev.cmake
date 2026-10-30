@@ -16,6 +16,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/add_points.cpp
     src/coop/dev/spawn_order_probe.cpp
     src/coop/dev/prop_birth_key_probe.cpp
+    src/coop/dev/impact_damage_probe.cpp
     src/coop/dev/host_settle_drill.cpp
     src/coop/dev/spawn_match_probe.cpp
     src/coop/dev/native_text_probe.cpp
@@ -106,6 +107,43 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/container_opener_probe.cpp
     src/coop/dev/container_writer_probe.cpp
     src/coop/dev/container_view_drill.cpp
+    src/coop/dev/container_intent_drill.cpp
+    src/coop/dev/container_intent_drill_append.cpp
+    src/coop/dev/container_intent_drill_depart_room.cpp
+    src/coop/dev/container_intent_drill_host.cpp
+    src/coop/dev/container_pick.cpp
+    src/coop/dev/container_intent_drill_pick.cpp
+    src/coop/dev/container_intent_drill_put.cpp
+    src/coop/dev/container_intent_drill_put_host.cpp
+    src/coop/dev/container_intent_drill_put2.cpp
+    src/coop/dev/container_intent_drill_put_join.cpp
+    src/coop/dev/container_intent_drill_throw.cpp
+    src/coop/dev/container_intent_drill_throw_act.cpp
+    src/coop/dev/container_intent_drill_throw_arms.cpp
+    src/coop/dev/container_intent_drill_throw_gap.cpp
+    src/coop/dev/container_intent_drill_throw_hit.cpp
+    src/coop/dev/container_intent_drill_throw_hostgrab.cpp
+    src/coop/dev/container_intent_drill_throw_host.cpp
+    src/coop/dev/container_intent_drill_throw_into_arm.cpp
+    src/coop/dev/container_intent_drill_throw_into_arming.cpp
+    src/coop/dev/container_intent_drill_throw_into.cpp
+    src/coop/dev/container_intent_drill_throw_into_release.cpp
+    src/coop/dev/container_intent_drill_throw_into_host.cpp
+    src/coop/dev/container_intent_drill_throw_into_verdict.cpp
+    src/coop/dev/container_intent_drill_throw_into_judge.cpp
+    src/coop/dev/container_intent_drill_throw_into_observer.cpp
+    src/coop/dev/container_intent_drill_throw_into_spawn.cpp
+    src/coop/dev/container_intent_drill_throw_into_stand.cpp
+    src/coop/dev/container_intent_drill_throw_into_take.cpp
+    src/coop/dev/container_intent_drill_throw_into_hold.cpp
+    src/coop/dev/container_intent_drill_throw_into_path.cpp
+    src/coop/dev/container_intent_drill_throw_into_probe.cpp
+    src/coop/dev/container_intent_drill_throw_trace.cpp
+    src/coop/dev/pr64_drill.cpp
+    src/coop/dev/pr64_drill_coin.cpp
+    src/coop/dev/pr64_drill_coin_credit.cpp
+    src/coop/dev/pr64_drill_lid.cpp
+    src/coop/dev/pr64_drill_lid_aim.cpp
     src/coop/dev/container_route_census.cpp
     src/coop/dev/container_route_drill.cpp
     src/coop/dev/container_route_drill_client.cpp
@@ -115,8 +153,13 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/physmods_drill.cpp
     src/coop/dev/drone_call_drill.cpp
     src/coop/dev/dronesack_drill.cpp
+    src/coop/dev/dronesack_drill_take.cpp
     src/coop/dev/dronesack_drill_host.cpp
     src/coop/dev/dronesack_drill_census.cpp
+    src/coop/dev/join_prop_loss_drill.cpp
+    src/coop/dev/join_prop_loss_drill_arms.cpp
+    src/coop/dev/join_prop_loss_drill_bracket.cpp
+    src/coop/dev/join_prop_loss_drill_held.cpp
     src/coop/dev/remover_drill.cpp
     src/coop/dev/remover_drill_host.cpp
     src/coop/dev/remover_drill_layout.cpp
@@ -272,6 +315,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/director/container_take_probe.cpp
     src/coop/dev/director/grab_race_probe.cpp
     src/coop/dev/director/dup_verifier.cpp
+    src/coop/dev/director/container_take_judge.cpp
     src/coop/dev/director/door_approach.cpp
     src/coop/dev/director/routes.cpp
     src/coop/dev/director/aim_fan.cpp

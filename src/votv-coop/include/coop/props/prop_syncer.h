@@ -42,6 +42,10 @@ void OnHostEnd(uint32_t eid, uint8_t gen);
 // its own rows relayed, and the stream's batch apply skips them. Counts the skip.
 bool SkipsHostPose(uint32_t eid);
 
+// CLIENT: true while this peer's table holds `actor` (a claim pending or granted, a throw's election included): its
+// own copy of the prop is the truth and its damage stands. Walks the table, a handful of entries. Game thread.
+bool AuthorsActorHere(void* actor);
+
 // Session end: the table, the backoffs and the counters. Game thread.
 void OnDisconnect();
 
@@ -53,6 +57,9 @@ struct EntryView {
     uint16_t   seq = 0;         // the claim's seq
     uint32_t   rowsSent = 0;    // PropDrivePose rows sent in this episode
 };
+// The throwdepart arm's mute: from now to the session's end this client sends no row and no End of any thrown (elected)
+// entry, as a crash would stop them. Default off; cleared by OnDisconnect. Game thread.
+void MuteThrownRows();
 // The open episode on `eid`, state None when there is none.
 EntryView EntryOf(uint32_t eid);
 // The generation of the last grant this session for `eid`, 0 if none.

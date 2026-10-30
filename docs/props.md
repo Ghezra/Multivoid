@@ -159,10 +159,10 @@ player flicked the camera. The receiver's copy takes the flags and lets go from 
 transform, so lost last poses still end where the holder's did, and gets the velocity back unless it
 ended frozen in a slot or a mount, where it stays; a stuck wall-attachable keeps the place its stick
 gave it. A release for a prop something else moves now -- this peer's own grab, another hold, the
-host's driven-prop channel -- changes nothing but its own hold. Above a launch speed the receiver
-also calls the prop's own thrown event, so the sound and the trail come from the engine. A stream
-that stops for half a second, or a holder that switches to another prop, is an implicit release.
-After the release each copy flies by its own physics, and the releaser's copy decides where it rests
+host's driven-prop channel -- changes nothing but its own hold. A release the holder numbered also
+makes the receiver call the prop's own thrown event, so the sound and the trail come from the engine.
+A stream that stops for half a second, or a holder that switches to another prop, is an implicit release.
+After a release that is not a throw each copy flies by its own physics, and the releaser's copy decides where it rests
 (`coop/props/prop_settle`): the releaser watches its copy, and once it has not moved past the driven
 prop's send epsilons for the driven prop's rest time it sends `PropSettle` with that place, its
 frozen and sleep. Every other peer whose copy no hand, drive or park moves puts its copy there and
@@ -183,6 +183,40 @@ client in one `PropHoldRefused`. The refused holder lets go and sends no release
 drops that hold's drive, and a release of that hold that crossed the refusal moves nothing. A client
 that meets a second hold of a prop it already sees held waits for the host's word rather than driving
 both. A swinger's drag and a trash clump keep their own rules, and a hook's pull yields to a hand.
+
+A throw is the game's own `throwShit` on the local pawn: it sets the launch velocity, and every throw
+path calls it (`mainPlayer_C`'s hand throw, the grabbed prop's fire press, the host's own). A
+script-gate watch on it, filtered to the local pawn by identity, numbers the throw with a sequence that
+is never 0 and records it (`coop/props/prop_throw`). The sequence rides the release and the drop intent;
+0 means the prop was not thrown, and a fast release with none plays no thrown event. The host then
+elects the thrower the prop's syncer, the way MTA's server elects an unoccupied vehicle's: a client's
+release from the prop's last holder, or the drop intent of a hand throw once the host's spawn has its
+element id, opens a driven row naming the thrower under a new generation and sends the grant unasked
+(`PropSyncAnswer`, whose `seq` is the sequence). The thrower's copy has flown since the throw and is
+never parked; it streams its pose, velocity and clock on the drive channel, the host's copy follows
+the first admitted row, and every other client receives the host's republish. A row's velocity, a release's,
+a drop intent's and an End's are clamped to the throw's bounds (`coop/net/throw_bounds.h`; a throw's spin
+meets throwShit's ceiling, every other spin a looser body ceiling), and the host relays a client's release
+to the other clients itself, after the clamp. The election also needs the release within reach of the
+thrower's puppet on the host (the claim's reach); out of reach, the release applies as a plain release.
+
+A thrown prop's rows cost trust, never display. A row whose step does not agree with the speed a prop can
+fly is shown like any other (the host's copy and every other client follow it) and counted on the row; a
+passing row resets the run. After `kMaxRefusedRows` failures in a row, or twice that many over the flight,
+the thrower's right is revoked: the host takes the prop back from the last passing row's pose and velocity
+under a new generation (when no row passed, from the release pose at rest), and one line names the slot and
+the counts. This diverges from MTA, which bounds nothing on an unoccupied-vehicle
+syncer's packet; ours follows the rule that a client's discontinuity costs trust. The host's own grab
+throw opens a coast row that streams it to rest. The host's grab, a flight past its bound, a grant that
+no row follows, a thrower who leaves, a thrower who falls silent (no admitted row for `kThrowSilenceMs`,
+judged per host tick; a claim's row keeps the once-a-second pass and its 5 s) and any end of a thrown prop
+nothing was admitted for hand the prop to the host; its copy then continues from the last passing row's pose and velocity (from the release
+pose at rest when rows came and none passed; its own state when none came) and every copy follows the host. `[?]` until the throw arms read them.
+
+Joining mid-flight: a peer that becomes world-ready while a thrown prop flies gets the host's copy from
+the prop's spawn, the drive's resend of the admitted pose (`OnPeerWorldReady`), and then the relayed
+rows of the elected syncer, each carrying the row's generation. A joiner is never the thrower, so it is
+never elected. `[?]` until the join arm of the throw drill reads it.
 
 ### Dragged by a hook
 
@@ -247,11 +281,31 @@ per-peer array in the save object, addressed by an index the container holds, an
 verb runs inside the Blueprint, below the two dispatch seams a hook can intercept. The
 script-body gate does see it -- that is how this lane learns a container changed -- but it runs on
 the presser's own machine, and no local body can wait for an answer from across the network. So
-the peer whose verb fired authors the contents and the host arbitrates them (`coop/props/container_contents_sync`): one slice of its
-array per live container is sent at a joiner's ready edge and on change, a client's slice is
-accepted only if its author could have reached that container, has not sent more in the last
-second than an honest client produces, and edited the contents the container holds now, and an
-extraction on a client is a container-extract birth through the intent door above. The open and closed state is a keyed-device channel like a
+the host publishes the contents (`coop/props/container_contents_sync`): one slice of its
+array per live container is sent at a joiner's ready edge and on change, and a client's mirror is
+display only. A client's only slice is a thrown container's birth, bounded by its arrival rate;
+the host refuses every other client slice and answers the author with its own truth
+(`coop/props/container_truth`). A change a client makes to a shared container is an act the host
+judges, and an extraction on a client is a container-extract birth through the intent door above. The game arms a
+container's overlap box (the trigger a thrown prop enters to be filed) when a record leaves the container by a player's
+take, through the container's own `dingus`; the host's raw record edit never runs it, so the host calls `dingus` once a
+client's take is final (`container_act_host`) `[?]`. Whether that box is armed is the host's own physical state: every
+slice the host publishes carries it in a flags byte (`coop/props/container_arming`, `container_slice_wire`), a native hook
+on `SetCollisionEnabled` marks the container for publication when the box changes (a host take, a broken container, a
+roomba's own writes included), and a client's mirror takes its box from the byte and cancels its own `dingus` on a shared
+container, so a mirror's trigger is never armed by a client alone `[?]`. A prop a client drives into an armed box is
+judged by the host at the host's own overlap, with no client message: the host's copy is kinematic there, so the box's
+own body would refuse it, and a PRE on `putObjectIn_overlap` judges it instead (the box is armed, a held or claimed
+driver is within reach, no client holds the container, the body's silent gates pass, the prop fits), ends the driver's
+row or drive so the copy simulates, and lets the game's body file it. Every such put is filed, refused with its reason, or
+dropped and counted. A put that cannot be judged yet waits for the edge it needs: a client's hold ending, the prop's id
+binding, or the container changing (the last two for at most 2 s, then it is refused as unread); the host's own put on a
+held container waits too. A prop still in the box by then with no driver is pre-checked the same way and the game's body
+runs on it, since it fires no second overlap, and the game's own body may still refuse it. A refusal stands while the
+same drive does, until the container changes. A client's own copy of the call on a shared mirror is cancelled when it
+comes from the container's own overlap graph. A joiner needs no replay: the put is one host step, so a joiner seeded
+before it receives the prop's destroy and the container's publication, and one seeded after receives the container with
+the record `[?]`. The open and closed state is a keyed-device channel like a
 door's ([devices.md](devices.md)). The full break-and-spill behaviour, and the single-slot verbs, are reverse-engineered
 and designed and not built.
 
@@ -402,14 +456,14 @@ is built; concrete and food are designed and not built.
 |---|---|---|
 | `PropPose` (stream) | the holder to all | the held prop's world transform, per frame, and its hold's generation |
 | `PropSpawn`, `PropDestroy` | the host to all; a destroy from either role | class, key, id, transform, physics flags, the birth scalar; the key and id |
-| `PropRelease` | the holder to all | the prop's transform, its inherited linear and angular velocity and its frozen and sleep at the edge, and the hold it closes |
+| `PropRelease` | the holder to all | the prop's transform, its inherited linear and angular velocity and its frozen and sleep at the edge, the hold it closes and the throw sequence (0 = not a throw); a client's goes through the host, which clamps it and sends it on |
 | `PropToolFlags` | the tool's user to all | a prop's static, frozen and sleep as a toolgun tool left them `[?]` |
 | `PropSettle` | the releaser to all | where its released copy rests: the transform, its frozen and sleep, and the hold whose release it follows `[?]` |
 | `PropHoldRefused` | the host to every client | a hold the host refused, by its holder's slot and generation, the prop's key, and the slot whose hold keeps the prop |
 | `PropDrivePose` (stream) | the host to all; a syncing client to the host | the poses of the props under a hook's drive or a broom's push that moved since their last one, with the claim generation; a client's rows of the prop its own interaction moves, which the host judges before it relays one `[?]` |
 | `PropDriveEnd` | the host to all; a syncing client to the host | the final pose and velocity of a driven prop that rested or that a hand took; closes its generation; a client's End is admitted when it is the row's syncer `[?]` |
-| `PropSyncClaim`, `PropSyncAnswer` | a client to the host; the host to that client | a client's request to sync a prop its interaction moves, and the host's grant, refusal (with the reason) or revoke (with the generation) `[?]` |
-| `PropDropIntent`, `ReelEjectIntent` | a client to the host | a place, or an unavoidable birth, for the host to author |
+| `PropSyncClaim`, `PropSyncAnswer` | a client to the host; the host to that client | a client's request to sync a prop its interaction moves, and the host's grant, refusal (with the reason) or revoke (with the generation); the host also grants a thrown prop to its thrower unasked, `seq` being the throw sequence `[?]` |
+| `PropDropIntent`, `ReelEjectIntent` | a client to the host | a place, a throw or an unavoidable birth, for the host to author, with the placed root's velocity and the throw sequence |
 | `PropStickState` | the peer that sticks or frees it, to all | frozen or static, the commit pose and the hold the stick ended; or an unstick, with the pose and velocity |
 | `PropSnapPos` | the host to one joiner | a position correction for a save-authoritative prop moved in the join window, with a keyed prop's frozen and sleep; it carries the host's drive context for the prop (claim generation and open), the client drops one older than a drive END still on its copy, and a prop a hand held after its correction went out gets a follow-up after the release `[?]` |
 | `ContainerState`, `ContainerContents` | the presser; the host | open or closed; one slice of the host's object array |
@@ -438,7 +492,7 @@ prop resolves.
 | Limit | Evidence |
 |---|---|
 | Two players who grab one keyed prop inside one round trip both hold it until the host's refusal reaches the one it did not keep, so the refused player sees the prop in hand for that round trip before it is taken away. A swinger's drag has no such judge: two peers dragging one lid each move their own copy. A release delayed past another peer's whole later hold of the prop still puts it back where the first holder let go, and a join's snapshot row read before a live stick, unstick or release can reach the joiner after it and undo it there, until the window's late re-flush corrects the prop | `[V]` the grab race (`coop/dev/director/grab_race_probe`): both peers fired the grab within 20 ms of each other, three runs; the host refused the client's hold each time, the client let go with no release, and over a 4 s watch no sample on either peer had two holders and the client's copy followed the host's stream in 138 of 139; `[V]` `coop/props/remote_prop_drive` leaves a door the local player drags to that drag; `[RD]` the rows carry no version; the join gate holds a live stick or release behind the snapshot rows, so a joiner applies the rows first `[?]` |
-| A prop let go of flies by each peer's own physics from the same release transform and velocity, so the copies can take different paths before the releaser's rest corrects the others: a fire extinguisher dropped from the hand ended between 0.2 and 152.6 cm apart on the two peers over fourteen drops before that correction existed, the widest where the client's copy stayed on a surface about a metre up that the host's copy landed on and rolled off. A copy that rests apart moves there in one step, a visible jump; one still moving ten seconds after its release is not corrected, and past sixteen released props at once the rest falls uncorrected. What the flying copy knocks on one peer stays knocked there alone | `[V]` the fire extinguisher drill (`coop/dev/fireext_drill`): the host's rest line against the client's last watch line; `[?]` `coop/props/prop_settle`, not yet measured in a two-peer run |
+| A prop let go of without a throw (a drop, a place) flies by each peer's own physics from the same release transform and velocity, so the copies can take different paths before the releaser's rest corrects the others; a thrown prop is streamed by its thrower and the host (above). A fire extinguisher dropped from the hand ended between 0.2 and 152.6 cm apart on the two peers over fourteen drops before that correction existed, the widest where the client's copy stayed on a surface about a metre up that the host's copy landed on and rolled off. A copy that rests apart moves there in one step, a visible jump; one still moving ten seconds after its release is not corrected, and past sixteen released props at once the rest falls uncorrected. What the flying copy knocks on one peer stays knocked there alone | `[V]` the fire extinguisher drill (`coop/dev/fireext_drill`): the host's rest line against the client's last watch line; `[?]` `coop/props/prop_settle`, not yet measured in a two-peer run |
 | A prop whose own grab prelude adds to the base one gets only the base one on a receiver: the sprinkler's also detaches its hose, so the hose stays tied to a sprinkler another peer carries away. The glowstick's replaces the base one with its own release, and a receiver runs the base one | `[V]` the sprinkler and glowstick Blueprints: `prop_sprinkler_C`'s prelude calls `prop_C::playerGrabbed_pre` and `hose->detachSprinkler`, `prop_glowstick_C`'s calls `releaseGlowstick` alone; `coop/props/remote_prop` runs the base prelude |
 | A toolgun flag change reaches the others only when the tool sets the flags inside its own `init`; a tool that sets them later, from a timer or another event, stays on its user's copy. A change that crosses a hold of the prop on another peer is left to that hold, and the hold's release puts its own flags on every copy | `[?]` `coop/props/prop_tool_flags`, not yet measured in a two-peer run; which tools change flags, and when, is not established |
 | Another peer's hold can carry away the chair this peer sits in at the laptop, which single player never allows: the laptop freezes the seat only on the machine whose player sits | `[V]` the laptop Blueprint: `stabilizeSeat` sets the seat frozen, and the exit's `setPropProps` clears it; `coop/props/remote_prop` unfreezes a held copy at the hold's first pose |
@@ -462,7 +516,7 @@ prop resolves.
 | one holder per prop | `coop/props/prop_hold_claim`, `coop/props/prop_hold` (who holds a prop on the host) |
 | where a released prop rests | `coop/props/prop_settle` |
 | the toolgun's flags | `coop/props/prop_tool_flags` |
-| a client's intents | `coop/props/prop_drop_intent` |
+| a client's intents | `coop/props/prop_drop_intent`; a thrown prop: `coop/props/prop_throw`, `coop/net/throw_bounds` |
 | the stick | `coop/props/prop_stick_sync` |
 | a prop under a hook's drive or a broom's push | `coop/props/prop_drive_host` (the host's set and stream), `coop/props/prop_drive_stream` (the receiver), `coop/items/hook_prop_claim` (the hook lane feeding it), `coop/items/hook_constraint` (the tie itself, host-only), `coop/items/broom_push` (the broom's push feeding it) |
 | containers | `coop/props/container_contents_sync`, `coop/items/save_record_wire`, `coop/interactables/interactable_sync` |

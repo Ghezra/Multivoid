@@ -7,6 +7,7 @@
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
 #include "coop/player/local_streams.h"  // CurrentHoldGen, the hold a stick ends
+#include "coop/props/bracket_position_wait.h"  // KeepIfWaiting: a stick for a spawn that waits for the bracket's end
 #include "coop/props/prop_drive_host.h"  // OverrideClientSyncer: a replay that writes the copy ends a client's row on it
 #include "coop/props/prop_element_tracker.h"
 #include "coop/props/prop_key_index.h"  // a key on the wire to a live actor
@@ -135,7 +136,9 @@ void* WallAttachCompOf(void* actor) {
 // not arrive before the PropStickState. GNS orders reliable delivery WITHIN a lane, so the pair is
 // FIFO only because both ride the one Default lane (LaneForKind in
 // coop/net/session_lanes.h). Draining next pass makes the order structural as well: TickGameplay
-// runs before local_streams' release edge.
+// runs before local_streams' release edge. At the host hop the stick is relayed on the net thread at its receipt and the
+// release from the game thread after its dispatch, so the stick-then-release order holds; the inverse pair (a release,
+// then a stick after a flight) is benign.
 struct Pending {
     void*   prop = nullptr;
     int32_t internalIdx = -1;
@@ -480,6 +483,12 @@ void OnStickState(const coop::net::PropStickStatePayload& payload, uint8_t sende
             if (a && R::IsLiveByIndex(a, el->GetInternalIdx())) prop = a;
         }
     }
+    // The prop's spawn waits for the snapshot bracket's end: the newest stick state is kept for the bind. The relay
+    // to the other clients ran before this function.
+    if (!prop && coop::props::bracket_position_wait::KeepIfWaiting(
+                     payload.key, coop::props::bracket_position_wait::Kept::Stick, &payload, sizeof(payload),
+                     senderPeerSlot))
+        return;
     if (!prop) {
         UE_LOGW("prop_stick_sync: %s for key='%ls' eid=%u -- no local match (slot %u)",
                 unstick ? "UNSTICK" : "STICK", keyW.c_str(), payload.elementId, senderPeerSlot);

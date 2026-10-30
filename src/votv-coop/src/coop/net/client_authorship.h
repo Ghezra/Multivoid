@@ -135,7 +135,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::PointSackRedeem:
     case ReliableKind::CoffeeActionIntent:
     case ReliableKind::RemoverRequest:
-    case ReliableKind::CreatureHitIntent:
+    case ReliableKind::HitIntent:
     case ReliableKind::ProjectileFired:
     case ReliableKind::ExplosionRequest:
     case ReliableKind::AtvExplodeRequest:
@@ -144,6 +144,8 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::AtvTakeover:
     case ReliableKind::PropActRequest:
     case ReliableKind::PropActCommit:
+    case ReliableKind::ContainerActRequest:
+    case ReliableKind::ContainerActCommit:
     case ReliableKind::CameraToggleIntent:
     case ReliableKind::LaptopTabReport:
     case ReliableKind::PropDriveEnd:
@@ -224,6 +226,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::HookAnchored:
     case ReliableKind::RemoverResult:
     case ReliableKind::PropActReply:
+    case ReliableKind::ContainerActReply:
     case ReliableKind::CameraActiveState:
     case ReliableKind::CameraLightState:
     case ReliableKind::LaptopTabState:

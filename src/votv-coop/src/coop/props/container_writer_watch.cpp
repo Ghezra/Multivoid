@@ -1,13 +1,17 @@
 // coop/props/container_writer_watch.cpp -- the addObject / takeObj watch on a container's inventory:
-// a change notice, never an action. See coop/props/container_writer_watch.h.
+// a change notice, never an action. On the host a hit marks the container for the sweep; on a client
+// a shared container's mirror is display only, so a hit marks nothing. See coop/props/container_writer_watch.h.
 
 #include "coop/props/container_writer_watch.h"
 
 #include "coop/config/config.h"
 #include "coop/config/config_registry.h"
 #include "coop/dev/container_route_census.h"
+#include "coop/dev/container_writer_probe.h"
 #include "coop/element/registry.h"
 #include "coop/net/session.h"
+#include "coop/props/container_act_request.h"
+#include "coop/props/container_birth.h"
 #include "coop/props/container_contents_sync.h"
 #include "ue_wrap/actors/container_inventory.h"
 #include "ue_wrap/core/log.h"
@@ -52,10 +56,16 @@ bool IsHost() {
 }
 
 // Fires at the entry of addObject and takeObj on the game thread, a change notice rather than an
-// action: it remembers which component was touched. No role gate: the verb is a local virtual
-// call, so by the time it is seen the item has already moved on this machine, and an intent the
-// host could deny cannot exist here. Gated on the host it dropped every client extraction: the
-// client took one of two burgers, the host's slot stayed at two, and the world gained a burger.
+// action: it remembers which component was touched. The verb is a local virtual call, so by the
+// time it is seen the item has already moved on this machine. The role decides what it means:
+//  - on the host it marks the container dirty, and the lane's sweep publishes it;
+//  - on a client a shared world container's mirror is display only (the host holds the record). The
+//    verb runs on the client's copy, the watch forgets the applied hash so the host's next
+//    publication or its Gone truth puts the mirror back, and the probe names the writer. A container
+//    the client threw is its author's until its birth slice goes: that one marks like the host's,
+//    and its sweep ships the birth slice (container_birth).
+// A verb inside a granted act's replay is handled by the replay itself and is left alone, by the
+// latch. The extraction latch above is armed either way.
 sg::Verdict OnVerbEntry(const sg::Call& br) {
     // The first statement, ahead of every filter: a resolved verb name does not prove this callback
     // runs, and a registration once returned true with the callback inert for a whole session. If
@@ -77,12 +87,21 @@ sg::Verdict OnVerbEntry(const sg::Call& br) {
     coop::dev::container_route_census::OnVerb(br, br.tag == kVerbTakeObj);
     // A takeObj on any inventory component arms the extraction latch; addObject must not.
     if (br.tag == kVerbTakeObj) g_takeObjInFlight.store(true, std::memory_order_relaxed);
+    if (coop::props::container_act_request::InReplay()) return sg::Verdict::Run;
     void* owner = ci::OwnerOf(br.object);
     if (!owner) return sg::Verdict::Run;
     const uint32_t eid =
         static_cast<uint32_t>(coop::element::Registry::Get().EidForActor(owner));
     if (eid == static_cast<uint32_t>(coop::element::kInvalidId)) return sg::Verdict::Run;
     // Resolve identity AT THE EDGE; the lane derefs nothing later.
+    if (!IsHost() && ci::IsContainer(owner) && ci::IsWorldInventory(br.object) &&
+        !coop::props::container_birth::IsBirthSlice(eid)) {
+        // The verb runs, not cancelled: a writer that spawns an actor and then absorbs it would leave the
+        // spawned actor behind; the host's truth restores the copy.
+        coop::props::container_contents_sync::ForgetApplied(eid);
+        coop::dev::container_writer_probe::OnClientVerb(eid, owner, br, br.tag == kVerbTakeObj);
+        return sg::Verdict::Run;
+    }
     coop::props::container_contents_sync::MarkHostWrite(eid);
     return sg::Verdict::Run;
 }

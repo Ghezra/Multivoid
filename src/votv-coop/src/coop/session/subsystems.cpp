@@ -64,11 +64,16 @@
 #include "coop/player/stat_orders.h"  // an admin's orders to a player's stats: the kept session, the tokens answered Left
 #include "coop/voice/voice_chat.h"
 #include "coop/element/bind_wait.h"  // OnSlotLeft / Clear: the messages held for a deferred bind
+#include "coop/props/bracket_position_wait.h"  // Reset: the wait goes with the session
 #include "coop/element/death_seam.h"  // an element's end of play, handed to the lanes that subscribed
 #include "coop/props/host_spawn_watcher.h"  // HOST mirror of those ambient spawner outputs (the pinecone scare)
 #include "coop/props/prop_drop_intent.h"  // client-place -> host-auth keyed-prop DROP INTENT
+#include "coop/props/prop_throw.h"        // the game's own throw, seen at throwShit and numbered
 #include "coop/props/remover_request.h"  // the tool gun's remover as a request the host performs
-#include "coop/creatures/creature_hit_intent.h"  // a client's hit on a creature as an intent the host judges
+#include "coop/player/hit_intent.h"  // a client's hit on a host entity as an intent the host judges
+#include "coop/props/prop_damage_gate.h"  // a client never decides the damage of a prop it does not author
+#include "coop/props/container_act_host.h"  // a client's take of a record out of a world container, judged and held on the host
+#include "coop/props/container_act_request.h"  // a client's take of a record out of a world container, asked of the host first
 #include "coop/props/prop_act_host.h"  // a client's take or use of a shared prop, judged and committed on the host
 #include "coop/props/prop_act_request.h"  // a client's take or use of a shared prop, asked first and replayed on a grant
 #include "coop/props/prop_spawn_authoring.h"  // a PLAYER's spawn verb vs the world's own spawns
@@ -217,7 +222,6 @@ void InstallLoadWatchers(coop::net::Session& session) {
 
 void Install(coop::net::Session& session) {
     coop::grab_observer::Install();
-    coop::prop_lifecycle::InstallInventory(&session);
     coop::prop_lifecycle::Install(&session);
     coop::npc_sync::Install(&session);
     coop::world_actor_sync::Install(&session);  // non-Character event-actor mirror (2nd BeginDeferred interceptor, disjoint allowlist)
@@ -320,8 +324,11 @@ void Install(coop::net::Session& session) {
     coop::kerfus_lanes::Install(session);  // the plain kerfur: a client refuses its brain and its verbs, the host sends its state
     coop::kerfur_command::Install(&session);  // host-authoritative kerfur menu relay, serving the requester
     coop::remover_request::Install(&session);  // CLIENT: the remover press becomes a request (init watch); HOST: its judge
-    coop::creature_hit_intent::Install(&session);  // CLIENT: a swing that hit a creature's mirror becomes an intent (addDamage watch); HOST: its judge
+    coop::hit_intent::Install(&session);  // CLIENT: a swing that hit a host entity's mirror becomes an intent (addDamage watch); HOST: its judge
+    coop::props::prop_damage_gate::Install(&session);  // CLIENT: the impactDamage and fireDamage watches cancel the damage of a prop this client does not author
+    coop::props::container_act_host::Install(&session);  // HOST: the judge of a client's take of a record out of a world container
     coop::prop_act_host::Install(&session);  // HOST: the judge of a client's take or use of a shared prop
+    coop::props::container_act_request::Install(&session);  // the take watch (CLIENT asks the host first); CLIENT: takes its answer and replays a grant
     coop::prop_act_request::Install(&session);  // the six take-or-use watches (CLIENT asks the host, HOST honours a reservation); CLIENT: the host's answer, and the replay of a grant
     coop::kerfur_menu_input::Install(&session);  // client radial-menu verb detect (InpActEvt_use PRE -- the actionName dispatch is PE-invisible) -> kerfur_command relay
     coop::kerfur_form_assembler::Install(&session);  // script-body gate consumer: watch the two conversion verbs
@@ -373,6 +380,7 @@ void DisconnectSlot(coop::net::Session& session, int slot) {
     coop::sat_console_sync::OnPeerGone(static_cast<uint8_t>(slot));  // its terminal kept, running its command, for its return
     coop::daily_task_sync::OnPeerGone(static_cast<uint8_t>(slot));  // a departed slot is owed no task
     coop::props::container_birth::OnPeerGone(static_cast<uint8_t>(slot));  // a container transfer it had in flight
+    coop::props::container_act_host::OnPeerGone(static_cast<uint8_t>(slot));  // a record it held in escrow goes back
     coop::prop_act_host::OnPeerGone(static_cast<uint8_t>(slot));  // a take or use it had reserved
     coop::signal_sync::OnDisconnectSlot(slot);
     coop::email_sync::OnDisconnectSlot(slot);
@@ -447,8 +455,11 @@ DisconnectStats DisconnectAll() {
     coop::kerfur_entity::OnDisconnect();  // clear the KerfurId table + free its reserved host ids
     coop::kerfur_command::OnDisconnect();  // drop pending menu commands
     coop::remover_request::OnDisconnect();  // drop the remover queues and the shown notices
-    coop::creature_hit_intent::OnDisconnect();  // forget the once-per-session log latches
+    coop::hit_intent::OnDisconnect();  // forget the once-per-session log latches
+    coop::props::prop_damage_gate::OnDisconnect();  // say the cancelled counts, forget the once-per-class latches
+    coop::props::container_act_host::OnDisconnect();  // restore the records held in escrow, drop the tallies and refusals
     coop::prop_act_host::OnDisconnect();  // drop the take-or-use tallies, refusals and reservations
+    coop::props::container_act_request::OnDisconnect();  // drop the pending container act, its expired records and unsent commits
     coop::prop_act_request::OnDisconnect();  // drop the pending take or use, its latch and its expired records
     coop::kerfur_menu_input::OnDisconnect();  // drop the cached session (the InpActEvt_use observer stays registered)
     coop::prop_hold_claim::OnDisconnect();  // drop the refusal records and the notice cooldown
@@ -506,7 +517,7 @@ DisconnectStats DisconnectAll() {
     coop::laptop_buffer_sync::OnDisconnect();  // quad shadow + assembler
     coop::floppybox_sync::OnDisconnect();  // box shadows + taken-ring + canonical retries
     coop::props::container_contents_sync::OnDisconnect();  // dirty set + retry + parked + assembler
-    coop::props::prop_record_refresh::OnDisconnect();  // per-prop coalescing state
+    coop::props::prop_record_refresh::OnDisconnect();  // session release, counters, the drill red's map
     coop::props::prop_can_state::OnDisconnect();  // what is known of every can
     coop::dev::dev_lanes::RearmSelftests();  // [dev] the selftests re-arm for the next session
     coop::desk_cursor_sync::OnDisconnect();
@@ -527,6 +538,7 @@ DisconnectStats DisconnectAll() {
     coop::drive_rack_sync::OnDisconnect();  // rack baselines/shadow + deny/taken rings
     coop::sleep_sync::OnDisconnect();
     coop::sleep_rest::OnDisconnect();  // a rest in progress goes back to factor 1
+    coop::prop_throw::OnDisconnect();  // the thrower's records of its own throws
     coop::wisp_attack_sync::OnDisconnect();  // clear damage-cancel latch + handled-wisp edges + pending despawns
     coop::wisp_tear_mirror::OnDisconnect();  // clear any armed victim-death deadline
     coop::wisp_grab_hold::OnDisconnect();  // release a live self-grab (un-strand MOVE_None) and drop the holds
@@ -552,6 +564,7 @@ DisconnectStats DisconnectAll() {
     coop::trash_clump_pose_stream::OnDisconnect();  // drop all client per-eid carry drives
     coop::prop_drive_host::OnDisconnect();  // drop the host's driven-prop set and the client syncers' table (prop_syncer_host)
     coop::element::bind_wait::Clear("disconnect");  // the messages waiting for a bind go with the session
+    coop::props::bracket_position_wait::Reset();  // and the spawns waiting for a bracket that will not close
     coop::prop_drive_stream::OnDisconnect();  // every driven prop here gets its physics back
     coop::prop_park::OnDisconnect();  // after both receivers gave their props back: the holds a park still has
     coop::rider_hold::OnDisconnect();  // last: any movement still held ticks again
@@ -671,12 +684,16 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::TrashWatch};    coop::host_spawn_watcher::TickWatchedProps(&session); }  // ambient-prop (pinecone) SetLifeSpan-expiry / consumption despawn -> PropDestroy(eid)
     { PP::Scope _s{PP::Bucket::TrashWatch};    coop::host_spawn_watcher::DrainPendingSpawns(&session); }  // adopt+express FinishSpawningActor Func-seam spawns (R-drop/place/Q-menu) one tick after Finish (key restored, hand actor excluded)
     if (isHost) { PP::Scope _s{PP::Bucket::Interactable}; coop::broom_push::Tick(); }  // HOST: stream the props and clumps a broom stroke pushed (AFTER the drain above, which names the trash that same stroke dispensed)
+    { PP::Scope _s{PP::Bucket::TrashWatch};    coop::prop_throw::Tick(); }  // the throwShit watch until live, and the records of throws that waited out their grant (before the drain that reads them)
     { PP::Scope _s{PP::Bucket::TrashWatch};    coop::prop_drop_intent::Tick(&session); }  // CLIENT: author a PropDropIntent for a detected place whose Key is parked (cheap no-op when empty / on host)
     { PP::Scope _s{PP::Bucket::TrashWatch};    coop::kerfur_form_assembler::Tick(); }  // GT FName-resolve the 2 verbs + bind the containment seams (latches once; no-op after)
     { PP::Scope _s{PP::Bucket::TrashWatch};    coop::kerfur_command::Tick(); }  // menu commands; HOST: each sender's queued request, paced
     { PP::Scope _s{PP::Bucket::TrashWatch};    coop::remover_request::Tick(); }  // the init watch's settle; HOST: each sender's queued remover press, judged and paced
-    { PP::Scope _s{PP::Bucket::TrashWatch};    coop::creature_hit_intent::Tick(); }  // the addDamage watch's settle; HOST: each sender's queued creature hit, judged and paced
+    { PP::Scope _s{PP::Bucket::TrashWatch};    coop::hit_intent::Tick(); }  // the addDamage watch's settle; HOST: each sender's queued hit, judged and paced
+    { PP::Scope _s{PP::Bucket::TrashWatch};    coop::props::prop_damage_gate::Tick(); }  // the two damage watches' settle
+    { PP::Scope _s{PP::Bucket::TrashWatch};    coop::props::container_act_host::Tick(); }  // HOST: each sender's queued container act, judged and paced; the holds' deadline
     { PP::Scope _s{PP::Bucket::TrashWatch};    coop::prop_act_host::Tick(); }  // HOST: each sender's queued take or use, judged and paced
+    { PP::Scope _s{PP::Bucket::TrashWatch};    coop::props::container_act_request::Tick(); }  // the take watch's settle; CLIENT: the pending container act's wait bound and the commits to resend
     { PP::Scope _s{PP::Bucket::TrashWatch};    coop::prop_act_request::Tick(); }  // the take-or-use watches' settle; CLIENT: the pending take or use's wait bound
     { PP::Scope _s{PP::Bucket::TrashWatch};    coop::kerfur_convert_host::Tick(); }  // HOST: each sender's queued kerfur conversion, paced
     { PP::Scope _s{PP::Bucket::TrashWatch};    coop::prop_stick_sync::Tick(); }  // broadcast recorded stick commits NOW -- must precede local_streams' release edge (net_pump runs TickGameplay first)

@@ -30,7 +30,7 @@ namespace {
 
 namespace rules = coop::prop_drive_rules;
 
-// A player throws a handful of props at most in ten seconds; a burst past this falls as it always did.
+// A player drops a handful of props at most in ten seconds; a burst past this falls as it always did.
 constexpr size_t kMaxWatched = 16;
 // A copy still moving this long after its release has no rest to report, the swinger coast's own bound.
 constexpr uint64_t kWatchBoundMs = 10000;

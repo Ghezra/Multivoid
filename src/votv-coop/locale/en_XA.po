@@ -473,6 +473,9 @@ msgstr "[[Duplicate settings with different values]]"
 msgid "Each surface picks its own family; applies on the next frame."
 msgstr "[[Each surface picks its own family; applies on the next frame.]]"
 
+msgid "Empty it before putting it in a shared container."
+msgstr "[[Empty it before putting it in a shared container.]]"
+
 msgid "Enter = send, Esc = close, Up/Down = history"
 msgstr "[[Enter = send, Esc = close, Up/Down = history]]"
 
@@ -693,6 +696,9 @@ msgstr "[[No tools here yet -- coming soon.]]"
 
 msgid "Nobody in the registry yet (players are recorded when they join)."
 msgstr "[[Nobody in the registry yet (players are recorded when they join).]]"
+
+msgid "Not enough space."
+msgstr "[[Not enough space.]]"
 
 msgid "Not ready yet, try again in a moment."
 msgstr "[[Not ready yet, try again in a moment.]]"
@@ -985,6 +991,15 @@ msgstr "[[Teleport to me]]"
 msgid "That can't be done right now."
 msgstr "[[That can't be done right now.]]"
 
+msgid "That can't go in there."
+msgstr "[[That can't go in there.]]"
+
+msgid "That container is locked."
+msgstr "[[That container is locked.]]"
+
+msgid "That container is too far away."
+msgstr "[[That container is too far away.]]"
+
 msgid "That is being held"
 msgstr "[[That is being held]]"
 
@@ -1211,6 +1226,9 @@ msgstr "[[Too many connections from you in a short time. Try again shortly.]]"
 
 msgid "Too many password attempts. Try again in ten minutes."
 msgstr "[[Too many password attempts. Try again in ten minutes.]]"
+
+msgid "Try again in a moment."
+msgstr "[[Try again in a moment.]]"
 
 msgid "Type /help for the commands."
 msgstr "[[Type /help for the commands.]]"

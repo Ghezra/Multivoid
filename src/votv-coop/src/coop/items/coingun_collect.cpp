@@ -11,6 +11,8 @@
 
 #include "coingun_internal.h"   // co-located private header (src tree, not include/)
 
+#include "coop/config/config.h"
+#include "coop/config/config_registry.h"
 #include "coop/element/intent_authority.h"   // may this sender name this coin
 #include "coop/element/registry.h"
 #include "coop/net/protocol.h"
@@ -192,9 +194,9 @@ bool OnCollectPre(void* self, void* params) {
         // Forward first, then cancel: after `return true` there is no seam left.
         const bool fwd = ForwardCollectToHost(self, L"overlap");
         UE_LOGI("coingun[client collect]: SUPPRESSED on mirror coin=%p (tripped by LOCAL %p), "
-                "forwarded=%d. The local credit is cancelled outright on THIS entry (unlike the "
-                "E-press, which is EX_LocalVirtualFunction and uncancellable); the host performs the "
-                "collect on its own coin.", self, other, fwd ? 1 : 0);
+                "forwarded=%d. The local credit is cancelled outright on THIS entry, as the E-press "
+                "is cancelled at the script-body gate; the host performs the collect on its own "
+                "coin.", self, other, fwd ? 1 : 0);
         return true;                             // cancel: no local addPoints, no local destroy
     }
 
@@ -258,6 +260,12 @@ sg::Verdict OnCollectVerb(const sg::Call& b) {
     if (I::IsCapturedCoin(b.object)) return sg::Verdict::Cancel;
     if (!IsHostOwnedCoin(b.object)) return sg::Verdict::Run;  // map-placed coin
     ForwardCollectToHost(b.object, L"press");
+    // Drill red (pr64_coin_local_credit_red, read only while the pr64 drill is set): the press is let through after the
+    // forward, the behaviour before this verdict cancelled it, so the client credits itself at the press.
+    static const bool kLocalCreditRed =
+        coop::config::ResolveEnum(coop::config_registry::rows::pr64_drill) != "off" &&
+        coop::config::ResolveFlag(coop::config_registry::rows::pr64_coin_local_credit_red);
+    if (kLocalCreditRed) return sg::Verdict::Run;
     // Even a failed send or host refusal must leave both the coin and the balance unchanged.
     return sg::Verdict::Cancel;
 }
@@ -461,9 +469,8 @@ void internal::OnDisconnectCollect() {
             g_noCredit.load(std::memory_order_relaxed),
             g_replayed.load(std::memory_order_relaxed));
     // Nothing world-scoped is held apart from g_collected, which goes whole: g_actionOptFn is a
-    // UFunction, and the repair throttle is a timestamp map by slot that a new session may reuse (a
-    // stale window can only delay a repair). A consumption guard keyed on a dead world's eids must
-    // not survive into a new session.
+    // UFunction, and no repair state exists: a client press forwards and is cancelled, and the host
+    // performs. A consumption guard keyed on a dead world's eids must not survive into a new session.
     g_collected.clear();
 }
 

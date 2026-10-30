@@ -119,7 +119,6 @@ constexpr bool IsClientRelayableReliableKind(ReliableKind k) {
     case ReliableKind::ItemActivate:
     case ReliableKind::PropSpawn:
     case ReliableKind::PropDestroy:
-    case ReliableKind::PropRelease:
     case ReliableKind::PropSettle:        // where a client's released prop came to rest, behind its release
     case ReliableKind::PropToolFlags:     // a client's toolgun freeze, unfreeze or make-static
     case ReliableKind::PropStickState:    // a client's wall-attachable stick
@@ -151,6 +150,8 @@ constexpr bool IsClientRelayableReliableKind(ReliableKind k) {
     case ReliableKind::OwnerEntityDestroy:
     case ReliableKind::HookState:         // a hook belongs to the player who fired it
     case ReliableKind::HookDestroy:
+    // PropRelease is not relayable: the host clamps a client's release and re-sends it to the other clients itself
+    // (prop_throw::JudgeRelease), with the sender's slot kept as the origin.
     // PropDriveEnd is not relayable: a client's End goes to the host, which judges it and re-publishes it. Nor is
     // PropSyncClaim (the host answers the sender alone); PropSyncAnswer is host-authored.
     // HookAnchorCommit is deliberately NOT relayable: it is an intent addressed to the host alone,

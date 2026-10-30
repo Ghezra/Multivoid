@@ -51,6 +51,26 @@ void ConsumeAnnounce(coop::net::Session& session, int slot) {
     CloseGateIfNoSnapshot(session, slot);
 }
 
+// The throwjoin drill's hold (dev::HoldSlot): the arm's intent per slot, set before the slot has an occupant, so it
+// is not per occupancy; the catch below is.
+bool g_held[coop::net::kMaxPeers] = {};
+
+// A hold that has caught its slot's announce. `gen` names the occupant (Session::peerGenerationForSlot at the catch: a
+// host-minted token, never reused, non-zero); `answer` and `drop` are the drill's requests, run by dev::Tick. A
+// PerSlotState, so a departure or a replacement clears it with the rest of the slot's person-state.
+struct HeldAnnounce {
+    bool     on = false;
+    bool     answer = false;
+    bool     drop = false;
+    uint32_t gen = 0;
+    uint64_t sinceMs = 0;
+};
+coop::roster_ledger::PerSlotState<HeldAnnounce> g_catch;
+
+// A catch is answered by its own bound at this age: the arm's own limit, so a join gate (which stays open from the
+// announce's receipt) is never held longer than a drill can run.
+constexpr uint64_t kJoinHoldMaxMs = 60000;
+
 uint64_t NowMs() {
     return static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count());
@@ -63,6 +83,21 @@ void OnAnnounce(coop::net::Session& session, int slot) {
     if (slot < 1 || slot >= static_cast<int>(coop::net::kMaxPeers)) return;
 
     if (!session.IsSlotWorldReady(slot)) {
+        // dev::HoldSlot: the answer waits for dev::Release; the announce's gate hold stays. The catch is per occupancy
+        // (cleared when the slot's occupant goes), and the hold catches ONE announce: a later occupant is never held.
+        HeldAnnounce& h = g_catch[slot];
+        if (h.on) {   // a second announce replaces the caught one; its own gate hold goes back, the first stays
+            session.ReleaseAnnounceHold(slot);
+            h.gen = session.peerGenerationForSlot(slot);
+            UE_LOGI("world_ready_answer: [dev] slot %d announced again while held -- the caught announce is replaced",
+                    slot);
+            return;
+        }
+        if (g_held[slot]) {
+            h = HeldAnnounce{true, false, false, session.peerGenerationForSlot(slot), NowMs()};
+            g_held[slot] = false;
+            return;
+        }
         // The first announce of this occupancy completes the join. The join window closes for this joiner
         // here: a host pile moved before this line reconciles by its save-time key; a move after it is a
         // normal live edit. Runs free (no bucket take) -- it is the join, not a repeat.
@@ -101,5 +136,62 @@ void OnAnnounce(coop::net::Session& session, int slot) {
         ConsumeAnnounce(session, slot);
     }
 }
+
+namespace dev {
+
+namespace {
+bool ValidSlot(int slot) { return slot >= 1 && slot < static_cast<int>(coop::net::kMaxPeers); }
+}  // namespace
+
+void HoldSlot(int slot, bool on) {
+    if (ValidSlot(slot)) g_held[slot] = on;
+}
+
+bool Caught(int slot) { return ValidSlot(slot) && g_catch[slot].on; }
+
+void Release(int slot) {
+    if (!ValidSlot(slot)) return;
+    g_held[slot] = false;
+    if (g_catch[slot].on) g_catch[slot].answer = true;
+}
+
+void Forget(int slot) {
+    if (!ValidSlot(slot)) return;
+    g_held[slot] = false;
+    if (g_catch[slot].on) g_catch[slot].drop = true;
+}
+
+void Tick(coop::net::Session& session) {
+    if (session.role() != coop::net::Role::Host) return;
+    uint64_t now = 0;
+    for (int slot = 1; slot < static_cast<int>(coop::net::kMaxPeers); ++slot) {
+        HeldAnnounce& h = g_catch[slot];
+        if (!h.on) continue;
+        // The occupant that was caught, still here: a connection that ended took its gate hold with it, and a
+        // successor holds a gate of its own that this catch never touched.
+        const bool same = session.IsSlotConnected(slot) && session.peerGenerationForSlot(slot) == h.gen;
+        if (!same) {
+            UE_LOGI("world_ready_answer: [dev] slot %d's caught announce belongs to an occupant that left -- dropped", slot);
+            h = HeldAnnounce{};
+            continue;
+        }
+        if (h.drop) {
+            h = HeldAnnounce{};
+            ConsumeAnnounce(session, slot);
+            continue;
+        }
+        if (!h.answer) {
+            if (now == 0) now = NowMs();
+            if (now - h.sinceMs < kJoinHoldMaxMs) continue;
+            UE_LOGW("world_ready_answer: [dev] slot %d's held announce is answered by its bound, %llu ms after the catch",
+                    slot, static_cast<unsigned long long>(now - h.sinceMs));
+        }
+        h = HeldAnnounce{};
+        g_held[slot] = false;
+        OnAnnounce(session, slot);
+    }
+}
+
+}  // namespace dev
 
 }  // namespace coop::world_ready_answer

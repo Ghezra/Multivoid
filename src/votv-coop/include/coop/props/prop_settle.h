@@ -8,7 +8,8 @@
 // (PropSettle). Every other peer whose copy no hold, drive or park moves puts its copy there, with the
 // releaser's frozen and sleep and no velocity. MTA leaves an unoccupied vehicle with its last syncer until
 // it stops (CUnoccupiedVehicleSync.cpp); here the releaser is that syncer at the end, and each copy flies
-// by its own physics on the way, so a throw looks the same on every peer until the copies land.
+// by its own physics on the way, so a drop looks the same on every peer until the copies land. A throw is
+// not watched: its thrower and the host stream it to rest.
 //
 // Game thread.
 

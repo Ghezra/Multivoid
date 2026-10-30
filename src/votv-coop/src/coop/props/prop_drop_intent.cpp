@@ -2,6 +2,8 @@
 
 #include "coop/props/prop_drop_intent.h"
 
+#include "coop/config/config.h"             // the throw arms' dev knobs
+#include "coop/config/config_registry.h"
 #include "coop/dev/container_route_census.h"   // IsEnabled -- the dev read of the last place spawn is kept only while it runs
 #include "coop/dev/prop_birth_key_probe.h"   // the seam's key-timing and drain-exit instrumentation
 #include "coop/element/registry.h"          // EidForActor (drain: tracked/mirror exclusion)
@@ -13,6 +15,8 @@
 #include "coop/props/prop_lifecycle.h"      // IsPerPlayerPropClass / IsWireSuppressedPropClass (the host gate)
 #include "coop/props/prop_save_data.h"
 #include "coop/props/prop_spawn_authoring.h" // BirthIsPlayerAuthored (the spawn menu / the toolgun)
+#include "coop/props/prop_drive_rules.h"    // kRestVelCmS: the floor under which a spawn is written no velocity
+#include "coop/props/prop_throw.h"          // ThrowSeqFor: the throw that launched a drained place
 #include "coop/props/prop_wire_parity.h"    // PhysFlagsOf, the one builder of a live prop's flags
 #include "coop/props/prop_element_tracker.h"// GetPropElementIdForActor
 #include "coop/props/prop_key_index.h"  // a key on the wire to a live actor
@@ -44,6 +48,7 @@
 #include "ue_wrap/facts/function_row.h"
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <deque>
 #include <string>
@@ -58,6 +63,10 @@ namespace R  = ue_wrap::reflection;
 namespace E  = ue_wrap::engine;
 namespace GT = ue_wrap::game_thread;
 namespace PT = coop::prop_element_tracker;
+
+// The throw arms' read of what the host gave a thrown copy at its spawn (|v| cm/s of the latest, 0 when none was written).
+uint32_t g_launches = 0;
+float    g_lastLaunch = 0.f;
 
 UE_FACT_FN(kRowFinishSpawningActor, "prop_drop_intent", L"GameplayStatics", L"FinishSpawningActor", Declared);
 
@@ -323,6 +332,25 @@ void* HostSpawnPlacedProp(const coop::net::PropDropIntentPayload& p, const std::
         auto clamp = [](float v) { return v < 0.f ? 0.f : (v > kMaxScale ? kMaxScale : v); };
         E::SetActorScale3D(actor, ue_wrap::FVector{clamp(p.scaleX), clamp(p.scaleY), clamp(p.scaleZ)});
     }
+    // The thrower's velocity at the drain, already clamped by the receiver: the copy leaves the host's hand-off in
+    // the arc the thrower's does. Written only above the rest floor (a place carries about zero and writes nothing)
+    // and only for a body the flags leave simulating.
+    {
+        namespace pf = coop::net::propspawn_flags;
+        const float speedSq = p.linVel[0] * p.linVel[0] + p.linVel[1] * p.linVel[1] + p.linVel[2] * p.linVel[2];
+        const float rest = coop::prop_drive_rules::kRestVelCmS;
+        if (p.throwSeq != 0) {
+            ++g_launches;
+            g_lastLaunch = 0.f;
+        }
+        if (speedSq > rest * rest && !(p.physFlags & (pf::kStatic | pf::kFrozen | pf::kSleep))) {
+            E::SetActorRootPhysicsVelocity(actor, ue_wrap::FVector{p.linVel[0], p.linVel[1], p.linVel[2]},
+                                           ue_wrap::FVector{p.angVel[0], p.angVel[1], p.angVel[2]});
+            if (p.throwSeq != 0) g_lastLaunch = std::sqrt(speedSq);
+            UE_LOGI("[PROP-DROP] HOST gave the spawn the thrower's velocity (%.0f,%.0f,%.0f) |v|=%.0f cm/s throw seq %u",
+                    p.linVel[0], p.linVel[1], p.linVel[2], std::sqrt(speedSq), static_cast<unsigned>(p.throwSeq));
+        }
+    }
     // The prop's own save record, if the author's copy is already here. It usually is not -- it
     // rides behind this intent in the same FIFO -- and then it lands on this actor by Key once the
     // actor is indexed, which is what makes the store keyed by identity rather than by actor.
@@ -498,6 +526,28 @@ void Tick(coop::net::Session* session) {
         // data slot, which only this copy has: its row goes to the host once the host's echo binds it.
         if (ue_wrap::drive_chain::IsDriveClass(R::ClassOf(e.actor)))
             coop::drive_payload_sync::NoteOwnDrive(e.actor);
+        // The root's velocity now, a tick or more after the place or the throw spawned it: the host spawns the
+        // copy with it, so the copy leaves the host's hand-off in the arc the thrower's does. A throw's sequence
+        // (prop_throw) says the game's own throw launched it; a place carries none.
+        {
+            ue_wrap::FVector lin{}, ang{};
+            if (ue_wrap::engine::GetActorRootPhysicsVelocity(e.actor, lin, ang)) {
+                p.linVel[0] = lin.X; p.linVel[1] = lin.Y; p.linVel[2] = lin.Z;
+                p.angVel[0] = ang.X; p.angVel[1] = ang.Y; p.angVel[2] = ang.Z;
+            }
+            p.throwSeq = coop::prop_throw::ThrowSeqFor(e.actor);
+            // The throw arms' dev knobs: a red that sends the thrown prop's intent with no velocity, and a forged
+            // multiple of it for the clamp arm.
+            static const bool s_noVel = coop::config::ResolveFlag(coop::config_registry::rows::container_throw_no_velocity);
+            static const long s_scale = coop::config::ResolveInt(coop::config_registry::rows::container_throw_scale);
+            if (p.throwSeq != 0 && s_noVel) {
+                for (float& v : p.linVel) v = 0.f;
+                for (float& v : p.angVel) v = 0.f;
+            } else if (p.throwSeq != 0 && s_scale > 1) {
+                for (float& v : p.linVel) v *= static_cast<float>(s_scale);
+                for (float& v : p.angVel) v *= static_cast<float>(s_scale);
+            }
+        }
         const auto scl = ue_wrap::engine::GetActorScale3D(e.actor);
         p.locX = loc.X; p.locY = loc.Y; p.locZ = loc.Z;
         p.rotPitch = ue_wrap::NormalizeAxis(rot.Pitch);
@@ -524,7 +574,7 @@ void Tick(coop::net::Session* session) {
                              : isNotebookSheet ? "authored-notebook-sheet"
                                              : "authored-drop-intent",
                              e.tries, key);
-        UE_LOGI("[PROP-DROP] CLIENT authored %s key='%ls' cls='%ls' name='%ls' loc=(%.1f,%.1f,%.1f)%s",
+        UE_LOGI("[PROP-DROP] CLIENT authored %s key='%ls' cls='%ls' name='%ls' loc=(%.1f,%.1f,%.1f) drain |v|=%.1f cm/s throw seq %u%s",
                 freshBirth     ? "FRESH-BIRTH intent"
                 : e.playerSpawn ? "PLAYER-SPAWN intent"
                 : isNotebookSheet ? "NOTEBOOK-SHEET intent"
@@ -532,7 +582,8 @@ void Tick(coop::net::Session* session) {
                 key.c_str(), cls.c_str(),
                 WireToWide(p.propName.len, p.propName.data, sizeof(p.propName.data)).c_str(),
                 p.locX, p.locY, p.locZ,
-                coop::prop_save_data::Covers(e.actor) ? " +record" : "");
+                std::sqrt(p.linVel[0] * p.linVel[0] + p.linVel[1] * p.linVel[1] + p.linVel[2] * p.linVel[2]),
+                static_cast<unsigned>(p.throwSeq), coop::prop_save_data::Covers(e.actor) ? " +record" : "");
     }
     g_pending.swap(keep);
 }
@@ -550,10 +601,13 @@ void NoteClientKeyedDestroy(const std::wstring& key) {
     }
 }
 
-void OnPropDropIntent(coop::net::Session& session, const coop::net::PropDropIntentPayload& p,
+void OnPropDropIntent(coop::net::Session& session, const coop::net::PropDropIntentPayload& sent,
                       uint8_t senderSlot) {
     UE_ASSERT_GAME_THREAD("prop_drop_intent::OnPropDropIntent");
     if (session.role() != coop::net::Role::Host) return;   // host-authoritative (router also gates)
+    // The velocity meets the throw bounds before the spawn is written it: clamped, or the intent refused when a float is not finite.
+    coop::net::PropDropIntentPayload p = sent;
+    if (!coop::prop_throw::JudgeDropIntent(p, senderSlot)) return;
     const std::wstring cls = WireToWide(p.className.len, p.className.data, sizeof(p.className.data));
     const std::wstring key = WireToWide(p.key.len, p.key.data, sizeof(p.key.data));
     if (key.empty() || key == L"None" || cls.empty()) {
@@ -571,9 +625,13 @@ void OnPropDropIntent(coop::net::Session& session, const coop::net::PropDropInte
     // A data drive the client brought in: its row, which only that client has, is the one the host takes for it.
     if (actor) coop::drive_payload_sync::NoteClientBrought(actor, senderSlot);
     if (actor) {
-        UE_LOGI("[PROP-DROP] HOST spawned client-placed prop key='%ls' cls='%ls' slot=%u at (%.1f,%.1f,%.1f) "
+        UE_LOGI("[PROP-DROP] HOST spawned client-placed prop key='%ls' cls='%ls' slot=%u at (%.1f,%.1f,%.1f) throw seq %u "
                 "-- FinishSpawn watcher broadcasts it this tick",
-                key.c_str(), cls.c_str(), senderSlot, p.locX, p.locY, p.locZ);
+                key.c_str(), cls.c_str(), senderSlot, p.locX, p.locY, p.locZ, static_cast<unsigned>(p.throwSeq));
+        // A thrown prop is elected its thrower's syncer where the watcher would open the birth coast, once the spawn has its
+        // element id (coop/props/prop_throw.h).
+        const float at[3] = {p.locX, p.locY, p.locZ};
+        if (p.throwSeq != 0) coop::prop_throw::NoteMark(key, senderSlot, p.throwSeq, at);
     }
 }
 
@@ -609,7 +667,13 @@ void OnReelEjectIntent(coop::net::Session& session, const coop::net::PropDropInt
     if (isServerUpg && coop::server_upgrade_sync::HostShouldReapUpgradeBirth(senderSlot)) return;
     // Drive births are authored normally; a denied rack-take ghost is reaped when its row arrives, by the row's
     // hash (drive_payload_sync).
-    OnPropDropIntent(session, p, senderSlot);  // same author: dup-guard + HostSpawnPlacedProp
+    // An eject is born in a hand or at a device's mouth and is never thrown: its velocity and throw sequence are
+    // zeroed before the shared apply, so it is never given a velocity and never elects a syncer.
+    coop::net::PropDropIntentPayload birth = p;
+    for (float& v : birth.linVel) v = 0.f;
+    for (float& v : birth.angVel) v = 0.f;
+    birth.throwSeq = 0;
+    OnPropDropIntent(session, birth, senderSlot);  // same author: dup-guard + HostSpawnPlacedProp
 }
 
 void Reset() {
@@ -627,6 +691,8 @@ void Reset() {
 
 namespace dev {
 void* LastClientPlaceSpawn() { return g_lastPlace.Get(); }
+uint32_t LaunchesApplied() { return g_launches; }
+float LastAppliedLaunch() { return g_lastLaunch; }
 }  // namespace dev
 
 }  // namespace coop::prop_drop_intent

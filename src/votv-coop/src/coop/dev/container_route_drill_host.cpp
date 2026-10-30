@@ -32,6 +32,20 @@
 #include <vector>
 
 namespace coop::dev::container_route_drill::detail {
+
+// The backpack's own put-in, as the player's hand puts an item in. True when it took the item.
+bool PutIn(void* pack, void* item) {
+    namespace R  = ue_wrap::reflection;
+    namespace ci = ue_wrap::container_inventory;
+    void* inv = ci::InventoryOf(pack);
+    void* fn = inv ? R::FindDispatchFunctionCached(R::ClassOf(inv), L"addObject") : nullptr;
+    ue_wrap::ParamFrame f(fn);
+    if (!fn || !f.valid() || !f.Set<void*>(L"actor", item) || !f.Set<int32_t>(L"insertIndex1", -1) ||
+        !ue_wrap::Call(inv, f))
+        return false;
+    return f.Get<bool>(L"return");
+}
+
 namespace {
 
 namespace E   = ue_wrap::engine;
@@ -44,14 +58,14 @@ namespace cs  = coop::props::container_contents_sync;
 constexpr uint64_t kFillBoundMs    = 5000;   // the spawn to the backpack's inventory binding its slot
 constexpr uint64_t kPublishBoundMs = 10000;  // the fill to the first fan-out
 constexpr uint64_t kViewBoundMs    = 5000;   // the open verb to the screen showing the backpack
-constexpr uint64_t kJudgeBoundMs   = 15000;  // the client's R1 slice sent to the host judging it
 constexpr const wchar_t* kSecondClass = L"prop_floppyDisc_R_C";   // the second class of read 7; no drill puts a disc into a container, so the capture check below is its guard
 constexpr const wchar_t* kSecondPath  = L"/Game/objects/prop_floppyDisc_R.prop_floppyDisc_R_C";
-constexpr uint64_t kRoutesBoundMs  = 300000; // the routes phase: above the client's worst chain of independent bounds (about 230 s)
+constexpr uint64_t kHeldBoundMs    = 10000;  // the client's R1 done to the host's own copy holding one record fewer
+constexpr uint64_t kRoutesBoundMs  = 300000; // the routes phase: above the client's worst chain of independent bounds (about 250 s: the three acts' 12 s bounds)
 constexpr uint64_t kBeforeBoundMs  = 60000;  // the unpublished write to the client's take reported
 constexpr uint64_t kThrownBoundMs  = 30000;  // r4-start to the host holding a drive made by the throw
 
-enum class Step : uint8_t { Arm, Fill, Publish, WaitR1, WaitJudge, WaitRoutes, ViewOpen, ViewRegen, WaitBefore, WaitDone, Done };
+enum class Step : uint8_t { Arm, Fill, Publish, WaitR1, WaitHeld, WaitRoutes, ViewOpen, ViewRegen, WaitBefore, WaitDone, Done };
 Step     g_step = Step::Arm;
 uint64_t g_stepMs = 0;
 uint64_t g_next = 0;
@@ -62,7 +76,6 @@ uint64_t g_gen0 = 0;
 void*    g_slot0 = nullptr;   // the screen's first slot widget before the raw write
 int      g_drives0 = 0;
 bool     g_opened = false;   // the open verb was sent for the host's screen
-int      g_r1Sent = 0;       // the slices the client had sent when it finished R1
 std::string g_slotText0;   // the screen's first slot before the raw write
 
 bool     g_r4Started = false, g_r4Over = false, g_r4Gone = false, g_r4Failed = false;   // g_r4Failed: R4 ended without a drive
@@ -103,17 +116,6 @@ ue_wrap::FVector Offset(const ue_wrap::FVector& at, const ue_wrap::FVector& fwd,
     return {at.X + fwd.X * ahead + fwd.Y * side, at.Y + fwd.Y * ahead - fwd.X * side, at.Z + kDropCm};
 }
 
-// The backpack's own put-in, as the player's hand puts an item in. True when it took the item.
-bool PutIn(void* pack, void* item) {
-    void* inv = ci::InventoryOf(pack);
-    void* fn = inv ? R::FindDispatchFunctionCached(R::ClassOf(inv), L"addObject") : nullptr;
-    ue_wrap::ParamFrame f(fn);
-    if (!fn || !f.valid() || !f.Set<void*>(L"actor", item) || !f.Set<int32_t>(L"insertIndex1", -1) ||
-        !ue_wrap::Call(inv, f))
-        return false;
-    return f.Get<bool>(L"return");
-}
-
 // The fixture's own fill, or the refill: two drives put into the backpack the way the player's hand puts one in,
 // each destroyed after the put that took, none counted as a route. Returns how many the backpack took.
 int AddDrives(void* pack) {
@@ -148,13 +150,11 @@ void StepArm(coop::net::Session* s) {
     void* pack = E::SpawnActor(packCls, Offset(at, fwd, kAheadCm, 0.f));
     if (!pack || !ci::IsContainer(pack)) { Fail("the backpack did not spawn as a container"); return; }
     g_pack.Set(pack);
-    if (!cen::IsBeforeOnly()) {
-        // One loose drive to the side, which the client holds and throws into the backpack (R4). The client's mirror
-        // arrives where the host put it.
-        void* driveCls = R::FindClass(kDriveClass);
-        void* b = driveCls ? E::SpawnActor(driveCls, Offset(at, fwd, kSideAheadCm, -kSideCm)) : nullptr;
-        if (!b) { Fail("the loose drive did not spawn"); return; }
-    }
+    // One loose drive to the side, which the client holds and throws into the backpack (R4). The client's mirror
+    // arrives where the host put it.
+    void* driveCls = R::FindClass(kDriveClass);
+    void* b = driveCls ? E::SpawnActor(driveCls, Offset(at, fwd, kSideAheadCm, -kSideCm)) : nullptr;
+    if (!b) { Fail("the loose drive did not spawn"); return; }
     Next(Step::Fill);
 }
 
@@ -185,31 +185,33 @@ void StepPublish() {
     LogHashes("host", g_eid, "published");
     LogSizes("host", "fixture", pack);
     cen::ReportNow("host fixture");
-    Next(cen::IsBeforeOnly() ? Step::WaitBefore : Step::WaitR1);
+    Next(Step::WaitR1);
 }
 
-// The client's R1 take is done: once the host has judged the slices it sent, the backpack is handed two fresh records
-// (the fixture the R2 put-back and the later reads stand on), and the client is told.
+// The client's R1 take is done (it says so once its act ended and its mirror followed): the host looks at its own copy.
 void StepWaitR1() {
-    std::string rest;
-    int sent = 0;
-    if (coop::dev::drill_chat::PollDue() && coop::dev::drill_chat::LiveRestOf(kPrefixR1Done, &rest) &&
-        IntAfter(rest, "sent", sent)) {
-        g_r1Sent = sent;
-        Next(Step::WaitJudge);
+    std::string said;
+    if (!coop::dev::drill_chat::PollDue() || !coop::dev::drill_chat::LiveRestOf(kPrefixR1Done, &said)) {
+        if (Expired(kRoutesBoundMs)) {
+            RouteFail("R1 the client never reported its R1 done");
+            Next(Step::WaitRoutes);
+        }
         return;
     }
-    if (Expired(kRoutesBoundMs)) {
-        RouteFail("R1 the client never reported its R1 done");
-        Next(Step::WaitRoutes);
-    }
+    Next(Step::WaitHeld);
 }
 
-void StepWaitJudge() {
-    const uint64_t judged = cen::HostSlices(1, true) + cen::HostSlices(1, false);
-    if (judged < static_cast<uint64_t>(g_r1Sent)) {
-        if (!Expired(kJudgeBoundMs)) return;
-        RouteFail("R1 the client's slice was never judged");   // the fresh records are R2's fixture: handed all the same
+// The host's own copy holds one record fewer (the take's escrow was dropped by the client's done). A host that disagrees
+// with the client's replay is seen here, FAIL as today after the bound; the backpack is handed two fresh records
+// either way (the fixture the R2 put-back and the later reads stand on), and the client is told.
+void StepWaitHeld() {
+    const int held = RecordCount(g_eid);
+    if (held != kItems - 1 && !Expired(kHeldBoundMs)) return;
+    if (held != kItems - 1) {
+        char phase[96];
+        std::snprintf(phase, sizeof(phase), "R1 the host holds %d record(s) after the client's take, expected %d", held,
+                      kItems - 1);
+        RouteFail(phase);
     }
     void* pack = g_pack.Get();
     if (!pack) { Fail("the backpack died"); return; }
@@ -219,8 +221,8 @@ void StepWaitJudge() {
         Next(Step::WaitRoutes);
         return;
     }
-    UE_LOGI("[CI-CENSUS] drill host: two fresh records handed to the backpack (%d record(s) now), after %llu judged slice(s)",
-            RecordCount(g_eid), static_cast<unsigned long long>(judged));
+    UE_LOGI("[CI-CENSUS] drill host: two fresh records handed to the backpack (%d record(s) now, %d before the hand-out)",
+            RecordCount(g_eid), held);
     coop::dev::drill_chat::Say(kLineRefilled);
     Next(Step::WaitRoutes);
 }
@@ -410,9 +412,7 @@ void StepWaitDone() {
     std::snprintf(say, sizeof(say), "%sih=%d", kPrefixHostDone, ih);
     coop::dev::drill_chat::Say(say);
     // The host's own container never lost the record, so its answer to "is it back" is yes.
-    UE_LOGI("[CI-CENSUS] before record-back=1 item-client=%d item-host=%d (the host judged slot 1: accepted=%llu refused=%llu)",
-            ic, ih, static_cast<unsigned long long>(cen::HostSlices(1, true)),
-            static_cast<unsigned long long>(cen::HostSlices(1, false)));
+    UE_LOGI("[CI-CENSUS] before record-back=1 item-client=%d item-host=%d", ic, ih);
     HostDone();
 }
 
@@ -430,7 +430,7 @@ void HostTick(coop::net::Session* s) {
     case Step::Fill:       StepFill(); return;
     case Step::Publish:    StepPublish(); return;
     case Step::WaitR1:     StepWaitR1(); return;
-    case Step::WaitJudge:  StepWaitJudge(); return;
+    case Step::WaitHeld:   StepWaitHeld(); return;
     case Step::WaitRoutes: StepWaitRoutes(); return;
     case Step::ViewOpen:   StepViewOpen(); return;
     case Step::ViewRegen:  StepViewRegen(); return;
@@ -449,7 +449,6 @@ void HostReset() {
     g_gen0 = 0;
     g_slot0 = nullptr;
     g_slotText0.clear();
-    g_r1Sent = 0;
     g_r4Prop.Reset();
     g_drives0 = 0;
     g_r4StartMs = g_ov0 = 0;

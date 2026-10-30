@@ -20,9 +20,11 @@
 #include "coop/element/registry.h"
 #include "coop/net/session.h"
 #include "coop/player/players_registry.h"
+#include "coop/props/container_act_host.h"  // overlap::OnBound: an overlap put waits for a prop's bind
 #include "coop/props/pile_look.h"
 #include "coop/props/prop_drive_host.h"    // OverrideClientSyncer: a release that writes the copy ends a client's row on it
 #include "coop/props/prop_drive_stream.h"  // IsParked: the host's channel owns a parked copy
+#include "coop/props/prop_syncer_host.h"   // ElectSyncer: a thrown prop is its thrower's to sync
 #include "coop/props/prop_child_release.h"  // Defer: a jointed door waits for its parent
 #include "coop/props/prop_park.h"  // Park / Unpark: a held prop, and a Character welded on it
 #include "coop/props/prop_echo_suppress.h"
@@ -30,6 +32,7 @@
 #include "coop/props/prop_stick_sync.h"  // the stuck wall-attachable gates
 #include "coop/props/prop_wire_parity.h"  // ConvergeFrozenSleep, the release's flags
 #include "coop/props/unresolved_pose_ledger.h"  // a pose-before-spawn race vs a sustained identity gap
+#include "coop/props/bracket_position_wait.h"  // KeepIfWaiting: a release for a key whose spawn waits
 #include "coop/element/identity_create.h"  // CreateOrAdoptPropMirror, the prop-mirror bind
 #include "coop/props/trash_channel.h"  // the per-eid sync-time context; stale carry and release drops
 #include "coop/interactables/drive_payload_sync.h"
@@ -57,6 +60,11 @@ namespace coop::remote_prop {
 namespace {
 
 namespace R = ue_wrap::reflection;
+
+// What this peer received of throws, for the throw arms: releases that carried a throw sequence, and the swings played.
+uint32_t g_throwReleases = 0, g_whooshes = 0;
+uint32_t g_releaseLaunches = 0;   // throw releases whose velocity was applied to a simulating copy
+float    g_lastReleaseLaunch = 0.f;
 namespace E = ue_wrap::engine;
 
 // ActiveDrive, BeginLerpToPose, AdvanceLerp, ResetDriveState, LerpAngle, NowMs and the lerp
@@ -190,9 +198,10 @@ void CloseHold(int slot, uint16_t holdGen) {
     h.haveClosed = true;
 }
 
-void OnRelease(int senderSlot, const coop::net::PropReleasePayload& payload, void* localPlayer) {
+void OnRelease(int senderSlot, const coop::net::PropReleasePayload& payload, void* localPlayer, bool replayed) {
     // Reads and clears the sender's drive; dispatched from event_feed on the game thread.
     UE_ASSERT_GAME_THREAD("g_drives (remote_prop::OnRelease)");
+    if (payload.throwSeq != 0 && !replayed) ++g_throwReleases;
     const std::wstring keyW = KeyToWString(payload.key);
     coop::swinger_join_pose::Forget(keyW);   // a release is newer than a connect pose parked for this lid
     const float linSpeedSq = payload.linVelX * payload.linVelX +
@@ -263,6 +272,18 @@ void OnRelease(int senderSlot, const coop::net::PropReleasePayload& payload, voi
             }
         }
     }
+    // No copy here yet, and the prop's spawn waits for the snapshot bracket's end: the newest release is kept for the
+    // bind. The relay to the other clients ran before this function, and the hold closed above.
+    if (!propActor && releasedSlot < 0 &&
+        coop::props::bracket_position_wait::KeepIfWaiting(payload.key, coop::props::bracket_position_wait::Kept::Release,
+                                                          &payload, sizeof(payload), senderSlot))
+        return;
+    // Whether the sender is the holder of this prop: its drive carried the key, or (the implicit release: the poses
+    // stopped, the drive was reset, and the reliable release arrives after) the hold it closes is the one whose drive
+    // started on THIS prop. The hold gate outlives the drive's reset and records the prop beside the generation, so a
+    // hold of one prop does not vouch for a release of another. A release with no pose at all passes neither test.
+    const bool lastHolder = releasedSlot >= 0 || HoldDroveProp(senderSlot, payload.holdGen, payload.key, payload.elementId);
+    void* thrownActor = nullptr;   // set where the release simulates the copy: the one branch an election follows
     // Someone else moves the prop -- this peer's own player, another slot's drive, the host's
     // driven-prop channel parking it: that owner has its physics and its flags, and this release
     // closes its own hold, clears its own drive and moves nothing. This slot's drive left the copy
@@ -322,8 +343,10 @@ void OnRelease(int senderSlot, const coop::net::PropReleasePayload& payload, voi
     // trajectory, and the host streams the clump's flight as poses until it re-piles. It freezes at
     // the release pose until that stream or the host's ToPile convert moves it; the swing plays.
     if (propActor && HostAuthorsTrashBody(propActor)) {
-        if (propActor && linSpeed > coop::net::kThrownLinVelThreshold)
+        if (propActor && payload.throwSeq != 0) {
             coop::prop_sound::PlayThrowWhoosh(propActor);
+            ++g_whooshes;
+        }
         if (propActor) ClearAnyDriveFor(propActor);  // stop the carry drive; freeze in place
         UE_LOGI("[PILE] CLIENT trash throw eid=%u |v|=%.1f cm/s -- frozen at release (no local physics); "
                 "the host's pose stream and its ToPile convert place it",
@@ -340,17 +363,23 @@ void OnRelease(int senderSlot, const coop::net::PropReleasePayload& payload, voi
         }
     } else if (meshToActOn) {
         // Simulate first, then the velocities: a kinematic body ignores a velocity write.
+        thrownActor = propActor;
         coop::prop_park::Unpark(propActor, meshToActOn, /*rootSimulates=*/true);
         ue_wrap::engine::SetComponentLinearVelocity(meshToActOn, payload.linVelX, payload.linVelY, payload.linVelZ);
         ue_wrap::engine::SetComponentAngularVelocity(meshToActOn, payload.angVelX, payload.angVelY, payload.angVelZ);
-        // The throw fires above kThrownLinVelThreshold so a passive drop stays silent: the prop's
-        // own thrown event (subclass hooks) and the receiver-side swing, since the native swing
+        if (payload.throwSeq != 0) {   // the throw arms read the launch this copy was given
+            ++g_releaseLaunches;
+            g_lastReleaseLaunch = linSpeed;
+        }
+        // The throw fires for a release the holder numbered (throwSeq: its game ran throwShit), so a passive drop stays
+        // silent: the prop's own thrown event (subclass hooks) and the receiver-side swing, since the native swing
         // plays only in the thrower's input chain.
-        if (propActor && linSpeed > coop::net::kThrownLinVelThreshold) {
+        if (propActor && payload.throwSeq != 0) {
             ue_wrap::prop::CallPropThrown(propActor, localPlayer);
             coop::prop_sound::PlayThrowWhoosh(propActor);
-            UE_LOGI("remote_prop: fired Aprop_C.thrown(player=%p) + swing whoosh -- launch speed %.1f cm/s > threshold %.1f",
-                    localPlayer, linSpeed, coop::net::kThrownLinVelThreshold);
+            ++g_whooshes;
+            UE_LOGI("remote_prop: fired Aprop_C.thrown(player=%p) + swing whoosh -- throw seq %u, launch speed %.1f cm/s",
+                    localPlayer, static_cast<unsigned>(payload.throwSeq), linSpeed);
         }
     } else if (propActor) {  // validated-or-null since assignment (LiveActor / fresh resolve)
         // The clump mirror flies through the generic root physics with PhysicsOnly collision: it
@@ -369,13 +398,28 @@ void OnRelease(int senderSlot, const coop::net::PropReleasePayload& payload, voi
                 payload.elementId, linSpeed, propActor);
         // The swing for the clump too (every throw plays it, whatever the prop), above the same
         // speed gate.
-        if (linSpeed > coop::net::kThrownLinVelThreshold) {
+        if (payload.throwSeq != 0) {
             coop::prop_sound::PlayThrowWhoosh(propActor);
+            ++g_whooshes;
         }
     }
     // Only the released slot clears.
     if (releasedSlot >= 0) {
         ResetDriveState(g_drives[releasedSlot]);
+    }
+    // The election, after the drive is cleared (a prop under a slot's drive opens no row) and only where the release
+    // simulated the copy here: the thrower is the prop's syncer from now, and the host's copy follows its rows. Only the
+    // prop's last holder is elected; any other slot's release has applied as it always did and elects nothing.
+    if (thrownActor && payload.throwSeq != 0 && senderSlot >= 1 && coop::prop_element_tracker::SessionIsHost()) {
+        ue_wrap::FVector at{payload.locX, payload.locY, payload.locZ};
+        if (!lastHolder) {
+            UE_LOGI("remote_prop: slot %d's throw seq %u is not the last holder's release of this prop -- applied, not elected",
+                    senderSlot, static_cast<unsigned>(payload.throwSeq));
+        } else if (payload.hasPose || E::TryGetActorLocation(thrownActor, at)) {
+            const float start[3] = {at.X, at.Y, at.Z};
+            coop::prop_syncer_host::ElectSyncer(thrownActor, static_cast<uint8_t>(senderSlot), payload.throwSeq, start,
+                                                NowMs(), /*reachJudged=*/false);
+        }
     }
 }
 
@@ -408,6 +452,7 @@ void RegisterPropMirror(coop::element::ElementId eid,
         coop::pile_look::OnBound(static_cast<uint32_t>(eid), actor);
         coop::drive_payload_sync::OnBound(static_cast<uint32_t>(eid), actor, senderSlot);  // a data drive's row, by its author
         coop::element::bind_wait::OnBound(static_cast<uint32_t>(eid));  // messages held for this eid replay at the next Pump
+        coop::props::container_act_host::overlap::OnBound(actor);  // an overlap put that waited for this prop's id is judged at the next tick
     } else if (!row && actor && eid != 0 && eid != coop::element::kInvalidId) {
         // Refused and rowless: no retry runs inside the create path, so messages for the eid wait here until a
         // later bind, a destroy of it, or the world change.
@@ -416,9 +461,10 @@ void RegisterPropMirror(coop::element::ElementId eid,
 }
 
 // The eid bound to `actor` among the Prop elements: the mirror-side fallback the chipPile grab
-// hook uses when a client grabs a host-owned pile, whose mirror is not in the forward map. O(n),
-// on the grab edge only; a snapshot under the manager lock, then a lock-free walk that reads
-// GetActor and GetId only.
+// hook uses when a client grabs a host-owned pile, whose mirror is not in the forward map. O(n):
+// a snapshot under the manager lock, then a lock-free walk that reads GetActor and GetId only. For
+// the grab edge and the spawn receiver's steal gate; a caller that runs per swing or per candidate
+// asks Registry::EidForActor, which is O(1).
 coop::element::ElementId ResolveMirrorEidByActor(void* actor, bool wireMirrorOnly) {
     if (!actor) return coop::element::kInvalidId;
     std::vector<coop::element::Prop*> snap;
@@ -469,6 +515,21 @@ void EndAnyHoldOn(void* actor) {
                 static_cast<unsigned>(g_holds[s].driveGen), actor);
         ResetDriveState(d);
     }
+}
+
+uint16_t HoldGenOf(int slot) {
+    UE_ASSERT_GAME_THREAD("g_holds (remote_prop::HoldGenOf)");
+    return slot >= 0 && slot < static_cast<int>(coop::players::kMaxPeers) ? g_holds[slot].driveGen : uint16_t{0};
+}
+
+void EndDriveForPut(int slot) {
+    UE_ASSERT_GAME_THREAD("g_drives (remote_prop::EndDriveForPut)");
+    if (slot < 0 || slot >= static_cast<int>(coop::players::kMaxPeers)) return;
+    ActiveDrive& d = g_drives[slot];
+    if (!d.actor) return;
+    if (void* const live = d.LiveActor())
+        coop::prop_park::Unpark(live, d.mesh, !StickHoldsPhysicsOff(live));
+    ResetDriveState(d);
 }
 
 void ClearAnyDriveFor(void* actor) {
@@ -573,5 +634,12 @@ void OnDisconnectForSlot(int peerSlot) {
     }
     ResetDriveState(d);
 }
+
+namespace dev {
+uint32_t ThrowReleasesReceived() { return g_throwReleases; }
+uint32_t ThrowWhooshesPlayed() { return g_whooshes; }
+uint32_t ReleaseLaunchesApplied() { return g_releaseLaunches; }
+float LastReleaseLaunch() { return g_lastReleaseLaunch; }
+}  // namespace dev
 
 }  // namespace coop::remote_prop

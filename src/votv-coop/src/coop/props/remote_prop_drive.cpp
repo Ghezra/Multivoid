@@ -22,6 +22,7 @@
 #include "coop/props/prop_key_index.h"  // a key on the wire to a live actor
 #include "coop/props/prop_stick_sync.h"  // the stuck wall-attachable gates
 #include "coop/props/unresolved_pose_ledger.h"  // a pose-before-spawn race vs a sustained identity gap
+#include "coop/props/bracket_position_wait.h"  // KeepIfWaiting: a pose for a key whose spawn waits
 #include "coop/props/trash_channel.h"  // the per-eid sync-time context; stale carry and release drops
 #include "ue_wrap/core/hot_path_guard.h"
 #include "ue_wrap/core/log.h"
@@ -52,6 +53,15 @@ bool GenAfter(uint16_t a, uint16_t b) { return static_cast<int16_t>(a - b) > 0; 
 
 bool IsHoldClosed(const HoldGate& h, uint16_t gen) {
     return gen != 0 && h.haveClosed && !GenAfter(gen, h.closedGen);
+}
+
+bool HoldDroveProp(int slot, uint16_t holdGen, const coop::net::WireKey& key, uint32_t eid) {
+    if (slot < 0 || slot >= static_cast<int>(coop::players::kMaxPeers) || holdGen == 0) return false;
+    const HoldGate& h = g_holds[slot];
+    if (h.driveGen != holdGen) return false;
+    if (key.len != h.driveKey.len) return false;
+    if (key.len == 0) return eid != 0 && eid == h.driveEid;   // a keyless clump is named by its element id
+    return std::memcmp(key.data, h.driveKey.data, key.len) == 0;
 }
 
 // A drive on `actor` belonging to a slot other than `slot` (-1 excludes none).
@@ -205,6 +215,11 @@ void ResolveAndStartDrive(int slot, const coop::net::PropPoseSnapshot& pose) {
     void* prop = (!keyW.empty() && keyW != L"None") ? ResolveKeyedActor(keyW) : nullptr;
     if (!prop && pose.elementId != 0)
         prop = ResolveLiveActorByEid(pose.elementId);
+    // The prop's spawn waits for the snapshot bracket's end: the newest pose is kept for the bind, and is no gap in the
+    // sender's stream for the ledger below to count.
+    if (!prop && coop::props::bracket_position_wait::KeepIfWaiting(pose.key, coop::props::bracket_position_wait::Kept::Pose,
+                                                                   &pose, sizeof(pose), slot))
+        return;
     if (!prop) {
         coop::dev::swinger_drill::NotePropUnresolved(slot, pose);
         // The ledger separates the ordinary pose-before-spawn race from a sustained stream this
@@ -301,6 +316,8 @@ void ResolveAndStartDrive(int slot, const coop::net::PropPoseSnapshot& pose) {
     g_drives[slot].lastKey.assign(pose.key.data, pose.key.len);
     g_drives[slot].lastEid = pose.elementId;
     hold.driveGen = pose.holdGen;
+    hold.driveKey = pose.key;
+    hold.driveEid = pose.elementId;
     hold.relatches = 0;
     // A host-authoritative trash mirror freezes on a stream gap instead of timing out; it releases
     // only on the explicit reliable edge, and it interpolates rather than snapping. The test is
