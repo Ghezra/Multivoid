@@ -772,6 +772,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_beam_look.cpp
     src/harness/autotest/autotest_class_dump.cpp
     src/harness/autotest/autotest_can_state.cpp
+    src/harness/autotest/autotest_desk_view.cpp
     src/harness/autotest/autotest_saveui.cpp
     src/ui/input_focus.cpp
     src/harness/screenshot.cpp
