@@ -69,7 +69,16 @@ class and name on change, and every peer keeps a display-only mirror, physics an
 attached to the puppet's weapon component at the native hold transform
 (`coop/player/hand_item`). The flashlight rides the item-activation kind: the receiver toggles
 the puppet's own light and plays a positional click (`coop/player/item_activate`,
-`coop/player/flashlight_click_sound`). A carried trash clump is driven to the puppet's hand on
+`coop/player/flashlight_click_sound`). The cone hangs on a spring arm off the player's camera, whose
+rotation lag the game leaves on at speed 0, which UE's interpolation takes as no lag; a puppet's arm
+is set from the streamed view with each applied pose (`coop/player/remote_player`). The host's cone
+follows the interpolated streamed aim exactly, frame for frame, through a client's sine sweep of its
+view at about 33 fps on both peers: no frame stood still mid-sweep, its speed changed about 1.6 times
+as much from frame to frame as the client's own commanded view, a turn in place of the body leaked
+nothing into it, and the same held over a link with 40 ms of lag and 15 ms of jitter `[V]`
+(`harness/autotest/autotest_beam_sweep.cpp`). One sweep in seven, a wide one, caught a hitch in the stream
+itself, upstream of the cone: 18 frames standing still and one 41 degree step in the interpolated
+aim, not repeated on the next run `[V]`. A carried trash clump is driven to the puppet's hand on
 the host each tick (`coop/player/puppet_carry_drive`); a held physics prop is on the props lane.
 
 ### Name, colour and nameplate

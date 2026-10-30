@@ -239,6 +239,11 @@ DWORD WINAPI HudTintProbeThread(LPVOID arg);
 void RunAutonomousMoveOsc();
 DWORD WINAPI MoveOscThread(LPVOID arg);
 
+// The flashlight beam sweep: the client sweeps a lit flashlight's view in two sines and the host records its
+// puppet's aim, arm and cone rotations each tick, both to the CSV VOTVCOOP_BEAM_CSV names. Gated by
+// VOTVCOOP_RUN_BEAM_SWEEP. See autotest_beam_sweep.cpp.
+DWORD WINAPI BeamSweepThread(LPVOID arg);
+
 // The event force-now smoke (harness/autotest/autotest_eventforce.cpp), host: the volume-gate
 // feature (coop/dev/event_force) on obelisk, the badge snapshot resolving (armed 0, shots 1),
 // ForceNow arming through HostFire and driving the box's own BeginOverlap with the local pawn, and
