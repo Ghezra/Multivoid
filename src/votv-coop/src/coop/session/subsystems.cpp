@@ -88,6 +88,7 @@
 #include "coop/props/prop_settle.h"
 #include "coop/interactables/kitchen_sync.h"
 #include "coop/world/media_device_sync.h"
+#include "coop/world/world_sound_sync.h"
 #include "coop/props/prop_food_sync.h"
 #include "coop/props/prop_tool_flags.h"
 #include "coop/props/prop_stick_sync.h"  // wall-attachable stick mirror (camera-on-wall)
@@ -284,6 +285,7 @@ void Install(coop::net::Session& session) {
     coop::props::container_contents_sync::Install(&session);  // container contents
     coop::props::prop_record_refresh::Install(&session);  // drive box + reel case republish their own record
     coop::props::prop_can_state::Install(&session);  // a canned food's lid and contents: its record on a change
+    coop::world_sound_sync::Install(&session);  // the sky's two sounds, a faucet's click
     coop::media_device_sync::Install(&session);  // a placed radio's track and play state
     coop::kitchen_sync::Install(&session);  // a microwave's and a mini oven's controls
     coop::props::prop_food_sync::Install(&session);  // a world food's one author, the host
@@ -470,6 +472,7 @@ DisconnectStats DisconnectAll() {
     coop::kerfur_menu_input::OnDisconnect();  // drop the cached session (the InpActEvt_use observer stays registered)
     coop::prop_hold_claim::OnDisconnect();  // drop the refusal records and the notice cooldown
     coop::prop_settle::OnDisconnect();  // drop the watched releases
+    coop::world_sound_sync::OnDisconnect();
     coop::media_device_sync::OnDisconnect();
     coop::kitchen_sync::OnDisconnect();
     coop::props::prop_food_sync::OnDisconnect();  // a parked copy gets its tick back

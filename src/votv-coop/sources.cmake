@@ -217,6 +217,7 @@ set(VOTVCOOP_SOURCES
     src/ue_wrap/actors/food.cpp
     src/coop/interactables/kitchen_sync.cpp
     src/coop/world/media_device_sync.cpp
+    src/coop/world/world_sound_sync.cpp
     src/ue_wrap/world/media_device.cpp
     src/ue_wrap/devices/kitchen.cpp
     src/coop/props/prop_record_refresh.cpp
@@ -637,6 +638,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_cook_state.cpp
     src/harness/autotest/autotest_radio_state.cpp
     src/harness/autotest/autotest_tv_state.cpp
+    src/harness/autotest/autotest_world_sound.cpp
     src/harness/autotest/autotest_desk_view.cpp
     src/harness/autotest/autotest_saveui.cpp
     src/ui/input_focus.cpp
