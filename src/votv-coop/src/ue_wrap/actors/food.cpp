@@ -22,15 +22,39 @@ constexpr float kFrostOnMesh = 0.5f;
 constexpr int32_t kFrostDataIndex = 1;
 
 std::unordered_map<void*, bool> g_isFoodClass;
+// A field's offset, read once per declaring class. An InstanceOffset keeps one class and resolves again on every change
+// of class, and a poll over mixed foods changes class on nearly every read.
+class FamilyField {
+public:
+    FamilyField(const wchar_t* family, const wchar_t* name) : family_(family), name_(name) {}
+    int32_t Of(void* actor) {
+        void* base = nullptr;
+        for (void* c = R::ClassOf(actor); c && !base; c = R::SuperStructOf(c))
+            if (R::NameEquals(R::NameOf(c), family_)) base = c;
+        if (!base) return -1;
+        if (base != base_) {
+            base_ = base;
+            off_ = R::FindPropertyOffset(base, name_);
+        }
+        return off_;
+    }
 
-R::InstanceOffset g_temperature{L"temperature"};
-R::InstanceOffset g_ripeness{L"ripeness"};
-R::InstanceOffset g_uses{L"uses"};
-R::InstanceOffset g_celsius{L"celsius"};
-R::InstanceOffset g_steam{L"eff_steam"};
-R::InstanceOffset g_impact{L"physicsImpact"};
+private:
+    const wchar_t* family_;
+    const wchar_t* name_;
+    void* base_ = nullptr;
+    int32_t off_ = -1;
+};
 
-void* ReadObjectField(R::InstanceOffset& field, void* actor) {
+FamilyField g_temperature{L"prop_food_C", L"temperature"};
+FamilyField g_ripeness{L"prop_food_C", L"ripeness"};
+FamilyField g_uses{L"prop_food_C", L"uses"};
+FamilyField g_celsius{L"prop_food_C", L"celsius"};
+FamilyField g_steam{L"prop_food_C", L"eff_steam"};
+FamilyField g_cook{L"prop_cookingFood_C", L"cookProgress"};
+FamilyField g_impact{L"prop_C", L"physicsImpact"};
+
+void* ReadObjectField(FamilyField& field, void* actor) {
     const int32_t off = field.Of(actor);
     if (off < 0) return nullptr;
     void* value = nullptr;
@@ -98,6 +122,9 @@ bool Read(void* actor, Condition& out) {
     std::memcpy(&out.temperature, base + temperature, sizeof(float));
     std::memcpy(&out.ripeness, base + ripeness, sizeof(float));
     std::memcpy(&out.uses, base + uses, sizeof(int32_t));
+    const int32_t cook = g_cook.Of(actor);
+    out.cookProgress = -1.f;
+    if (cook >= 0) std::memcpy(&out.cookProgress, base + cook, sizeof(float));
     return true;
 }
 
@@ -112,6 +139,8 @@ bool Write(void* actor, const Condition& in) {
     std::memcpy(base + ripeness, &in.ripeness, sizeof(float));
     std::memcpy(base + uses, &in.uses, sizeof(int32_t));
     std::memcpy(base + celsius, &c, sizeof(float));
+    const int32_t cook = g_cook.Of(actor);
+    if (cook >= 0 && in.cookProgress >= 0.f) std::memcpy(base + cook, &in.cookProgress, sizeof(float));
     return true;
 }
 

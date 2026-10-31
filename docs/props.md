@@ -434,7 +434,7 @@ hertz); or an anchor, a start stamp every peer computes from, valid only while t
 constant ([architecture.md](architecture.md), where the authority is going). The reel corrector
 and the food's parked brain are built; concrete is designed and not built.
 
-A world food takes the first shape (`coop/props/prop_food_sync`). Its tick rolls temperature and spoilage and, at the
+A world food takes the first shape (`coop/props/prop_food_sync`), cooking progress included. Its tick rolls temperature and spoilage and, at the
 ends of the range, spawns a burnt or frozen copy and destroys itself, so a client's copy is parked, again at each poll
 because the food's `Init` turns the tick back on, and writes the host's temperature, ripeness and uses, sent when they
 move. A client's bite runs on its copy, for its own hunger and effects, and goes to the host as `FoodBite`; the host's
@@ -445,6 +445,13 @@ it. A client that lets a food go sends `FoodRelease`, since the host's new copy 
 the host takes over `[V]` (`harness/autotest/autotest_food_state.cpp`: conditions, bites from each peer, a last bite,
 one burnt food on both, a burn written on a parked copy, steam and the frozen flag, a held food shown both ways, a
 throw from each peer, a rejoin; the verbs by reflection and the food `prop_food_C`).
+
+A microwave's and a mini oven's presses run on the presser's copy, so each peer polls them for its player's change and
+sends it (`KitchenState`); the others apply it through the machine's start or repaint, so the host's machine heats the
+food it authors. Only a microwave's start crosses, since each peer's timer ends its own run. A joiner gets every machine
+off its defaults, since an oven's controls are in no save `[V]` (`harness/autotest/autotest_cook_state.cpp`: each
+control from each peer, a food heated in a microwave a client started, a shrimp's progress and its one cooked food, a
+rejoin; machines powered by a write and pressed by reflection).
 
 ## Who owns what
 
@@ -469,6 +476,7 @@ throw from each peer, a rejoin; the verbs by reflection and the food `prop_food_
 | `PropPose` (stream) | the holder to all | the held prop's world transform, per frame, and its hold's generation |
 | `PropSpawn`, `PropDestroy` | the host to all; a destroy from either role | class, key, id, transform, physics flags, the birth scalar; the key and id |
 | `PropRelease` | the holder to all | the prop's transform, its inherited linear and angular velocity and its frozen and sleep at the edge, the hold it closes and the throw sequence (0 = not a throw); a client's goes through the host, which clamps it and sends it on |
+| `KitchenState` | the presser to all | a microwave's or a mini oven's setting and whether it runs |
 | `FoodState`, `FoodBite`, `FoodRelease`, `FoodHand` | the host to all; a client to the host; a client to the host; the holder to all | a world food's temperature, ripeness and uses; a client's bite; the condition of a food a client let go; the condition of the food in a hand |
 | `PropToolFlags` | the tool's user to all | a prop's static, frozen and sleep as a toolgun tool left them `[?]` |
 | `PropSettle` | the releaser to all | where its released copy rests: the transform, its frozen and sleep, and the hold whose release it follows `[?]` |
@@ -512,6 +520,7 @@ prop resolves.
 | A keyed prop a client creates outside the intent door (a place after a pickup, the whitelisted births, a container extract, a player's own spawn verb) never reaches the host. It is logged now: the drain names its exit, and `[dev] prop_birth_key_probe` tallies every exit by name | `[V]` `coop/props/prop_drop_intent` drops it at the drain; `coop/dev/prop_birth_key_probe` |
 | Two peers changing one canned food inside one round trip each publish a whole record, and the last to reach the host stands, so a bite can be lost; a can's `health` travels only with those records, so impact damage short of opening it stays on each peer | `[RD]` `coop/props/prop_can_state` publishes the record and takes no claim |
 | Concrete and every other local-accumulator prop drift between peers; only the tape reel and the world food have one author | `[V]` `coop/interactables/tape_caddy_sync`, `coop/props/prop_food_sync` |
+| A microwave stopped by opening its door stops on that peer alone, the others run out their timer, and a door opened on one peer is not read by another's start; the grill's heat, coals and lid stay on each peer | `[RD]` `coop/interactables/kitchen_sync` |
 | A hot food's ignition is the host's alone, since a parked copy does not run it, so a client sees no flame on it | `[RD]` `prop_food_C.ReceiveTick`; `ue_wrap/actors/food` |
 | A parked food's frost, impact material and freeze sound are painted but only its frozen flag and steam were read back; placing a held food down was not run | `[RD]` `ue_wrap/actors/food`, `coop/props/prop_food_sync` |
 | A food subclass's own counter (the shrimp's `shrimps`) and its own tick are not carried, and a heating device's work on a client's copy is local until the host's next value | `[RD]` `coop/props/prop_food_sync` |
@@ -538,6 +547,7 @@ prop resolves.
 | a prop under a hook's drive or a broom's push | `coop/props/prop_drive_host` (the host's set and stream), `coop/props/prop_drive_stream` (the receiver), `coop/items/hook_prop_claim` (the hook lane feeding it), `coop/items/hook_constraint` (the tie itself, host-only), `coop/items/broom_push` (the broom's push feeding it) |
 | containers | `coop/props/container_contents_sync`, `coop/items/save_record_wire`, `coop/interactables/interactable_sync` |
 | a world food's condition | `coop/props/prop_food_sync`, `ue_wrap/actors/food` |
+| a microwave's and a mini oven's controls | `coop/interactables/kitchen_sync`, `ue_wrap/devices/kitchen` |
 | a record that changes in place | `coop/props/prop_record_refresh` (the drive box, the reel case), `coop/props/prop_can_state` (the canned food) |
 | notebook sync | `coop/interactables/notebook_sync`, `coop/props/prop_save_data`, `ue_wrap/actors/notebook` |
 | the pocket blip | `coop/items/inventory_pickup_sync` |

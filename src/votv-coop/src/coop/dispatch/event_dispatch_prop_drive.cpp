@@ -16,6 +16,7 @@
 #include "coop/dev/prop_syncer_drill.h"    // the drill's filler receiver
 #include "coop/dev/pile_defer_report.h"    // the pile deferral drill's report receiver
 #include "coop/element/registry.h"
+#include "coop/interactables/kitchen_sync.h"  // a microwave's and a mini oven's controls
 #include "coop/props/prop_drive_stream.h"  // the driven-prop end edge
 #include "coop/props/prop_food_sync.h"     // a world food's condition and a client's bite
 #include "coop/props/prop_hold_claim.h"    // the client's receiver of a refused hold
@@ -274,6 +275,27 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         ::coop::props::prop_food_sync::OnHand(msg.senderPeerSlot, p);
+        break;
+    }
+    case net::ReliableKind::KitchenState: {
+        // ANY->ALL: a client's copy is relayed at the host's receive edge (session_lanes.h).
+        if (msg.senderPeerSlot < 0 || msg.senderPeerSlot >= net::kMaxPeers) {
+            UE_LOGW("event_feed: KitchenState from invalid senderPeerSlot=%d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::KitchenStatePayload)) {
+            UE_LOGW("event_feed: KitchenState payload too short (%zu < %zu)",
+                    static_cast<size_t>(msg.payloadLen), sizeof(net::KitchenStatePayload));
+            break;
+        }
+        net::KitchenStatePayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.key.len == 0 || p.key.len > sizeof(p.key.data) || p.mode < 0 || p.mode >= 5 ||
+            !std::isfinite(p.remaining) || p.remaining < 0.f || p.remaining > 60.f) {
+            UE_LOGW("event_feed: KitchenState malformed -- dropping");
+            break;
+        }
+        ::coop::kitchen_sync::OnState(msg.senderPeerSlot, p);
         break;
     }
     case net::ReliableKind::DevLoadFiller: {

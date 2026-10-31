@@ -193,6 +193,7 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIf("VOTVCOOP_RUN_CLASS_DUMP", "Blueprint class dump", &ClassDumpThread, role);
     SpawnIf("VOTVCOOP_RUN_CAN_STATE", "canned food state drill", &CanStateThread, role);
     SpawnIf("VOTVCOOP_RUN_FOOD_STATE", "world food state drill", &FoodStateThread, role);
+    SpawnIf("VOTVCOOP_RUN_COOK_STATE", "microwave, oven and cooking drill", &CookStateThread, role);
     SpawnIf("VOTVCOOP_RUN_DESK_VIEW", "desk signal view drill", &DeskViewThread, role);
 
     // The bot-director halt probe, solo: measures the path query over the baked NavMesh and a
