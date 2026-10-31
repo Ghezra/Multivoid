@@ -22,7 +22,7 @@
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/engine/engine.h"
-#include "ue_wrap/world/radio.h"
+#include "ue_wrap/world/media_device.h"
 
 #include <windows.h>
 
@@ -36,7 +36,7 @@ namespace {
 
 namespace R  = ue_wrap::reflection;
 namespace E  = ue_wrap::engine;
-namespace RD = ue_wrap::radio;
+namespace RD = ue_wrap::media_device;
 
 constexpr int64_t kTimeSlackTicks = 50000000;  // 5 s between two peers' reads of one playing track
 

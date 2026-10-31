@@ -30,7 +30,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 270;
+inline constexpr uint16_t kProtocolVersion = 271;
 
 // Default LAN port (overridable via multivoid.ini "net.port=").
 inline constexpr uint16_t kDefaultPort = 47621;
@@ -1229,11 +1229,11 @@ enum class ReliableKind : uint8_t {
     // closed a microwave's door, or changed a grill's coals, fire
     // or lid; the host's burn of a grill's coals goes the same way. A client's copy is relayed. Not pre-world. Late join: every machine not at its defaults, at the ready edge. KitchenStatePayload.
     KitchenState = 218,
-    // HOST->ALL: a placed radio's track, time, play state and mode, on a change and every few seconds while it plays. A
-    // track is a hash a peer looks up in its own catalog. CLIENT->HOST: what this client's player changed through the
-    // radio's interface; never relayed, the host's next state answers. Not pre-world. Late join: every radio again at
-    // the ready edge. RadioStatePayload.
-    RadioState = 219,
+    // HOST->ALL: a placed radio's or TV's track, time, play state and mode, and a TV's channel and picture, on a change and
+    // every few seconds while it plays. A track is a hash a peer looks up in its own catalog. CLIENT->HOST: what this
+    // client's player changed through its interface; never relayed, the host's next state answers. Not pre-world. Late join: every device again at
+    // the ready edge. MediaDeviceStatePayload.
+    MediaDeviceState = 219,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
@@ -1965,16 +1965,21 @@ struct FoodHandPayload {
 };
 static_assert(sizeof(FoodHandPayload) == 12, "FoodHandPayload must be 12 bytes");
 
-// A placed radio (RadioState).
-struct RadioStatePayload {
-    WireKey  key;      // 32 -- the radio's Key
-    uint64_t track;    // 8  -- ue_wrap::radio::TrackId, 0 for none
+// A placed radio or TV (MediaDeviceState).
+struct MediaDeviceStatePayload {
+    WireKey  key;      // 32 -- the device's Key
+    uint64_t track;    // 8  -- ue_wrap::media_device::TrackId, 0 for none
     int64_t  ticks;    // 8  -- the player's time, 100 ns
     uint8_t  playing;  // 1
     uint8_t  mode;     // 1  -- playmode, 0 to 3
-    uint8_t  _pad[6];  // 6  -- zero
+    uint8_t  _pad[2];  // 2  -- zero
+    int32_t  channel;     // 4  -- a TV's, -1 for none
+    float    volume;      // 4  -- a TV's
+    float    brightness;  // 4  -- a TV's
+    float    squeezeX;    // 4  -- a TV's
+    float    squeezeY;    // 4  -- a TV's
 };
-static_assert(sizeof(RadioStatePayload) == 56, "RadioStatePayload must be 56 bytes");
+static_assert(sizeof(MediaDeviceStatePayload) == 72, "MediaDeviceStatePayload must be 72 bytes");
 
 namespace kitchen_flags {
 inline constexpr uint8_t kDoorOpen = 1;  // its `opened`
