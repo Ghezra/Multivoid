@@ -30,7 +30,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 267;
+inline constexpr uint16_t kProtocolVersion = 268;
 
 // Default LAN port (overridable via multivoid.ini "net.port=").
 inline constexpr uint16_t kDefaultPort = 47621;
@@ -1225,8 +1225,8 @@ enum class ReliableKind : uint8_t {
     // ANY->ALL: the condition of the food in this peer's hand, for the copy the others show there. A client's is
     // relayed. Sent when it moves and every few seconds while held, which is also a joiner's copy. FoodHandPayload.
     FoodHand = 217,
-    // ANY->ALL: this peer's player changed a microwave's or a mini oven's setting or started it. A client's copy is
-    // relayed. Not pre-world. Late join: every machine not at its defaults, at the ready edge. KitchenStatePayload.
+    // ANY->ALL: this peer's player changed a microwave's or a mini oven's setting or started it, or a grill's coals, fire
+    // or lid; the host's burn of a grill's coals goes the same way. A client's copy is relayed. Not pre-world. Late join: every machine not at its defaults, at the ready edge. KitchenStatePayload.
     KitchenState = 218,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
@@ -1959,14 +1959,15 @@ struct FoodHandPayload {
 };
 static_assert(sizeof(FoodHandPayload) == 12, "FoodHandPayload must be 12 bytes");
 
-// A microwave's or a mini oven's controls (KitchenState).
+// A microwave's, a mini oven's or a grill's controls (KitchenState).
 struct KitchenStatePayload {
     WireKey key;        // 32 -- the machine's Key
     uint8_t kind;       // 1  -- ue_wrap::kitchen::Kind
     uint8_t active;     // 1
-    uint8_t _pad[2];    // 2  -- zero
-    int32_t mode;       // 4  -- 0 to 4
-    float   remaining;  // 4  -- a running microwave's seconds left
+    uint8_t lid;        // 1  -- a grill's
+    uint8_t _pad;       // 1  -- zero
+    int32_t mode;       // 4  -- a setting, 0 to 4, or a grill's coals, 0 to 16
+    float   remaining;  // 4  -- a running microwave's seconds left, or a grill's burn through its coal
 };
 static_assert(sizeof(KitchenStatePayload) == 44, "KitchenStatePayload must be 44 bytes");
 
