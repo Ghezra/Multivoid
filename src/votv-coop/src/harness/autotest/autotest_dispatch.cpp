@@ -181,6 +181,9 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // moving source; enable on one peer and read the other's pose diagnostic.
     SpawnIf("VOTVCOOP_RUN_MOVE_OSC", "move oscillator (interp verify)", &MoveOscThread, role);
 
+    // The save notice: the game's own save with and without an event, read on both peers.
+    SpawnIf("VOTVCOOP_RUN_SAVE_NOTICE", "save notice drill", &SaveNoticeThread, role);
+
     // The beam sweep: the client sweeps a lit flashlight; the host records its puppet's beam each tick.
     SpawnIf("VOTVCOOP_RUN_BEAM_SWEEP", "flashlight beam sweep", &BeamSweepThread, role);
     SpawnIf("VOTVCOOP_RUN_BEAM_LOOK", "flashlight beam look (shadow flags, captures)", &BeamLookThread, role);

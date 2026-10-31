@@ -621,6 +621,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_runend.cpp
     src/harness/autotest/autotest_slip.cpp
     src/harness/autotest/autotest_move_osc.cpp
+    src/harness/autotest/autotest_save_notice.cpp
     src/harness/autotest/autotest_beam_sweep.cpp
     src/harness/autotest/autotest_beam_look.cpp
     src/harness/autotest/autotest_class_dump.cpp

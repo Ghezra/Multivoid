@@ -1199,9 +1199,9 @@ enum class ReliableKind : uint8_t {
     PropSettle = 211,
     // HOST->CLIENTS: the host saved the world, or tried to -- the game's own save of the hosted world, by the player
     // or the autosave, written to its slot; a join's scratch capture and the save-slot menu's own writes are not.
-    // While the game counts an event as running its save writes the slot without gathering the world, which is a
-    // failed save, and the outcome says so. A client writes no world save of its own, so this is how it learns of
-    // one: it shows the chat line the host shows.
+    // While the game counts an event as running its save is refused, or with bypassEvent writes the slot without
+    // gathering the world; either is a failed save, and the outcome says so. A client writes no world save of its
+    // own, so this is how it learns of one: it shows the chat line the host shows.
     // Host-authored: a client's copy is refused at the host's receive edge; never relayed; not pre-world. Late join:
     // none, a save is an act. WorldSavedPayload.
     WorldSaved = 212,
@@ -1892,7 +1892,7 @@ static_assert(sizeof(PropSettlePayload) <= 256 - 20 - 8,
 // What became of the host's save (WorldSaved). Wire-visible: the values are stable; 0 is never sent.
 enum class WorldSaveOutcome : uint8_t {
     Saved = 1,          // the world was gathered and written
-    EventRunning = 2,   // an event was running: the slot was written without the world
+    EventRunning = 2,   // an event was running: the game refused the save, or wrote the slot without the world
 };
 
 // The host saved the world or tried to (WorldSaved): the host's count of its save attempts this session, for the

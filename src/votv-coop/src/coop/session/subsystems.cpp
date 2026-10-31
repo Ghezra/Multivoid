@@ -632,6 +632,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     coop::props::prop_can_state::Tick();  // the same, for the can lane's watch
     coop::dev::dev_lanes::TickDrills(session);  // [dev] the drills' and censuses' legs (a single read each when off)
     coop::player_damage::Tick();  // impact-entry PRE cancels lazy install (non-local bodies)
+    coop::save_notice::Tick();  // the save watch's name resolves until it is live
     coop::player_handshake::TickSkinConverge();  // heal a join-window deferred skin apply (~2 s throttle)
     coop::skin_preview::Tick();  // F1-skins live mannequin preview (spawn/apply/position/hide)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:laptop_tab"}; coop::laptop_tab::Tick(session); }  // the tab watches until live, the refusal window, and a tab report owed by its pace; BEFORE the occupancy poll, so a leaving user's last tab goes ahead of the claim's release

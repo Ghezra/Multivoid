@@ -239,6 +239,10 @@ DWORD WINAPI HudTintProbeThread(LPVOID arg);
 void RunAutonomousMoveOsc();
 DWORD WINAPI MoveOscThread(LPVOID arg);
 
+// The save notice drill: the game's own save with and without an event, read on both peers. Gated by
+// VOTVCOOP_RUN_SAVE_NOTICE; the peers' shared folder in VOTVCOOP_CAN_DIR. See autotest_save_notice.cpp.
+DWORD WINAPI SaveNoticeThread(LPVOID arg);
+
 // The flashlight beam sweep: the client sweeps a lit flashlight's view in two sines and the host records its
 // puppet's aim, arm and cone rotations each tick, both to the CSV VOTVCOOP_BEAM_CSV names. Gated by
 // VOTVCOOP_RUN_BEAM_SWEEP. See autotest_beam_sweep.cpp.

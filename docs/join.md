@@ -237,9 +237,12 @@ object under a slot of the game's own -- the player's save or the autosave, not 
 capture or the save-slot menu's own writes -- the host puts "<host> saved the game" in its chat feed
 and sends `WorldSaved`, and each client shows the same line. The game's SAVED indicator stays the
 host's: `mainGamemode.saveAnim` called on a client's gamemode showed nothing, while the line showed
-`[V]` (a two-peer run, the host saving). While the game counts an event as running, its save
-still writes the slot but skips gathering the world, and the host sees the game's error; the line
-then says the host tried to save but the game cannot save during an event `[RD]`.
+`[V]` (a two-peer run, the host saving). While the game counts an event as running, `mainGamemode.save`
+shows the host the game's error and returns without a write, and with `bypassEvent` it writes the slot
+without gathering the world. The notice watches `save` for the first and hears the write for the second, and
+both lines say the host tried to save but the game cannot save during an event. `[V]`
+`harness/autotest/autotest_save_notice.cpp`: the game's own `save` on the host with no event, with one set by
+`lib_C.setEvent`, with `bypassEvent` during it, and after it; each read on both peers.
 
 On the P2P route a rejoin also depends on something the host does not think about: its own
 registration with the signaling relay, which is one long-lived TCP connection that carries no
@@ -468,7 +471,7 @@ not raise the game's own active-event counter, whose save and pause blocks the m
 
 | Limit | Evidence |
 |---|---|
-| A save the game refuses before it reaches the engine's write reaches no player as a line: the notice hears the write, and an event's save is reported only because the game still writes the slot then | `[RD]` `ue_wrap/engine/save_capture`: `saveObjects` returns without gathering while `lib_C::getEvent` is true, and `saveSlot_C::save` writes after it |
+| A save the game refuses for another reason (mid-air, a bad mode, a dream) reaches no player as a line, and during an event reads as the event's refusal: those tests run first in `save` and the notice reads only the event | `[RD]` the script of `mainGamemode_C.save` |
 | The transfer runs at a rate the mod measures per connection, climbing from about 145 KB/s to whatever the link acknowledges carrying; the transport itself contributes no bandwidth estimation, so a link that genuinely is slow is still a long download | `[V]` `coop/net/send_rate_control`, `coop/net/connection_tuning` |
 | The world load is capped by one absolute deadline on the probe; a load past it announces into a world that may still be churning, logged as degraded. The wait for the world's save replay has the loading phase's budget on a join, and 120 s on a world change | `[V]` `coop/session/world_load_episode` |
 | Keyless save-loaded objects are matched by position; the index-to-id sidecar is built and transferred, and its bind is off by default, behind the `save_identity_bind` developer flag | `[V]` `coop/config/config_registry_rows.inc`, `coop/props/save_identity_bind` |
