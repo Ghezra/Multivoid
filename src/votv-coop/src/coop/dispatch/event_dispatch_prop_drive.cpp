@@ -17,6 +17,7 @@
 #include "coop/dev/pile_defer_report.h"    // the pile deferral drill's report receiver
 #include "coop/element/registry.h"
 #include "coop/interactables/kitchen_sync.h"  // a microwave's and a mini oven's controls
+#include "coop/world/radio_sync.h"            // a placed radio's track and play state
 #include "coop/props/prop_drive_stream.h"  // the driven-prop end edge
 #include "coop/props/prop_food_sync.h"     // a world food's condition and a client's bite
 #include "coop/props/prop_hold_claim.h"    // the client's receiver of a refused hold
@@ -296,6 +297,26 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         ::coop::kitchen_sync::OnState(msg.senderPeerSlot, p);
+        break;
+    }
+    case net::ReliableKind::RadioState: {
+        // HOST->ALL, or a client's edit to the host: never relayed.
+        if (msg.senderPeerSlot < 0 || msg.senderPeerSlot >= net::kMaxPeers) {
+            UE_LOGW("event_feed: RadioState from invalid senderPeerSlot=%d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::RadioStatePayload)) {
+            UE_LOGW("event_feed: RadioState payload too short (%zu < %zu)",
+                    static_cast<size_t>(msg.payloadLen), sizeof(net::RadioStatePayload));
+            break;
+        }
+        net::RadioStatePayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.key.len == 0 || p.key.len > sizeof(p.key.data) || p.ticks < 0 || p.playing > 1 || p.mode > 3) {
+            UE_LOGW("event_feed: RadioState malformed -- dropping");
+            break;
+        }
+        ::coop::radio_sync::OnState(msg.senderPeerSlot, p);
         break;
     }
     case net::ReliableKind::DevLoadFiller: {

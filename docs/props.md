@@ -457,6 +457,12 @@ host's count stands: a client sends only its player's coal, light, off press or 
 its copy never runs out first; the drill runs each from each peer, a food heating on it, three coals burnt on the host's
 count, the lid's own press and its return from each peer, and a lit grill for a rejoin, the verbs by reflection.
 
+A placed radio (`coop/world/radio_sync`) plays through each peer's own media player and picks its own next track, so the
+host's state stands: a client's copy is moved to its track, time and play state, and a client with the radio's interface
+open sends what its player changed. A track crosses as a hash of its catalog link and opens only from the peer's own
+catalog `[V]` (`harness/autotest/autotest_radio_state.cpp`: a pick, stop, play and mode from a client, a pick from the
+host and a rejoin, with silent test tracks, the rule written on and the pick by the radio's own function).
+
 ## Who owns what
 
 | State | Owner | Shape |
@@ -480,6 +486,7 @@ count, the lid's own press and its return from each peer, and a lit grill for a 
 | `PropPose` (stream) | the holder to all | the held prop's world transform, per frame, and its hold's generation |
 | `PropSpawn`, `PropDestroy` | the host to all; a destroy from either role | class, key, id, transform, physics flags, the birth scalar; the key and id |
 | `PropRelease` | the holder to all | the prop's transform, its inherited linear and angular velocity and its frozen and sleep at the edge, the hold it closes and the throw sequence (0 = not a throw); a client's goes through the host, which clamps it and sends it on |
+| `RadioState` | the host to all; a client to the host | a placed radio's track hash, time, play state and mode; what a client's interface changed |
 | `KitchenState` | the presser to all; the host's burn of a grill's coals | a microwave's or a mini oven's setting and whether it runs; a grill's coals, fire, lid and burn |
 | `FoodState`, `FoodBite`, `FoodRelease`, `FoodHand` | the host to all; a client to the host; a client to the host; the holder to all | a world food's temperature, ripeness and uses; a client's bite; the condition of a food a client let go; the condition of the food in a hand |
 | `PropToolFlags` | the tool's user to all | a prop's static, frozen and sleep as a toolgun tool left them `[?]` |
@@ -524,6 +531,7 @@ prop resolves.
 | A keyed prop a client creates outside the intent door (a place after a pickup, the whitelisted births, a container extract, a player's own spawn verb) never reaches the host. It is logged now: the drain names its exit, and `[dev] prop_birth_key_probe` tallies every exit by name | `[V]` `coop/props/prop_drop_intent` drops it at the drain; `coop/dev/prop_birth_key_probe` |
 | Two peers changing one canned food inside one round trip each publish a whole record, and the last to reach the host stands, so a bite can be lost; a can's `health` travels only with those records, so impact damage short of opening it stays on each peer | `[RD]` `coop/props/prop_can_state` publishes the record and takes no claim |
 | Concrete and every other local-accumulator prop drift between peers; only the tape reel and the world food have one author | `[V]` `coop/interactables/tape_caddy_sync`, `coop/props/prop_food_sync` |
+| A radio plays only on a peer whose own catalog holds the track and whose Custom Content rule is on, and is silent elsewhere; the ATV's radio is not this lane's | `[V]` `coop/world/radio_sync`: a track is a hash, so no peer can make another open an address |
 | A hot food's ignition is the host's alone, since a parked copy does not run it, so a client sees no flame on it | `[RD]` `prop_food_C.ReceiveTick`; `ue_wrap/actors/food` |
 | A parked food's frost, impact material and freeze sound are painted but only its frozen flag and steam were read back; placing a held food down was not run | `[RD]` `ue_wrap/actors/food`, `coop/props/prop_food_sync` |
 | A food subclass's own counter (the shrimp's `shrimps`) and its own tick are not carried, and a heating device's work on a client's copy is local until the host's next value | `[RD]` `coop/props/prop_food_sync` |
@@ -551,6 +559,7 @@ prop resolves.
 | containers | `coop/props/container_contents_sync`, `coop/items/save_record_wire`, `coop/interactables/interactable_sync` |
 | a world food's condition | `coop/props/prop_food_sync`, `ue_wrap/actors/food` |
 | a microwave's, a mini oven's and a grill's controls | `coop/interactables/kitchen_sync`, `ue_wrap/devices/kitchen` |
+| a placed radio | `coop/world/radio_sync`, `ue_wrap/world/radio` |
 | a record that changes in place | `coop/props/prop_record_refresh` (the drive box, the reel case), `coop/props/prop_can_state` (the canned food) |
 | notebook sync | `coop/interactables/notebook_sync`, `coop/props/prop_save_data`, `ue_wrap/actors/notebook` |
 | the pocket blip | `coop/items/inventory_pickup_sync` |

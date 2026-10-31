@@ -87,6 +87,7 @@
 #include "coop/props/prop_can_state.h"
 #include "coop/props/prop_settle.h"
 #include "coop/interactables/kitchen_sync.h"
+#include "coop/world/radio_sync.h"
 #include "coop/props/prop_food_sync.h"
 #include "coop/props/prop_tool_flags.h"
 #include "coop/props/prop_stick_sync.h"  // wall-attachable stick mirror (camera-on-wall)
@@ -283,6 +284,7 @@ void Install(coop::net::Session& session) {
     coop::props::container_contents_sync::Install(&session);  // container contents
     coop::props::prop_record_refresh::Install(&session);  // drive box + reel case republish their own record
     coop::props::prop_can_state::Install(&session);  // a canned food's lid and contents: its record on a change
+    coop::radio_sync::Install(&session);  // a placed radio's track and play state
     coop::kitchen_sync::Install(&session);  // a microwave's and a mini oven's controls
     coop::props::prop_food_sync::Install(&session);  // a world food's one author, the host
     coop::props::prop_food_state::Install();  // the food family claims its own live state off the record lane
@@ -468,6 +470,7 @@ DisconnectStats DisconnectAll() {
     coop::kerfur_menu_input::OnDisconnect();  // drop the cached session (the InpActEvt_use observer stays registered)
     coop::prop_hold_claim::OnDisconnect();  // drop the refusal records and the notice cooldown
     coop::prop_settle::OnDisconnect();  // drop the watched releases
+    coop::radio_sync::OnDisconnect();
     coop::kitchen_sync::OnDisconnect();
     coop::props::prop_food_sync::OnDisconnect();  // a parked copy gets its tick back
     coop::prop_tool_flags::OnDisconnect();  // drop the pending press and the counters
@@ -634,6 +637,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     if (isHost) { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:explosion_coast"}; coop::explosion_parking::Tick(&session); }  // HOST: the props a blast flung, handed to the driven-prop channel (before its tick below; an empty list costs one size check)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:prop_drive_host"}; coop::prop_drive_host::Pump(session, isHost); }  // the driven props, both roles: HOST judges a syncing client's rows, publishes the props that moved, closes the streams that rested (after the hook poll that feeds it); then both park + drive what the host streams (an empty set costs one size check)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:prop_settle"}; coop::prop_settle::Tick(session); }  // the props this peer let go of: where each comes to rest goes out (an empty list costs one size check)
+    coop::radio_sync::Tick();  // the radios' poll
     coop::kitchen_sync::Tick();  // the machines' poll
     coop::props::prop_food_sync::Tick();  // the host's poll, the client's parking
     coop::prop_tool_flags::Tick();  // the init watch's names resolve until it is live (one flag test after)
