@@ -69,7 +69,10 @@ class and name on change, and every peer keeps a display-only mirror, physics an
 attached to the puppet's weapon component at the native hold transform
 (`coop/player/hand_item`). The flashlight rides the item-activation kind: the receiver toggles
 the puppet's own light and plays a positional click (`coop/player/item_activate`,
-`coop/player/flashlight_click_sound`). The cone hangs on a spring arm off the player's camera, whose
+`coop/player/flashlight_click_sound`). An empty battery switches the light off in the game's
+`ReceiveTick` with no function call to observe, so each tick the sender compares the game's flashlight
+bool with what it last sent, and the other peer's puppet goes dark too `[V]`
+`harness/autotest/autotest_flash_battery.cpp`, each peer's battery drained in turn. The cone hangs on a spring arm off the player's camera, whose
 rotation lag the game leaves on at speed 0, which UE's interpolation takes as no lag; a puppet's arm
 is set from the streamed view with each applied pose (`coop/player/remote_player`). The host's cone
 follows the interpolated streamed aim exactly, frame for frame, through a client's sine sweep of its
