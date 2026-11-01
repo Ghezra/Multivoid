@@ -17,6 +17,7 @@
 #include "coop/dev/pile_defer_report.h"    // the pile deferral drill's report receiver
 #include "coop/element/registry.h"
 #include "coop/interactables/kitchen_sync.h"  // a microwave's and a mini oven's controls
+#include "coop/creatures/ambient_creature_sync.h"
 #include "coop/world/media_device_sync.h"            // a placed radio's track and play state
 #include "coop/props/prop_drive_stream.h"  // the driven-prop end edge
 #include "coop/props/prop_food_sync.h"     // a world food's condition and a client's bite
@@ -318,6 +319,26 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         ::coop::media_device_sync::OnState(msg.senderPeerSlot, p);
+        break;
+    }
+    case net::ReliableKind::AmbientTreeState: {
+        // HOST->ALL.
+        if (session.role() == net::Role::Host) {
+            UE_LOGW("event_feed: AmbientTreeState from slot %d -- dropping (host-authored)", msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::AmbientTreeStatePayload)) {
+            UE_LOGW("event_feed: AmbientTreeState payload too short (%zu < %zu)",
+                    static_cast<size_t>(msg.payloadLen), sizeof(net::AmbientTreeStatePayload));
+            break;
+        }
+        net::AmbientTreeStatePayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.landed > 1 || !std::isfinite(p.scale) || p.scale <= 0.f) {
+            UE_LOGW("event_feed: AmbientTreeState malformed -- dropping");
+            break;
+        }
+        ::coop::ambient_creature_sync::OnTreeState(p);
         break;
     }
     case net::ReliableKind::DevLoadFiller: {

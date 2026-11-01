@@ -30,7 +30,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 272;
+inline constexpr uint16_t kProtocolVersion = 273;
 
 // Default LAN port (overridable via multivoid.ini "net.port=").
 inline constexpr uint16_t kDefaultPort = 47621;
@@ -1234,6 +1234,10 @@ enum class ReliableKind : uint8_t {
     // client's player changed through its interface; never relayed, the host's next state answers. Not pre-world. Late join: every device again at
     // the ready edge. MediaDeviceStatePayload.
     MediaDeviceState = 219,
+    // HOST->ALL: a walking tree's random size and whether it has landed, on a change and every few seconds, as its mirror's
+    // begin play rolls its own and its movement never lands. Not relayed, not pre-world. Late join: every tree again at the
+    // ready edge. AmbientTreeStatePayload.
+    AmbientTreeState = 220,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
@@ -1980,6 +1984,15 @@ struct MediaDeviceStatePayload {
     float    squeezeY;    // 4  -- a TV's
 };
 static_assert(sizeof(MediaDeviceStatePayload) == 72, "MediaDeviceStatePayload must be 72 bytes");
+
+// A walking tree (AmbientTreeState).
+struct AmbientTreeStatePayload {
+    uint32_t treeEid;  // 4 -- the tree's NPC element
+    float    scale;    // 4 -- its mesh's
+    uint8_t  landed;   // 1
+    uint8_t  _pad[3];  // 3 -- zero
+};
+static_assert(sizeof(AmbientTreeStatePayload) == 12, "AmbientTreeStatePayload must be 12 bytes");
 
 namespace kitchen_flags {
 inline constexpr uint8_t kDoorOpen = 1;  // its `opened`

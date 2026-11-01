@@ -98,6 +98,10 @@ inline constexpr const wchar_t* NpcClass_WispBlu      = L"wisp_blu_C";
 // geomOcta_C (AgeomOcta_C : ACharacter): the Geom Octahedron. Host-authored; a client's mirror keeps its presentation
 // and has only its decisions refused (coop/creatures/npc_mirror_brain).
 inline constexpr const wchar_t* NpcClass_GeomOcta     = L"geomOcta_C";
+// deer_C and walkingTree_C (each : ACharacter): the ambient creatures their tickers roll at absolute map points. Host-rolled;
+// coop/creatures/ambient_creature_sync parks a client's tickers.
+inline constexpr const wchar_t* NpcClass_Deer         = L"deer_C";
+inline constexpr const wchar_t* NpcClass_WalkingTree  = L"walkingTree_C";
 
 // The allowlist array: resolved once at install through R::FindClass and cached. The classes load
 // on the first gameplay-level transition, not at the menu, so the install retries until every
@@ -130,6 +134,8 @@ inline constexpr const wchar_t* kNpcAllowlist[] = {
     NpcClass_WispP,
     NpcClass_WispBlu,
     NpcClass_GeomOcta,          // the Geom Octahedron; host-authored ACharacter, pose rides EntityPose
+    NpcClass_Deer,
+    NpcClass_WalkingTree,
 };
 inline constexpr size_t kNpcAllowlistSize = sizeof(kNpcAllowlist) / sizeof(kNpcAllowlist[0]);
 

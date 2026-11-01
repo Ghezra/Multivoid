@@ -49,6 +49,7 @@
 #include "coop/world/power_panel.h"
 #include "coop/world/sky_sync.h"
 #include "coop/interactables/window_sync.h"
+#include "coop/creatures/ambient_creature_sync.h"
 #include "coop/world/media_device_sync.h"  // every radio again
 #include "coop/interactables/kitchen_sync.h"  // the machines not at their defaults
 #include "coop/props/prop_food_sync.h"  // every world food's condition again
@@ -127,6 +128,7 @@ void ConnectReplayForSlot(int slot) {
     coop::desk_snd_fx::QueueConnectBroadcastForSlot(slot);  // desk loop-sound ground truth (a mid-loop joiner gets the ON)
     coop::physmods_sync::QueueConnectBroadcastForSlot(slot);  // canonical module array (ground truth over save drift)
     coop::media_device_sync::QueueConnectBroadcastForSlot(slot);  // every radio again
+    coop::ambient_creature_sync::QueueConnectBroadcastForSlot(slot);  // every tree again
     coop::kitchen_sync::QueueConnectBroadcastForSlot(slot);  // the machines not at their defaults
     coop::props::prop_food_sync::QueueConnectBroadcastForSlot(slot);  // every world food's condition again
     coop::drive_sync::QueueConnectBroadcastForSlot(slot);  // slot lines
