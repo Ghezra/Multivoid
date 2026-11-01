@@ -639,6 +639,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_radio_state.cpp
     src/harness/autotest/autotest_tv_state.cpp
     src/harness/autotest/autotest_world_sound.cpp
+    src/harness/autotest/autotest_dish_sound.cpp
     src/harness/autotest/autotest_desk_view.cpp
     src/harness/autotest/autotest_saveui.cpp
     src/ui/input_focus.cpp
