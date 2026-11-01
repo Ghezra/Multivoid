@@ -650,6 +650,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_ambient_field.cpp
     src/harness/autotest/autotest_noclip.cpp
     src/harness/autotest/autotest_plant_state.cpp
+    src/harness/autotest/autotest_walker_watch.cpp
     src/harness/autotest/autotest_desk_view.cpp
     src/harness/autotest/autotest_saveui.cpp
     src/ui/input_focus.cpp

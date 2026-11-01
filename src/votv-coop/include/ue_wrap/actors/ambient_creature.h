@@ -39,6 +39,14 @@ void UnparkWalker(void* walker);
 bool ReadWalkerStanding(void* walker, bool& standing);
 void WriteWalkerStanding(void* walker, bool standing);
 
+// The walker's own view test, as its tick runs it: inside this controller's frustum and rendered of late.
+bool WalkerInView(void* walker, void* playerController);
+
+// Its saw flag holds it frozen, as its tick reads it, until its own timer clears the flag. An angry walker does not freeze.
+void HoldWalkerSeen(void* walker);
+void ReleaseWalkerSeen(void* walker);
+bool ReadWalkerLooking(void* walker);
+
 // A hexahive's and a sus hole's dirt holes, and the beehive spawner's branches.
 void ListHoles(std::vector<void*>& out);
 void ListBranches(std::vector<void*>& out);

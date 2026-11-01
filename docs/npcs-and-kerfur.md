@@ -77,7 +77,7 @@ leaving one leaves nothing to restore.
 | deer, walking tree | tick off, by a poll, and a creature of its own swept | they roll absolute map points, so the host rolls and the npc lane mirrors (`coop/creatures/ambient_creature_sync`). A refusal row would need the fingerprint table's maintainer, so the poll takes the tick off instead, and a tree rolled on the first tick before it is swept |
 | hexahive, sus hole | tick off, by a poll, and a hole of its own swept | a hexahive is a field of dirt holes and a sus hole is one more of the same class, so the host's holes cross by place (`coop/creatures/ambient_fixture_sync`). A sus hole rolls around the host's camera alone, so a client far from the host sees none near it |
 | beehive | timer paused, by a poll, and a branch of its own swept | it runs on a repeating timer with no tick to take off. The host's branch crosses by place and its nest as a prop; the branches a client's load brought stay, as the host's save made them |
-| walking mannequin | tick off, by a poll | the host's walker crosses as a prop, its brain parked on a client (tick and timers), and the host's drive stream carries its walking |
+| walking mannequin | tick off, by a poll | the host's walker crosses as a prop, its brain parked on a client (tick and timers), and the host's drive stream carries its walking. A client runs the walker's own view test on its copy and sends `WalkerWatch`, and the host holds the walker frozen while any client has it on screen |
 | bush | tick off, by a poll | a bush is a `growingPlant_C`, the class of a player's own plants, and the host runs them all (`coop/world/plant_sync`, `docs/events-and-weather.md`) |
 | bp7, tick | left running | they roll a full 32-bit integer against 0, so they all but never fire |
 
@@ -177,7 +177,7 @@ wisp in flight is transient and owes nothing.
 | Only one stalker class is owned per peer so far | `[V]` `coop/creatures/owner_entity_sync`, the member table |
 | The conversion is detected by a poll, five times a second, not at the verb | `[V]` `coop/creatures/kerfur_convert`; the lane reads the result rather than the call, because a peer's own conversion has already happened by the time any watch of ours runs |
 | A dirt hole's own end is each viewer's: past 20 minutes, one its viewer is not looking at and not near goes for that viewer, and a client's copy can go while the host's stands. The host's end reaches every client | `[V]` `susDirtHole_C`'s begin play; `coop/creatures/ambient_fixture_sync` |
-| A walking mannequin moves by the host's view alone, so a client can watch one walk, and it hits only the host: a client's copy has its damage timer off, and a client's shot angers only its own copy | `[V]` `prop_wMannequin_C`'s tick and `timer_damage`; `coop/creatures/ambient_creature_sync` |
+| A walking mannequin freezes for any viewer, but a client's look reaches the host a moment late, so it can slide on for that long. It chases and hits only the host: a client's copy has its damage timer off, and a client's shot angers only its own copy | `[V]` `prop_wMannequin_C`'s tick and `timer_damage`; `coop/creatures/ambient_creature_sync` |
 | A deer's dissolve is each viewer's: one a client walked up to is gone for that client and stands on the host until the host comes near. A walking tree halts and wanders by the host's view alone, so a client can watch one move | `[V]` `coop/creatures/ambient_creature_sync`; `deer_C` and `walkingTree_C` read local player and render state |
 
 ## Code map

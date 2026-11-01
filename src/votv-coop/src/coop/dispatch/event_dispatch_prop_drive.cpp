@@ -389,6 +389,26 @@ bool HandlePropDriveEvent(net::Session& session,
         else ::coop::plant_sync::OnState(p);
         break;
     }
+    case net::ReliableKind::WalkerWatch: {
+        // CLIENT->HOST.
+        if (session.role() != net::Role::Host) {
+            UE_LOGW("event_feed: WalkerWatch from slot %d -- dropping (a client's, to the host)", msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::WalkerWatchPayload)) {
+            UE_LOGW("event_feed: WalkerWatch payload too short (%zu < %zu)",
+                    static_cast<size_t>(msg.payloadLen), sizeof(net::WalkerWatchPayload));
+            break;
+        }
+        net::WalkerWatchPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.watching > 1) {
+            UE_LOGW("event_feed: WalkerWatch malformed -- dropping");
+            break;
+        }
+        ::coop::ambient_creature_sync::OnWalkerWatch(p, msg.senderPeerSlot);
+        break;
+    }
     case net::ReliableKind::DevLoadFiller: {
         // HOST->CLIENT, developer only: one message of the prop syncer drill's load arm. A client never sends it;
         // the drill drops it at once when its row is off.

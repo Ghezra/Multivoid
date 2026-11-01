@@ -6,13 +6,15 @@
 // stays off, because its body turns the mesh by a floor a parked mirror does not have, so this lane runs the test. A tree's
 // random size and its landing do not reach a mirror through the pose stream, so they cross here. A walking mannequin is a prop
 // and crosses as one, with its brain parked on a client; the host's drive stream carries its walking, and this poll holds it
-// there. This poll also takes the tick from the hexahive's and sus hole's spawners (coop/creatures/ambient_fixture_sync).
+// there. A walker freezes for any viewer: a client runs the walker's own view test on its copy and tells the host, which holds
+// the walker's saw flag while any client has it on screen. This poll also takes the tick from the hexahive's and sus hole's spawners (coop/creatures/ambient_fixture_sync).
 
 #pragma once
 
 namespace coop::net {
 class Session;
 struct AmbientTreeStatePayload;
+struct WalkerWatchPayload;
 }  // namespace coop::net
 
 namespace coop::ambient_creature_sync {
@@ -24,6 +26,9 @@ void Tick();
 
 // A client's receiver: the host's tree.
 void OnTreeState(const coop::net::AmbientTreeStatePayload& p);
+
+// The host's receiver: a client's view of a walker.
+void OnWalkerWatch(const coop::net::WalkerWatchPayload& p, int senderSlot);
 
 // Every tree again for a joiner.
 void QueueConnectBroadcastForSlot(int slot);

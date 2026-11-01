@@ -142,6 +142,56 @@ void WriteWalkerStanding(void* walker, bool standing) {
     b = standing ? (b | mask) : (b & ~mask);
 }
 
+bool WalkerInView(void* walker, void* playerController) {
+    void* mesh = ComponentNamed(walker, L"skeletalMesh");
+    if (!mesh || !playerController) return false;
+    void* sysCdo = R::FindClassDefaultObject(L"KismetSystemLibrary");
+    void* sysCls = sysCdo ? R::FindClass(L"KismetSystemLibrary") : nullptr;
+    void* boundsFn = sysCls ? R::FindFunction(sysCls, L"GetComponentBounds") : nullptr;
+    void* libCdo = R::FindClassDefaultObject(L"bpCodeLib");
+    void* libCls = libCdo ? R::FindClass(L"bpCodeLib") : nullptr;
+    void* frustumFn = libCls ? R::FindFunction(libCls, L"isBoxInFrustum") : nullptr;
+    void* renderedFn = R::FindDispatchFunctionCached(R::ClassOf(mesh), L"WasRecentlyRendered");
+    if (!boundsFn || !frustumFn || !renderedFn) return false;
+    ParamFrame bounds(boundsFn);
+    if (!bounds.valid()) return false;
+    bounds.Set<void*>(L"Component", mesh);
+    if (!Call(sysCdo, bounds)) return false;
+    const FVector origin = bounds.Get<FVector>(L"Origin");
+    const FVector extent = bounds.Get<FVector>(L"BoxExtent");
+    // The library's parameter names are the game's own: by their order, controller, origin, extent, return.
+    const std::vector<R::ParamInfo> names = R::FunctionParams(frustumFn);
+    if (names.size() < 4) return false;
+    ParamFrame frustum(frustumFn);
+    if (!frustum.valid()) return false;
+    frustum.Set<void*>(names[0].name.c_str(), playerController);
+    frustum.Set<FVector>(names[1].name.c_str(), origin);
+    frustum.Set<FVector>(names[2].name.c_str(), extent);
+    if (!Call(libCdo, frustum) || !frustum.Get<bool>(names[3].name.c_str())) return false;
+    ParamFrame rendered(renderedFn);
+    if (!rendered.valid()) return false;
+    rendered.Set<float>(L"Tolerance", 3.f);
+    return Call(mesh, rendered) && rendered.Get<bool>(L"ReturnValue");
+}
+
+void HoldWalkerSeen(void* walker) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (R::FindBoolProperty(R::ClassOf(walker), L"saw", off, mask)) static_cast<uint8_t*>(walker)[off] |= mask;
+}
+
+void ReleaseWalkerSeen(void* walker) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (R::FindBoolProperty(R::ClassOf(walker), L"saw", off, mask)) static_cast<uint8_t*>(walker)[off] &= static_cast<uint8_t>(~mask);
+}
+
+bool ReadWalkerLooking(void* walker) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    return R::FindBoolProperty(R::ClassOf(walker), L"looking", off, mask) && (static_cast<uint8_t*>(walker)[off] & mask) != 0;
+}
+
 void ListHoles(std::vector<void*>& out) { Collect(L"susDirtHole_C", out); }
 
 void ListBranches(std::vector<void*>& out) { Collect(L"beehiveBranch_C", out); }
