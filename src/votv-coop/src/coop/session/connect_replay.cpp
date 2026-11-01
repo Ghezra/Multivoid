@@ -51,6 +51,7 @@
 #include "coop/interactables/window_sync.h"
 #include "coop/creatures/ambient_creature_sync.h"
 #include "coop/creatures/ambient_fixture_sync.h"
+#include "coop/world/plant_sync.h"
 #include "coop/world/media_device_sync.h"  // every radio again
 #include "coop/interactables/kitchen_sync.h"  // the machines not at their defaults
 #include "coop/props/prop_food_sync.h"  // every world food's condition again
@@ -131,6 +132,7 @@ void ConnectReplayForSlot(int slot) {
     coop::media_device_sync::QueueConnectBroadcastForSlot(slot);  // every radio again
     coop::ambient_creature_sync::QueueConnectBroadcastForSlot(slot);  // every tree again
     coop::ambient_fixture_sync::QueueConnectBroadcastForSlot(slot);  // every hole and branch again
+    coop::plant_sync::QueueConnectBroadcastForSlot(slot);  // every plant again
     coop::kitchen_sync::QueueConnectBroadcastForSlot(slot);  // the machines not at their defaults
     coop::props::prop_food_sync::QueueConnectBroadcastForSlot(slot);  // every world food's condition again
     coop::drive_sync::QueueConnectBroadcastForSlot(slot);  // slot lines

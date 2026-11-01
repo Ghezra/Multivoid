@@ -69,6 +69,7 @@ void ListSpawners(std::vector<void*>& out) {
     Collect(L"ticker_hexahiveSpawner_C", out);
     Collect(L"ticker_susHoleSpawner_C", out);
     Collect(L"ticker_mannequinSpawner_C", out);
+    Collect(L"ticker_bushSpawning_C", out);
 }
 
 void ListDeer(std::vector<void*>& out) { Collect(P::name::NpcClass_Deer, out); }

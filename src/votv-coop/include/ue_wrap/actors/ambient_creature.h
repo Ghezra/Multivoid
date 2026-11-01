@@ -9,7 +9,7 @@
 
 namespace ue_wrap::ambient_creature {
 
-// The live spawners a client's tick poll parks: the deer's, the tree's, the hexahive's, the sus hole's and the mannequin's.
+// The live spawners a client's tick poll parks: the deer's, the tree's, the hexahive's, the sus hole's, the mannequin's and the bush's.
 void ListSpawners(std::vector<void*>& out);
 
 // Their live creatures.
