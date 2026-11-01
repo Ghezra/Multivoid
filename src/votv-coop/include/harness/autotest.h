@@ -272,6 +272,7 @@ DWORD WINAPI WorldSoundThread(LPVOID arg);
 DWORD WINAPI DishSoundThread(LPVOID arg);
 DWORD WINAPI AmbientCreatureThread(LPVOID arg);
 DWORD WINAPI AmbientFieldThread(LPVOID arg);
+DWORD WINAPI NoclipThread(LPVOID arg);
 
 // The desk view drill: the signal view's bounds and mode, set before a join and changed from each peer, read on both.
 // Gated by VOTVCOOP_RUN_DESK_VIEW; the peers' shared folder in VOTVCOOP_CAN_DIR. See autotest_desk_view.cpp.

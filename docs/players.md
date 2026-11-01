@@ -334,6 +334,15 @@ dead peer through the ragdoll bit of its next pose.
 | A ban is by player id and, on a direct link, by address: a banned player with a new identity key who comes from a new address or through a relay is a new player, and an address ban refuses whoever shares that address | `[V]` `coop/moderation/ban_list` |
 | The connection cap is by address too, so players behind one router share it; over a relayed internet route it counts by the identity a peer proves, so a peer that rotates its identity there gets a fresh count each time | `[V]` `coop/net/connect_history` on the direct lane; `[RD]` on the internet lane, from the transport's source |
 
+## Clipping through the world
+
+A player's tick traces from last frame's camera to this one, and a hit on static geometry is the game's way into the backrooms: a
+black screen, a save, then a level travel. In a session that travel ended the session for every peer, and a client's clip sent the
+host (measured on the rig; that it runs through the client's puppet on the host is inferred). `coop/player/backrooms_guard` keeps
+`backroomsEnabled` off while a session runs, on both roles, so a player that clips stays where the clip left them. Under the map
+the game lifts them back above the same spot, and a fall that kills them ends in the usual revive. The backrooms cannot be reached
+this way in a session, and any other sub-level travel still ends the session for the peer that takes it.
+
 ## Code map
 
 | Concept | Files |
@@ -346,6 +355,7 @@ dead peer through the ragdoll bit of its next pose.
 | skins | `coop/player/client_model`, `coop/player/skin_registry`, `coop/player/skin_effects`, `coop/player/local_body`, `coop/player/skin_preview`, `ui/skins_panel`, `assets/paks/` |
 | held and toggled items | `coop/player/hand_item`, `coop/player/item_activate`, `coop/player/flashlight_click_sound` |
 | damage and death | `coop/player/player_damage`, `coop/player/death_revive`, `coop/player/run_end_travel`, `coop/player/ragdoll_gate` |
+| no trip to the backrooms | `coop/player/backrooms_guard`, `harness/autotest/autotest_noclip.cpp` (the drill) |
 | sleep | `coop/player/sleep_sync`, `coop/player/sleep_rest` |
 | inventory | `coop/items/player_inventory_sync` |
 | moderation | `coop/moderation/moderation`, `coop/moderation/ban_list`, `coop/moderation/seen_players` |
