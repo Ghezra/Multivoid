@@ -7,6 +7,7 @@
 #include "coop/element/registry.h"
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
+#include "coop/props/prop_drive_host.h"
 
 #include "ue_wrap/actors/ambient_creature.h"
 #include "ue_wrap/core/log.h"
@@ -56,7 +57,22 @@ struct Want {
 std::unordered_map<coop::element::ElementId, Want> g_want;
 std::unordered_set<void*> g_dissolving;
 
+// CLIENT: where each walker was at the last poll and when it last moved, so a parked copy's pose shows whether it walks. The
+// host's walker jitters a few cm at a path's end, and stands only once it has been still for a moment.
+struct WalkerSeen {
+    ue_wrap::FVector at{};
+    Clock::time_point moved{};
+};
+std::unordered_map<void*, WalkerSeen> g_walkers;
+constexpr float kWalkingCm = 3.f;
+constexpr auto  kStandAfter = std::chrono::milliseconds(1500);
+
 void HostPoll(coop::net::Session& s, Clock::time_point now) {
+    // A walker's brain moves it with no hand and no verb, so the host's drive stream holds it for as long as it stands.
+    std::vector<void*> walkers;
+    AC::ListWalkers(walkers);
+    for (void* w : walkers) coop::prop_drive_host::Claim(w, "walker");
+
     std::vector<void*> trees;
     AC::ListTrees(trees);
     std::unordered_set<coop::element::ElementId> alive;
@@ -82,7 +98,7 @@ void HostPoll(coop::net::Session& s, Clock::time_point now) {
         it = alive.count(it->first) ? std::next(it) : g_sent.erase(it);
 }
 
-void ClientPoll() {
+void ClientPoll(Clock::time_point now) {
     std::vector<void*> spawners;
     AC::ListSpawners(spawners);
     for (void* spawner : spawners) {
@@ -91,6 +107,28 @@ void ClientPoll() {
         g_parkedAny = true;
         UE_LOGI("ambient_creature_sync: parked a spawner of '%ls'", R::ToString(R::NameOf(R::ClassOf(spawner))).c_str());
     }
+
+    std::vector<void*> walkers;
+    AC::ListWalkers(walkers);
+    std::unordered_map<void*, WalkerSeen> walkersNow;
+    for (void* w : walkers) {
+        if (E::IsActorTickEnabled(w)) {
+            AC::ParkWalker(w);
+            g_parkedAny = true;
+            UE_LOGI("ambient_creature_sync: parked a walker's brain");
+        }
+        ue_wrap::FVector at{};
+        if (!E::TryGetActorLocation(w, at)) continue;
+        WalkerSeen seen{at, now};
+        auto was = g_walkers.find(w);
+        if (was != g_walkers.end()) {
+            const float dx = at.X - was->second.at.X, dy = at.Y - was->second.at.Y;
+            if (std::sqrt(dx * dx + dy * dy) < kWalkingCm) seen = was->second;
+            AC::WriteWalkerStanding(w, now - seen.moved >= kStandAfter);
+        }
+        walkersNow[w] = seen;
+    }
+    g_walkers.swap(walkersNow);
 
     std::vector<coop::element::Npc*> mirrors;
     coop::element::NpcMirrors().Snapshot(mirrors);
@@ -151,7 +189,7 @@ void Tick() {
     if (now < g_nextPoll) return;
     g_nextPoll = now + kPoll;
     if (s->role() == coop::net::Role::Host) HostPoll(*s, now);
-    else if (s->role() == coop::net::Role::Client) ClientPoll();
+    else if (s->role() == coop::net::Role::Client) ClientPoll(now);
 }
 
 void OnTreeState(const coop::net::AmbientTreeStatePayload& p) {
@@ -168,11 +206,15 @@ void OnDisconnect() {
         std::vector<void*> spawners;
         AC::ListSpawners(spawners);
         for (void* spawner : spawners) E::SetActorTickEnabled(spawner, true);
+        std::vector<void*> walkers;
+        AC::ListWalkers(walkers);
+        for (void* w : walkers) AC::UnparkWalker(w);
     }
     g_parkedAny = false;
     g_sent.clear();
     g_want.clear();
     g_dissolving.clear();
+    g_walkers.clear();
     g_session.store(nullptr);
 }
 

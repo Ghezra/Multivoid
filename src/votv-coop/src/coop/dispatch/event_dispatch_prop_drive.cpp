@@ -18,6 +18,7 @@
 #include "coop/element/registry.h"
 #include "coop/interactables/kitchen_sync.h"  // a microwave's and a mini oven's controls
 #include "coop/creatures/ambient_creature_sync.h"
+#include "coop/creatures/ambient_fixture_sync.h"
 #include "coop/world/media_device_sync.h"            // a placed radio's track and play state
 #include "coop/props/prop_drive_stream.h"  // the driven-prop end edge
 #include "coop/props/prop_food_sync.h"     // a world food's condition and a client's bite
@@ -339,6 +340,27 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         ::coop::ambient_creature_sync::OnTreeState(p);
+        break;
+    }
+    case net::ReliableKind::AmbientFixtureState: {
+        // HOST->ALL.
+        if (session.role() == net::Role::Host) {
+            UE_LOGW("event_feed: AmbientFixtureState from slot %d -- dropping (host-authored)", msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::AmbientFixtureStatePayload)) {
+            UE_LOGW("event_feed: AmbientFixtureState payload too short (%zu < %zu)",
+                    static_cast<size_t>(msg.payloadLen), sizeof(net::AmbientFixtureStatePayload));
+            break;
+        }
+        net::AmbientFixtureStatePayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.family > net::ambient_fixture::kBranch || p.alive > 1 || !std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z) ||
+            !std::isfinite(p.pitch) || !std::isfinite(p.yaw) || !std::isfinite(p.roll)) {
+            UE_LOGW("event_feed: AmbientFixtureState malformed -- dropping");
+            break;
+        }
+        ::coop::ambient_fixture_sync::OnState(p);
         break;
     }
     case net::ReliableKind::DevLoadFiller: {

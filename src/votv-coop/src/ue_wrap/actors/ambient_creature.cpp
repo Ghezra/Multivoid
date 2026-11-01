@@ -11,6 +11,7 @@
 #include "ue_wrap/engine/engine.h"
 
 #include <cstdint>
+#include <cwchar>
 
 namespace ue_wrap::ambient_creature {
 namespace {
@@ -43,11 +44,31 @@ void SetVisible(void* comp, bool visible) {
     Call(comp, f);
 }
 
+// K2_ClearTimer, K2_PauseTimer or K2_UnPauseTimer on KismetSystemLibrary's default object, the name an FString whose count
+// and capacity include the terminator.
+void TimerCall(const wchar_t* verb, void* object, const wchar_t* function) {
+    void* lib = R::FindClassDefaultObject(L"KismetSystemLibrary");
+    void* cls = lib ? R::FindClass(L"KismetSystemLibrary") : nullptr;
+    void* fn = cls ? R::FindFunction(cls, verb) : nullptr;
+    if (!fn) return;
+    ParamFrame f(fn);
+    if (!f.valid()) return;
+    f.Set<void*>(L"Object", object);
+    const int32_t num = static_cast<int32_t>(std::wcslen(function)) + 1;
+    struct { const wchar_t* data; int32_t n; int32_t m; } fs{function, num, num};
+    if (f.SetRaw(L"FunctionName", &fs, sizeof(fs))) Call(lib, f);
+}
+
+void* WalkerAnim(void* walker) { return ComponentNamed(walker, L"anim"); }
+
 }  // namespace
 
 void ListSpawners(std::vector<void*>& out) {
     Collect(L"ticker_deerSpawner_C", out);
     Collect(L"ticker_treeSpawner_C", out);
+    Collect(L"ticker_hexahiveSpawner_C", out);
+    Collect(L"ticker_susHoleSpawner_C", out);
+    Collect(L"ticker_mannequinSpawner_C", out);
 }
 
 void ListDeer(std::vector<void*>& out) { Collect(P::name::NpcClass_Deer, out); }
@@ -90,6 +111,69 @@ bool Destroy(void* creature) {
 bool Dissolve(void* deer) {
     void* fn = R::FindDispatchFunctionCached(R::ClassOf(deer), L"disappear");
     return fn && component_calls::CallParamless(deer, fn);
+}
+
+void ListWalkers(std::vector<void*>& out) { Collect(L"prop_wMannequin_C", out); }
+
+void ParkWalker(void* walker) {
+    engine::SetActorTickEnabled(walker, false);
+    for (const wchar_t* timer : {L"timer_damage", L"timer_jump", L"timer_pickupWeapon", L"timer_saw", L"timer_unhook"})
+        TimerCall(L"K2_ClearTimer", walker, timer);
+}
+
+void UnparkWalker(void* walker) { engine::SetActorTickEnabled(walker, true); }
+
+bool ReadWalkerStanding(void* walker, bool& standing) {
+    void* anim = WalkerAnim(walker);
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!anim || !R::FindBoolProperty(R::ClassOf(anim), L"stand", off, mask)) return false;
+    standing = (static_cast<uint8_t*>(anim)[off] & mask) != 0;
+    return true;
+}
+
+void WriteWalkerStanding(void* walker, bool standing) {
+    void* anim = WalkerAnim(walker);
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!anim || !R::FindBoolProperty(R::ClassOf(anim), L"stand", off, mask)) return;
+    uint8_t& b = static_cast<uint8_t*>(anim)[off];
+    b = standing ? (b | mask) : (b & ~mask);
+}
+
+void ListHoles(std::vector<void*>& out) { Collect(L"susDirtHole_C", out); }
+
+void ListBranches(std::vector<void*>& out) { Collect(L"beehiveBranch_C", out); }
+
+void* SpawnFixture(bool branch, const FVector& at, const FRotator& rot) {
+    const wchar_t* name = branch ? L"beehiveBranch_C" : L"susDirtHole_C";
+    void* cls = OI::ClassByName(name);
+    if (!cls) cls = R::FindClass(name);
+    void* a = cls ? engine::SpawnActor(cls, at) : nullptr;
+    if (a) engine::SetActorRotation(a, rot);
+    return a;
+}
+
+void PauseBeehiveTimers(bool paused) {
+    std::vector<void*> tickers;
+    Collect(L"ticker_beehiveSpawner_C", tickers);
+    for (void* t : tickers) TimerCall(paused ? L"K2_PauseTimer" : L"K2_UnPauseTimer", t, L"Spawn");
+}
+
+bool BeehiveTimerPaused() {
+    std::vector<void*> tickers;
+    Collect(L"ticker_beehiveSpawner_C", tickers);
+    void* lib = R::FindClassDefaultObject(L"KismetSystemLibrary");
+    void* cls = lib ? R::FindClass(L"KismetSystemLibrary") : nullptr;
+    void* fn = cls ? R::FindFunction(cls, L"K2_IsTimerPaused") : nullptr;
+    if (!fn || tickers.empty()) return false;
+    ParamFrame f(fn);
+    if (!f.valid()) return false;
+    f.Set<void*>(L"Object", tickers[0]);
+    const wchar_t* name = L"Spawn";
+    struct { const wchar_t* data; int32_t n; int32_t m; } fs{name, 6, 6};
+    if (!f.SetRaw(L"FunctionName", &fs, sizeof(fs)) || !Call(lib, f)) return false;
+    return f.Get<bool>(L"ReturnValue");
 }
 
 }  // namespace ue_wrap::ambient_creature

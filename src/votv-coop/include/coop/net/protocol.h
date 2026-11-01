@@ -30,7 +30,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 273;
+inline constexpr uint16_t kProtocolVersion = 274;
 
 // Default LAN port (overridable via multivoid.ini "net.port=").
 inline constexpr uint16_t kDefaultPort = 47621;
@@ -1238,6 +1238,9 @@ enum class ReliableKind : uint8_t {
     // begin play rolls its own and its movement never lands. Not relayed, not pre-world. Late join: every tree again at the
     // ready edge. AmbientTreeStatePayload.
     AmbientTreeState = 220,
+    // HOST->ALL: a dirt hole's or a beehive branch's place, once, and its end. Not relayed, not pre-world. Late join: every
+    // one again at the ready edge, and a peer that has the number keeps what it has. AmbientFixtureStatePayload.
+    AmbientFixtureState = 221,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
@@ -1993,6 +1996,22 @@ struct AmbientTreeStatePayload {
     uint8_t  _pad[3];  // 3 -- zero
 };
 static_assert(sizeof(AmbientTreeStatePayload) == 12, "AmbientTreeStatePayload must be 12 bytes");
+
+namespace ambient_fixture {
+inline constexpr uint8_t kHole = 0;
+inline constexpr uint8_t kBranch = 1;
+}  // namespace ambient_fixture
+
+// A dirt hole or a beehive branch (AmbientFixtureState).
+struct AmbientFixtureStatePayload {
+    uint32_t id;                // 4 -- the host's number for it
+    float    x, y, z;           // 12
+    float    pitch, yaw, roll;  // 12
+    uint8_t  family;            // 1 -- ambient_fixture
+    uint8_t  alive;             // 1 -- 0: it ended
+    uint8_t  _pad[2];           // 2 -- zero
+};
+static_assert(sizeof(AmbientFixtureStatePayload) == 32, "AmbientFixtureStatePayload must be 32 bytes");
 
 namespace kitchen_flags {
 inline constexpr uint8_t kDoorOpen = 1;  // its `opened`
