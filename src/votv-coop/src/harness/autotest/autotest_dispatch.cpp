@@ -203,6 +203,7 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIf("VOTVCOOP_RUN_NOCLIP", "noclip drill", &NoclipThread, role);
     SpawnIf("VOTVCOOP_RUN_PLANT_STATE", "plant drill", &PlantStateThread, role);
     SpawnIf("VOTVCOOP_RUN_WALKER_WATCH", "walker watch drill", &WalkerWatchThread, role);
+    SpawnIf("VOTVCOOP_RUN_SV_REQUEST", "sv.request drill", &SvRequestThread, role);
     SpawnIf("VOTVCOOP_RUN_DESK_VIEW", "desk signal view drill", &DeskViewThread, role);
 
     // The bot-director halt probe, solo: measures the path query over the baked NavMesh and a
