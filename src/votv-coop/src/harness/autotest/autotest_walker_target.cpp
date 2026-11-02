@@ -2,14 +2,16 @@
 //
 // The host spawns a walker on open ground and both peers look away. The peers stand where each step needs them, and each step
 // reads which way the walker closes: the host nearest, the client nearest, the host out of its range, the host down. The client
-// then angers its own copy, which must anger the host's, the walker's hit must take the client's health, and a client lying down
-// must take no more. Gated by VOTVCOOP_RUN_WALKER_TARGET; the folder is VOTVCOOP_CAN_DIR.
+// then angers its own copy, which must anger the host's, the walker's hit must take the client's health with its sound played
+// there and not on the host, and a client lying down must take no more. Last the host angers a second walker of its own, which
+// must anger the client's copy. Gated by VOTVCOOP_RUN_WALKER_TARGET; the folder is VOTVCOOP_CAN_DIR.
 
 #include "harness/autotest.h"
 
 #include "coop/config/config.h"
 #include "coop/dev/mannequin_drill.h"
 #include "coop/player/player_damage.h"
+#include "coop/player/player_hit.h"
 #include "coop/player/players_registry.h"
 #include "coop/player/remote_player.h"
 #include "coop/session/net_pump.h"
@@ -72,10 +74,12 @@ void Check(bool ok, const char* what) {
     if (!ok) ++g_fails;
 }
 
-void* FindWalker() {
+void* FindWalker(void* other = nullptr) {
     std::vector<void*> walkers;
     AC::ListWalkers(walkers);
-    return walkers.empty() ? nullptr : walkers.front();
+    for (void* w : walkers)
+        if (w != other) return w;
+    return nullptr;
 }
 
 float Flat(const ue_wrap::FVector& a, const ue_wrap::FVector& b) {
@@ -258,11 +262,16 @@ void RunHost() {
     }
     Check(angry, "a client's anger reaches the host's walker");
     const uint32_t before = coop::player_damage::DeliveredCount();
+    uint32_t hushedBefore = 0;
+    OnGameThread([&] { hushedBefore = coop::player_damage::HushedSounds(); });
     Mark("angered");
     HoldAwayUntil(walker, "hit_done", 60);
     const uint32_t delivered = coop::player_damage::DeliveredCount() - before;
-    UE_LOGI("walker-target: hits delivered %u", delivered);
+    uint32_t hushed = 0;
+    OnGameThread([&] { hushed = coop::player_damage::HushedSounds() - hushedBefore; });
+    UE_LOGI("walker-target: hits delivered %u, hit sounds refused here %u", delivered, hushed);
     Check(delivered > 0, "the walker's hit was delivered to the client");
+    Check(hushed > 0, "the hit's sound did not play on the host");
 
     // A client lying down takes no more, as the game's own test spares a player in a ragdoll.
     if (!Await("client_down", 20)) return;
@@ -289,6 +298,22 @@ void RunHost() {
     UE_LOGI("walker-target: hits delivered while the client lay down: %u", downHits);
     Check(downHits == 0, "a client lying down takes no hit");
     Mark("down_done");
+
+    // The host's own anger reaches a client's copy.
+    if (!Await("up", 30)) return;
+    coop::dev::mannequin_drill::SpawnWalker();
+    void* second = nullptr;
+    for (int i = 0; i < 100 && !second; ++i) {
+        ::Sleep(100);
+        OnGameThread([&] { second = FindWalker(walker); });
+    }
+    Check(second != nullptr, "a second walker stands");
+    if (!second) return;
+    Mark("walker2");
+    if (!Await("calm2", 60)) return;
+    OnGameThread([&] { AC::WriteWalkerAngry(second); });
+    Mark("anger2");
+    Await("angry2", 30);
     UE_LOGI("walker-target: DONE on the host fails=%d", g_fails);
 }
 
@@ -337,6 +362,8 @@ void RunClient() {
     HoldAwayUntil(walker, "angered", 20);
     // Stands in its way: the hit is what this step reads, not the walk.
     float low = before;
+    uint32_t cuesBefore = 0;
+    OnGameThread([&] { cuesBefore = coop::player_hit::CuesPlayed(); });
     for (int i = 0; i < 200 && low > before - 20.f; ++i) {
         OnGameThread([&] {
             if (i % 30 == 0) {
@@ -350,8 +377,12 @@ void RunClient() {
         });
         ::Sleep(100);
     }
-    UE_LOGI("walker-target: client health %.1f -> low %.1f", before, low);
+    ::Sleep(500);
+    uint32_t cues = 0;
+    OnGameThread([&] { cues = coop::player_hit::CuesPlayed() - cuesBefore; });
+    UE_LOGI("walker-target: client health %.1f -> low %.1f, hit sounds played here %u", before, low, cues);
     Check(low <= before - 5.f, "the host's walker hit this client");
+    Check(cues > 0, "the hit's sound played on this client");
     Mark("hit_done");
 
     SetDown(true);
@@ -375,6 +406,28 @@ void RunClient() {
     OnGameThread([&] { V::Read(V::Field::Health, &downTo); });
     UE_LOGI("walker-target: lying down, client health %.1f -> %.1f", downFrom, downTo);
     SetDown(false);
+    Mark("up");
+
+    if (!Await("walker2", 60)) return;
+    void* second = nullptr;
+    for (int i = 0; i < 300 && !second; ++i) {
+        ::Sleep(100);
+        OnGameThread([&] { second = FindWalker(walker); });
+    }
+    Check(second != nullptr, "the second walker crossed");
+    if (!second) return;
+    bool calm = false;
+    OnGameThread([&] { calm = !AC::ReadWalkerAngry(second); });
+    Check(calm, "the second walker's copy is calm here");
+    Mark("calm2");
+    HoldAwayUntil(walker, "anger2", 30);
+    bool angry = false;
+    for (int i = 0; i < 100 && !angry; ++i) {
+        OnGameThread([&] { FaceAway(second); angry = AC::ReadWalkerAngry(second); });
+        ::Sleep(100);
+    }
+    Check(angry, "the host's anger reaches this client's copy");
+    Mark("angry2");
     UE_LOGI("walker-target: DONE on the client fails=%d", g_fails);
 }
 

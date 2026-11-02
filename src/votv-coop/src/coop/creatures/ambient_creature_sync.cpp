@@ -104,6 +104,10 @@ std::unordered_map<std::wstring, Clock::time_point> g_lingering;
 // CLIENT: the walkers this player has on screen, and when it last said so.
 std::unordered_map<std::wstring, Clock::time_point> g_watching;
 
+// HOST: the walkers whose anger went out. CLIENT: the walkers the host said are angry, kept until a copy with the key is here.
+std::unordered_set<std::wstring> g_angerSent;
+std::unordered_set<std::wstring> g_angryKeys;
+
 // HOST: whom each walker goes for, when that is not the host. Its Blueprint moves toward player 0's camera and judges its
 // range by it, and nothing in it names another player; what its tick walks is its own `path`, so a walker nearest a client
 // walks a route to that client's body, written over the route to the host. The range is the Blueprint's own.
@@ -262,7 +266,19 @@ void ClientWatch(coop::net::Session& s, Clock::time_point now) {
 
 void HostPoll(coop::net::Session& s, Clock::time_point now) {
     // A walker's brain moves it with no hand and no verb, so the host's drive stream holds it for as long as it stands.
-    for (void* w : TickWalkers()) coop::prop_drive_host::Claim(w, "walker");
+    for (void* w : TickWalkers()) {
+        coop::prop_drive_host::Claim(w, "walker");
+        // An anger is the game's alone to start, by a fire, and nothing in the game undoes it.
+        if (!AC::ReadWalkerAngry(w)) continue;
+        const std::wstring key = ue_wrap::prop::GetKeyString(w);
+        if (key.empty() || g_angerSent.count(key)) continue;
+        coop::net::WalkerWatchPayload p{};
+        coop::net::WireKeyFromString(key, p.key);
+        p.angered = 1;
+        if (!s.SendReliable(coop::net::ReliableKind::WalkerAngry, &p, sizeof(p))) continue;
+        g_angerSent.insert(key);
+        UE_LOGI("ambient_creature_sync: walker '%ls' is angry -- told the clients", key.c_str());
+    }
 
     std::vector<void*> trees;
     AC::ListTrees(trees);
@@ -310,10 +326,16 @@ void ClientPoll(coop::net::Session& s, Clock::time_point now) {
         if (!E::TryGetActorLocation(w, at)) continue;
         WalkerSeen seen{at, now};
         auto was = g_walkers.find(w);
-        // A fire on this copy angers only this copy; the walker that hits is the host's.
-        const bool angry = AC::ReadWalkerAngry(w);
+        // A fire on this copy angers only this copy; the walker that hits is the host's, so the anger goes there. One the host
+        // told of goes nowhere.
         const std::wstring walkerKey = ue_wrap::prop::GetKeyString(w);
-        bool told = was != g_walkers.end() && was->second.angry;
+        const bool hostSaid = !walkerKey.empty() && g_angryKeys.count(walkerKey) != 0;
+        if (hostSaid && !AC::ReadWalkerAngry(w)) {
+            AC::WriteWalkerAngry(w);
+            UE_LOGI("ambient_creature_sync: the host's walker '%ls' is angry here", walkerKey.c_str());
+        }
+        const bool angry = AC::ReadWalkerAngry(w);
+        bool told = hostSaid || (was != g_walkers.end() && was->second.angry);
         if (angry && !told && !walkerKey.empty()) {
             coop::net::WalkerWatchPayload p{};
             coop::net::WireKeyFromString(walkerKey, p.key);
@@ -435,7 +457,15 @@ void OnWalkerWatch(const coop::net::WalkerWatchPayload& p, int senderSlot) {
     g_watchers.erase(it);
 }
 
-void QueueConnectBroadcastForSlot(int /*slot*/) { g_sent.clear(); }
+void OnWalkerAngry(const coop::net::WalkerWatchPayload& p) {
+    const std::wstring key = coop::net::StringFromWireKey(p.key);
+    if (!key.empty() && g_angryKeys.insert(key).second) UE_LOGI("ambient_creature_sync: the host says walker '%ls' is angry", key.c_str());
+}
+
+void QueueConnectBroadcastForSlot(int /*slot*/) {
+    g_sent.clear();
+    g_angerSent.clear();
+}
 
 void OnDisconnect() {
     if (g_parkedAny) {
@@ -454,6 +484,8 @@ void OnDisconnect() {
     g_watchers.clear();
     g_lingering.clear();
     g_watching.clear();
+    g_angerSent.clear();
+    g_angryKeys.clear();
     g_targets.clear();
     g_session.store(nullptr);
 }

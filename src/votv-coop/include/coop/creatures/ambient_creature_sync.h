@@ -7,7 +7,8 @@
 // random size and its landing do not reach a mirror through the pose stream, so they cross here. A walking mannequin is a prop
 // and crosses as one, with its brain parked on a client; the host's drive stream carries its walking, and this poll holds it
 // there. A walker freezes for any viewer: a client runs the walker's own view test on its copy and tells the host, which holds
-// the walker's saw flag while any client has it on screen. This poll also takes the tick from the hexahive's and sus hole's spawners (coop/creatures/ambient_fixture_sync).
+// the walker's saw flag while any client has it on screen. An anger crosses both ways: a client's fire on its copy angers the
+// host's walker, and the host's angry walker angers every copy. This poll also takes the tick from the hexahive's and sus hole's spawners (coop/creatures/ambient_fixture_sync).
 
 #pragma once
 
@@ -30,7 +31,10 @@ void OnTreeState(const coop::net::AmbientTreeStatePayload& p);
 // The host's receiver: a client's view of a walker.
 void OnWalkerWatch(const coop::net::WalkerWatchPayload& p, int senderSlot);
 
-// Every tree again for a joiner.
+// A client's receiver: a walker of the host's is angry.
+void OnWalkerAngry(const coop::net::WalkerWatchPayload& p);
+
+// Every tree and every angry walker again for a joiner.
 void QueueConnectBroadcastForSlot(int slot);
 
 // A client's spawners tick again, for the world it stays in.

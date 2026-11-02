@@ -30,7 +30,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 279;
+inline constexpr uint16_t kProtocolVersion = 280;
 
 // Default LAN port (overridable via multivoid.ini "net.port=").
 inline constexpr uint16_t kDefaultPort = 47621;
@@ -1251,6 +1251,9 @@ enum class ReliableKind : uint8_t {
     // CLIENT->HOST: this client's player has a walking mannequin on screen, every second while it does, or no longer has. The
     // host holds that walker frozen. Never relayed, not pre-world, nothing at late join. WalkerWatchPayload.
     WalkerWatch = 224,
+    // HOST->ALL: a walking mannequin of the host's is angry, once for each walker, and every angry one again at the ready edge.
+    // A client's copy takes the anger, which nothing undoes. Not relayed, not pre-world. WalkerWatchPayload, `angered` set.
+    WalkerAngry = 225,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
@@ -2048,7 +2051,7 @@ struct PlantStatePayload {
 };
 static_assert(sizeof(PlantStatePayload) == 212, "PlantStatePayload must be 212 bytes");
 
-// A client's view of a walking mannequin (WalkerWatch).
+// A client's view of a walking mannequin (WalkerWatch), or the host's anger (WalkerAngry).
 struct WalkerWatchPayload {
     WireKey key;       // 32 -- the walker's prop key
     uint8_t watching;  // 1
@@ -3425,12 +3428,17 @@ inline constexpr uint8_t kItemActivateFlag_HasActorKey = 0x01;
 inline constexpr uint8_t kPlayerHitVerbAddDamage = 0;  // v0 = impact
 inline constexpr uint8_t kPlayerHitVerbPunch     = 1;  // v0 = fullBody, v1 = boneImp, v2 = damageLocation
 inline constexpr uint8_t kPlayerHitBoneCount     = 6;  // bone: None, chest, head, pelvis, torso, lowlegs
+// cue: a sound the hit's maker plays in 2D beside the verb, which the host refused and the victim plays.
+inline constexpr uint8_t kPlayerHitCueNone       = 0;
+inline constexpr uint8_t kPlayerHitCueWalker     = 1;  // a walking mannequin's break_flesh_3
+inline constexpr uint8_t kPlayerHitCueCount      = 2;
 
 struct PlayerHitPayload {
     uint32_t targetElementId;  // the VICTIM's Player Element id (host-stamped)
     uint8_t  verb;             // kPlayerHitVerb*
     uint8_t  bone;             // punch's bn1 as an index into the six names; 0 (None) for addDamage
-    uint16_t pad;              // 0, ignored
+    uint8_t  cue;              // kPlayerHitCue*
+    uint8_t  pad;              // 0, ignored
     uint32_t sourceEid;        // the creature's Npc element, which addDamage's `actor` becomes on the victim's
                                // machine; 0 = a null actor
     float    damage;           // raw amount; the victim's armor and branches act on it
