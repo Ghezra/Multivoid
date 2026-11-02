@@ -8,12 +8,14 @@
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/sdk_profile.h"
+#include "ue_wrap/core/trace.h"
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_pawn.h"
 
 #include <windows.h>
 
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 
@@ -312,6 +314,37 @@ void* SpawnFixture(bool branch, const FVector& at, const FRotator& rot) {
     void* a = cls ? engine::SpawnActor(cls, at) : nullptr;
     if (a) engine::SetActorRotation(a, rot);
     return a;
+}
+
+bool HolesRoll() {
+    void* gi = engine::GetWorldContext();
+    if (!gi || !R::IsLive(gi) || R::ClassNameOf(gi) != P::name::GameInstanceClass) return false;
+    static void* sCls = nullptr;
+    static int32_t sOff = -1;
+    if (R::ClassOf(gi) != sCls) {
+        sCls = R::ClassOf(gi);
+        sOff = R::FindPropertyOffset(sCls, L"gamemode");
+    }
+    if (sOff < 0) return false;
+    const uint8_t mode = static_cast<uint8_t*>(gi)[sOff];
+    return mode == 0 || mode == 1;
+}
+
+bool HoleSpot(const FVector& point, FVector& at, FRotator& rot) {
+    void* ctx = engine::GetWorldContext();
+    static void* sGrass = nullptr;
+    if (!sGrass || !R::IsLive(sGrass)) sGrass = R::FindObject(L"grass", L"PhysicalMaterial");
+    if (!ctx || !sGrass) return false;
+    const uint8_t kStatic = 0;
+    trace::Hit hit;
+    if (!trace::LineHitForObjects(ctx, {point.X, point.Y, point.Z + 1000.f}, {point.X, point.Y, point.Z - 1000.f}, &kStatic, 1,
+                                  nullptr, 0, &hit) ||
+        !hit.blocked || hit.physMaterial != sGrass)
+        return false;
+    at = hit.point;
+    const FVector& n = hit.normal;
+    rot = FRotator{std::atan2(n.Z, std::sqrt(n.X * n.X + n.Y * n.Y)) * 57.29578f, std::atan2(n.Y, n.X) * 57.29578f, 0.f};
+    return true;
 }
 
 bool PauseBeehiveTimers(bool paused) {

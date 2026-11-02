@@ -66,6 +66,13 @@ void ListBranches(std::vector<void*>& out);
 // A plain copy of either: a branch spawned this way makes no nest of its own.
 void* SpawnFixture(bool branch, const FVector& at, const FRotator& rot);
 
+// The sus hole spawner's own gate: it rolls only while the game instance's mode is 0 or 1. Game thread.
+bool HolesRoll();
+
+// The sus hole spawner's own test of a spot: a trace 10 m above `point` to 10 m below it against static geometry, kept when it
+// hits grass. `at` is the hit and `rot` its normal as a rotator, as the spawner places the hole. Game thread.
+bool HoleSpot(const FVector& point, FVector& at, FRotator& rot);
+
 // The beehive spawner's repeating timer, which has no tick to take off. True once a spawner stands and every one reads as asked:
 // the timer arms a moment into the world, so a pause before that takes nothing.
 bool PauseBeehiveTimers(bool paused);

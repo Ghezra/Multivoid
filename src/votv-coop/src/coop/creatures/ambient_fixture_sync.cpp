@@ -4,6 +4,8 @@
 
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
+#include "coop/player/players_registry.h"
+#include "coop/player/remote_player.h"
 #include "coop/session/poll_timer.h"
 
 #include "ue_wrap/actors/ambient_creature.h"
@@ -17,6 +19,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <random>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -45,6 +48,59 @@ struct Known {
 std::unordered_map<void*, Known> g_known;
 uint32_t g_nextId = 1;
 
+// HOST: when each client's next sus hole roll is due, as the spawner's tick sets its own interval: 300 to 600 s.
+std::unordered_map<uint8_t, Clock::time_point> g_nextHole;
+std::mt19937 g_rng{std::random_device{}()};
+uint32_t g_holesMade = 0, g_holesMissed = 0;
+
+// HOST: the holes rolled around a client. A hole ends 10 minutes on unless player 0 is within 50 m or has it on screen, and on
+// the host that is the host, so this copy's end is not sent: each copy ends by its own viewer, the client's by the client.
+std::unordered_set<void*> g_clientHoles;
+
+float Uniform(float lo, float hi) { return std::uniform_real_distribution<float>(lo, hi)(g_rng); }
+
+// The spawner's roll, around `around` instead of player 0's camera: 100 to 500 m off at any angle, on grass or nothing.
+bool RollHole(const ue_wrap::FVector& around, uint8_t slot) {
+    const float angle = Uniform(0.f, 360.f) / 57.29578f, dist = Uniform(10000.f, 50000.f);
+    const ue_wrap::FVector point{around.X + dist * std::cos(angle), around.Y + dist * std::sin(angle), around.Z};
+    ue_wrap::FVector at{};
+    ue_wrap::FRotator rot{};
+    if (!AC::HoleSpot(point, at, rot)) {
+        ++g_holesMissed;
+        return false;
+    }
+    void* hole = AC::SpawnFixture(false, at, rot);
+    if (!hole) return false;
+    g_clientHoles.insert(hole);
+    ++g_holesMade;
+    UE_LOGI("ambient_fixture_sync: a sus hole rolled around slot %u, %.0f m off (made %u, missed %u)", static_cast<unsigned>(slot),
+            dist / 100.f, g_holesMade, g_holesMissed);
+    return true;
+}
+
+bool ClientBody(uint8_t slot, ue_wrap::FVector& at) {
+    coop::RemotePlayer* rp = coop::players::Registry::Get().Puppet(slot);
+    void* body = rp && rp->valid() && rp->HasPose() ? rp->GetActor() : nullptr;
+    return body && E::TryGetActorLocation(body, at);
+}
+
+void HostRollHoles(Clock::time_point now) {
+    std::unordered_map<uint8_t, Clock::time_point> next;
+    for (uint8_t slot = 1; slot < coop::players::kMaxPeers; ++slot) {
+        ue_wrap::FVector at{};
+        if (!ClientBody(slot, at)) continue;
+        auto it = g_nextHole.find(slot);
+        // The spawner's first tick is at its begin play, so a player's first roll is when it is first here.
+        Clock::time_point due = it == g_nextHole.end() ? now : it->second;
+        if (now >= due) {
+            if (AC::HolesRoll()) RollHole(at, slot);
+            due = now + std::chrono::milliseconds(static_cast<int64_t>(Uniform(300.f, 600.f) * 1000.f));
+        }
+        next[slot] = due;
+    }
+    g_nextHole.swap(next);
+}
+
 // CLIENT.
 std::vector<Payload> g_inbox;
 std::unordered_map<uint32_t, void*> g_copies;     // by the host's number; adopted branches too
@@ -57,7 +113,8 @@ void List(std::vector<void*>& holes, std::vector<void*>& branches) {
     AC::ListBranches(branches);
 }
 
-void HostPoll(coop::net::Session& s) {
+void HostPoll(coop::net::Session& s, Clock::time_point now) {
+    HostRollHoles(now);
     std::vector<void*> holes, branches;
     List(holes, branches);
     std::unordered_set<void*> alive;
@@ -96,11 +153,12 @@ void HostPoll(coop::net::Session& s) {
         // Never sent means no client has it, and a join sends only the living.
         Payload end = it->second.wire;
         end.alive = 0;
-        if (!it->second.pending && !s.SendReliable(coop::net::ReliableKind::AmbientFixtureState, &end, sizeof(end))) {
+        const bool clientHole = g_clientHoles.erase(it->first) != 0;
+        if (!it->second.pending && !clientHole && !s.SendReliable(coop::net::ReliableKind::AmbientFixtureState, &end, sizeof(end))) {
             ++it;
             continue;
         }
-        UE_LOGI("ambient_fixture_sync: fixture %u family=%u ended", end.id, end.family);
+        UE_LOGI("ambient_fixture_sync: fixture %u family=%u ended%s", end.id, end.family, clientHole ? " here alone (a client's hole)" : "");
         it = g_known.erase(it);
     }
     if (sends) UE_LOGI("ambient_fixture_sync: sent %d fixtures, %zu stand", sends, g_known.size());
@@ -176,7 +234,7 @@ void Tick() {
     if (!s) return;
     const Clock::time_point now = Clock::now();
     if (!g_poll.Due(now)) return;
-    if (s->role() == coop::net::Role::Host) HostPoll(*s);
+    if (s->role() == coop::net::Role::Host) HostPoll(*s, now);
     else if (s->role() == coop::net::Role::Client) ClientPoll();
 }
 
@@ -194,6 +252,8 @@ void OnDisconnect() {
     }
     g_known.clear();
     g_nextId = 1;
+    g_nextHole.clear();
+    g_clientHoles.clear();
     g_inbox.clear();
     g_copies.clear();
     g_spawned.clear();
@@ -201,6 +261,12 @@ void OnDisconnect() {
     g_loadedRead = false;
     g_beehiveWorld = 0;
     g_session.store(nullptr);
+}
+
+bool DebugRollHoleNear(int slot) {
+    ue_wrap::FVector at{};
+    if (slot <= 0 || slot >= coop::players::kMaxPeers || !ClientBody(static_cast<uint8_t>(slot), at)) return false;
+    return RollHole(at, static_cast<uint8_t>(slot));
 }
 
 }  // namespace coop::ambient_fixture_sync
