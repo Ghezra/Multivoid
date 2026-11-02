@@ -30,7 +30,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 278;
+inline constexpr uint16_t kProtocolVersion = 279;
 
 // Default LAN port (overridable via multivoid.ini "net.port=").
 inline constexpr uint16_t kDefaultPort = 47621;
@@ -1247,6 +1247,7 @@ enum class ReliableKind : uint8_t {
     // CLIENT->HOST: what this client's player did to a plant, its new values, its removal or a plant it planted. Never relayed;
     // the host's next PlantState answers. PlantStatePayload.
     PlantEdit = 223,
+    // CLIENT->HOST: its `angered` says this client's copy of a walking mannequin was just angered, as by a fire.
     // CLIENT->HOST: this client's player has a walking mannequin on screen, every second while it does, or no longer has. The
     // host holds that walker frozen. Never relayed, not pre-world, nothing at late join. WalkerWatchPayload.
     WalkerWatch = 224,
@@ -2051,7 +2052,8 @@ static_assert(sizeof(PlantStatePayload) == 212, "PlantStatePayload must be 212 b
 struct WalkerWatchPayload {
     WireKey key;       // 32 -- the walker's prop key
     uint8_t watching;  // 1
-    uint8_t _pad[3];   // 3 -- zero
+    uint8_t angered;   // 1 -- this client's copy just turned angry
+    uint8_t _pad[2];   // 2 -- zero
 };
 static_assert(sizeof(WalkerWatchPayload) == 36, "WalkerWatchPayload must be 36 bytes");
 

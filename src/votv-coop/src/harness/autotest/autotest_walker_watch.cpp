@@ -11,6 +11,7 @@
 #include "coop/player/players_registry.h"
 #include "coop/session/net_pump.h"
 #include "ue_wrap/actors/ambient_creature.h"
+#include "ue_wrap/actors/vitals.h"
 #include "ue_wrap/core/game_thread.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
@@ -81,6 +82,22 @@ void Face(void* walker, bool toward) {
     E::SetControlRotation(E::GetController(pawn), ue_wrap::FRotator{pitch, yaw, 0.f});
 }
 
+// The game's ticker_foodSleeper_C drops a hungry or tired player into a ragdoll at random, and a walker's tick stands it while
+// player 0 lies down, so the rig save's low vitals would read as a look.
+void KeepFed() {
+    namespace V = ue_wrap::vitals;
+    float food = 0.f, sleep = 0.f;
+    V::Read(V::Field::Food, &food);
+    V::Read(V::Field::Sleep, &sleep);
+    static bool sSaid = false;
+    if (!sSaid) {
+        sSaid = true;
+        UE_LOGI("walker-watch: the save's vitals were food %.1f sleep %.1f", food, sleep);
+    }
+    V::Write(V::Field::Food, 100.f);
+    V::Write(V::Field::Sleep, 100.f);
+}
+
 // Keeps the host's camera off the walker for `ms`, and returns how many samples read it looking, of how many.
 void HostSample(void* walker, int ms, int& looking, int& total, float& moved) {
     ue_wrap::FVector first{}, last{};
@@ -89,6 +106,7 @@ void HostSample(void* walker, int ms, int& looking, int& total, float& moved) {
     last = first;
     for (int t = 0; t < ms; t += 100) {
         OnGameThread([&] {
+            KeepFed();
             Face(walker, false);
             if (AC::ReadWalkerLooking(walker)) ++looking;
             ++total;
@@ -102,6 +120,7 @@ void HostSample(void* walker, int ms, int& looking, int& total, float& moved) {
 
 void RunHost() {
     if (!Await("client_ready", 480)) return;
+    OnGameThread([] { KeepFed(); });
     coop::dev::mannequin_drill::SpawnWalker();
     void* walker = nullptr;
     for (int i = 0; i < 100 && !walker; ++i) {
@@ -116,7 +135,7 @@ void RunHost() {
     // Nobody looks: its own timer lets it go.
     bool free = false;
     for (int i = 0; i < 400 && !free; ++i) {
-        OnGameThread([&] { Face(walker, false); free = !AC::ReadWalkerLooking(walker); });
+        OnGameThread([&] { KeepFed(); Face(walker, false); free = !AC::ReadWalkerLooking(walker); });
         ::Sleep(100);
     }
     Check(free, "with no viewer the walker is free");
@@ -129,7 +148,8 @@ void RunHost() {
 
     Mark("look");
     if (!Await("looking", 60)) return;
-    ::Sleep(500);
+    // A walker stopped in stride rocks on its feet for about a second, a few cm on rough ground.
+    ::Sleep(2000);
     HostSample(walker, 25000, looking, total, moved);
     UE_LOGI("walker-watch: client looking: looking %d of %d, moved %.0f cm", looking, total, moved);
     Check(looking == total, "the client's view holds the host's walker frozen, past its own timer");
@@ -139,7 +159,7 @@ void RunHost() {
     if (!Await("stopped", 60)) return;
     free = false;
     for (int i = 0; i < 300 && !free; ++i) {
-        OnGameThread([&] { Face(walker, false); free = !AC::ReadWalkerLooking(walker); });
+        OnGameThread([&] { KeepFed(); Face(walker, false); free = !AC::ReadWalkerLooking(walker); });
         ::Sleep(100);
     }
     Check(free, "when the client looks away the walker goes free");

@@ -3,6 +3,7 @@
 #include "coop/creatures/ambient_creature_sync.h"
 
 #include "coop/creatures/npc_sync.h"
+#include "coop/creatures/served_player.h"
 #include "coop/element/mirror_managers.h"
 #include "coop/element/registry.h"
 #include "coop/net/protocol.h"
@@ -10,6 +11,7 @@
 #include "coop/session/poll_timer.h"
 #include "coop/net/wire_key_util.h"
 #include "coop/player/players_registry.h"
+#include "coop/player/remote_player.h"
 #include "coop/props/prop_drive_host.h"
 
 #include "ue_wrap/actors/ambient_creature.h"
@@ -18,6 +20,7 @@
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/engine_nav.h"
 #include "ue_wrap/engine/engine_pawn.h"
 
 #include <atomic>
@@ -78,6 +81,7 @@ std::unordered_set<void*> g_dissolving;
 struct WalkerSeen {
     ue_wrap::FVector at{};
     Clock::time_point moved{};
+    bool angry = false;
 };
 std::unordered_map<void*, WalkerSeen> g_walkers;
 constexpr float kWalkingCm = 3.f;
@@ -99,6 +103,104 @@ std::unordered_map<std::wstring, Clock::time_point> g_lingering;
 
 // CLIENT: the walkers this player has on screen, and when it last said so.
 std::unordered_map<std::wstring, Clock::time_point> g_watching;
+
+// HOST: whom each walker goes for, when that is not the host. Its Blueprint moves toward player 0's camera and judges its
+// range by it, and nothing in it names another player; what its tick walks is its own `path`, so a walker nearest a client
+// walks a route to that client's body, written over the route to the host. The range is the Blueprint's own.
+struct WalkerTarget {
+    uint8_t slot = 0;
+    std::vector<ue_wrap::FVector> route;
+    Clock::time_point nextRoute{};
+};
+std::unordered_map<void*, WalkerTarget> g_targets;
+constexpr float kWalkerRangeCm = 20000.f;
+constexpr float kRetargetMarginCm = 300.f;  // two players nearly level do not trade the walker back and forth
+constexpr auto  kRouteEvery = std::chrono::milliseconds(500);
+
+float Distance(const ue_wrap::FVector& a, const ue_wrap::FVector& b) {
+    const float dx = a.X - b.X, dy = a.Y - b.Y, dz = a.Z - b.Z;
+    return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+void* PlayerBody(uint8_t slot) {
+    auto& reg = coop::players::Registry::Get();
+    if (slot == coop::players::kPeerIdHost) return reg.Local();
+    coop::RemotePlayer* rp = reg.Puppet(slot);
+    return (rp && rp->valid() && rp->HasPose()) ? rp->GetActor() : nullptr;
+}
+
+// The nearest player in range, staying with `current` unless another is nearer by the margin.
+uint8_t NearestPlayer(const ue_wrap::FVector& at, uint8_t current) {
+    uint8_t best = coop::players::kPeerIdHost;
+    float bestCm = kWalkerRangeCm;
+    float currentCm = -1.f;
+    for (int slot = 0; slot < coop::players::kMaxPeers; ++slot) {
+        void* body = PlayerBody(static_cast<uint8_t>(slot));
+        ue_wrap::FVector p{};
+        if (!body || !E::TryGetActorLocation(body, p)) continue;
+        const float cm = Distance(at, p);
+        if (slot == current) currentCm = cm;
+        if (cm < bestCm) {
+            bestCm = cm;
+            best = static_cast<uint8_t>(slot);
+        }
+    }
+    return currentCm >= 0.f && currentCm <= bestCm + kRetargetMarginCm && currentCm <= kWalkerRangeCm ? current : best;
+}
+
+// Every frame while a walker goes for a client, as its own path update can write the route to the host at any moment.
+void HostSteerWalkers(Clock::time_point now) {
+    const std::vector<void*>& walkers = TickWalkers();
+    if (walkers.empty()) {
+        g_targets.clear();
+        return;
+    }
+    std::unordered_map<void*, WalkerTarget> kept;
+    for (void* w : walkers) {
+        ue_wrap::FVector at{};
+        if (!E::TryGetActorLocation(w, at)) continue;
+        auto was = g_targets.find(w);
+        WalkerTarget t = was != g_targets.end() ? std::move(was->second) : WalkerTarget{};
+        const uint8_t slot = NearestPlayer(at, t.slot);
+        const bool changed = slot != t.slot;
+        if (changed) {
+            UE_LOGI("ambient_creature_sync: a walker now goes for player slot %u", static_cast<unsigned>(slot));
+            t.slot = slot;
+            t.nextRoute = now;
+        }
+        // Its tick stands it while "the player" lies in a ragdoll, which is the player it goes for.
+        if (coop::served_player::ServedSlot(w) != slot) {
+            if (slot == coop::players::kPeerIdHost) coop::served_player::Unserve(w);
+            else coop::served_player::Serve(w, slot, coop::served_player::kMainPlayer);
+        }
+        // The host is the Blueprint's own target: one route on the way back from a client, and then it is left alone.
+        if (slot == coop::players::kPeerIdHost && !changed) {
+            kept[w] = std::move(t);
+            continue;
+        }
+        void* body = PlayerBody(slot);
+        ue_wrap::FVector goal{};
+        if (!body || !E::TryGetActorLocation(body, goal)) continue;
+        bool routed = false;
+        if (now >= t.nextRoute) {
+            t.nextRoute = now + kRouteEvery;
+            std::vector<ue_wrap::FVector> route;
+            // The ground under the body, by a short box first: a tall one takes a roof above a player indoors.
+            ue_wrap::FVector onNav = goal;
+            if (!E::ProjectToNav(w, {goal.X, goal.Y, goal.Z - 90.f}, {150.f, 150.f, 150.f}, &onNav))
+                E::ProjectToNav(w, goal, {200.f, 200.f, 500.f}, &onNav);
+            if (E::FindNavPath(w, at, onNav, route) && !route.empty()) {
+                t.route = std::move(route);
+                routed = true;
+            }
+        }
+        if (!t.route.empty()) AC::WriteWalkerPath(w, t.route, routed);
+        if (slot == coop::players::kPeerIdHost) t.route.clear();
+        else if (routed) AC::WalkerEnsureMove(w, goal);
+        kept[w] = std::move(t);
+    }
+    g_targets.swap(kept);
+}
 
 // Every frame, as the walker's timer can clear its flag and its tick would walk it on the next.
 void HostHoldWatched(Clock::time_point now) {
@@ -150,8 +252,8 @@ void ClientWatch(coop::net::Session& s, Clock::time_point now) {
             still[key] = now;
             if (was == g_watching.end()) UE_LOGI("ambient_creature_sync: this player sees walker '%ls'", key.c_str());
         }
-        // The pose the host's walker takes in a moment, without its round trip.
-        AC::WriteWalkerStanding(w, true);
+        // The pose the host's walker takes in a moment, without its round trip. An angry one does not stop.
+        if (!AC::ReadWalkerAngry(w)) AC::WriteWalkerStanding(w, true);
     }
     for (const auto& entry : g_watching)
         if (!still.count(entry.first) && send(entry.first, false)) UE_LOGI("ambient_creature_sync: this player no longer sees walker '%ls'", entry.first.c_str());
@@ -187,7 +289,7 @@ void HostPoll(coop::net::Session& s, Clock::time_point now) {
         it = alive.count(it->first) ? std::next(it) : g_sent.erase(it);
 }
 
-void ClientPoll(Clock::time_point now) {
+void ClientPoll(coop::net::Session& s, Clock::time_point now) {
     std::vector<void*> spawners;
     AC::ListSpawners(spawners);
     for (void* spawner : spawners) {
@@ -208,11 +310,27 @@ void ClientPoll(Clock::time_point now) {
         if (!E::TryGetActorLocation(w, at)) continue;
         WalkerSeen seen{at, now};
         auto was = g_walkers.find(w);
+        // A fire on this copy angers only this copy; the walker that hits is the host's.
+        const bool angry = AC::ReadWalkerAngry(w);
+        const std::wstring walkerKey = ue_wrap::prop::GetKeyString(w);
+        bool told = was != g_walkers.end() && was->second.angry;
+        if (angry && !told && !walkerKey.empty()) {
+            coop::net::WalkerWatchPayload p{};
+            coop::net::WireKeyFromString(walkerKey, p.key);
+            p.watching = g_watching.count(walkerKey) ? 1 : 0;
+            p.angered = 1;
+            if (s.SendReliable(coop::net::ReliableKind::WalkerWatch, &p, sizeof(p))) {
+                told = true;
+                UE_LOGI("ambient_creature_sync: this player angered walker '%ls'", walkerKey.c_str());
+            }
+        }
         if (was != g_walkers.end()) {
             const float dx = at.X - was->second.at.X, dy = at.Y - was->second.at.Y;
             if (std::sqrt(dx * dx + dy * dy) < kWalkingCm) seen = was->second;
+            seen.angry = told;
             if (!g_watching.count(ue_wrap::prop::GetKeyString(w))) AC::WriteWalkerStanding(w, now - seen.moved >= kStandAfter);
         }
+        seen.angry = told;
         walkersNow[w] = seen;
     }
     g_walkers.swap(walkersNow);
@@ -276,13 +394,14 @@ void Tick() {
     g_tickWalkersRead = false;
     if (s->role() == coop::net::Role::Host) {
         HostHoldWatched(now);
+        HostSteerWalkers(now);
     } else if (s->role() == coop::net::Role::Client && now >= g_nextWatch) {
         g_nextWatch = now + kWatchPoll;
         ClientWatch(*s, now);
     }
     if (!g_poll.Due(now)) return;
     if (s->role() == coop::net::Role::Host) HostPoll(*s, now);
-    else if (s->role() == coop::net::Role::Client) ClientPoll(now);
+    else if (s->role() == coop::net::Role::Client) ClientPoll(*s, now);
 }
 
 void OnTreeState(const coop::net::AmbientTreeStatePayload& p) {
@@ -294,6 +413,15 @@ void OnTreeState(const coop::net::AmbientTreeStatePayload& p) {
 
 void OnWalkerWatch(const coop::net::WalkerWatchPayload& p, int senderSlot) {
     const std::wstring key = coop::net::StringFromWireKey(p.key);
+    if (p.angered) {
+        std::vector<void*> walkers;
+        AC::ListWalkers(walkers);
+        for (void* w : walkers) {
+            if (ue_wrap::prop::GetKeyString(w) != key) continue;
+            AC::WriteWalkerAngry(w);
+            UE_LOGI("ambient_creature_sync: slot %d angered walker '%ls'", senderSlot, key.c_str());
+        }
+    }
     if (p.watching) {
         g_watchers[key][senderSlot] = Clock::now();
         g_lingering.erase(key);
@@ -326,6 +454,7 @@ void OnDisconnect() {
     g_watchers.clear();
     g_lingering.clear();
     g_watching.clear();
+    g_targets.clear();
     g_session.store(nullptr);
 }
 

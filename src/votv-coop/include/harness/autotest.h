@@ -276,6 +276,7 @@ DWORD WINAPI NoclipThread(LPVOID arg);
 DWORD WINAPI LevelTravelThread(LPVOID arg);
 DWORD WINAPI PlantStateThread(LPVOID arg);
 DWORD WINAPI WalkerWatchThread(LPVOID arg);
+DWORD WINAPI WalkerTargetThread(LPVOID arg);
 DWORD WINAPI BrowserFilterThread(LPVOID arg);
 DWORD WINAPI SvRequestThread(LPVOID arg);
 DWORD WINAPI ModuleBuyThread(LPVOID arg);
