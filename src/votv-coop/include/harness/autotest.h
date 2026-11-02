@@ -273,6 +273,7 @@ DWORD WINAPI DishSoundThread(LPVOID arg);
 DWORD WINAPI AmbientCreatureThread(LPVOID arg);
 DWORD WINAPI AmbientFieldThread(LPVOID arg);
 DWORD WINAPI NoclipThread(LPVOID arg);
+DWORD WINAPI LevelTravelThread(LPVOID arg);
 DWORD WINAPI PlantStateThread(LPVOID arg);
 DWORD WINAPI WalkerWatchThread(LPVOID arg);
 DWORD WINAPI BrowserFilterThread(LPVOID arg);

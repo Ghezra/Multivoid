@@ -105,6 +105,32 @@ DWORD WINAPI ClassDumpThread(LPVOID /*arg*/) {
             d.store(1);
         });
     }
+    // The same text for classes nothing has loaded yet, in one launch: VOTVCOOP_CLASS_SCRIPT_PATHS lists object paths,
+    // comma separated, and each lands as <VOTVCOOP_CLASS_SCRIPT_DIR>/<class>_script.txt.
+    const std::string scriptPaths = coop::config::ReadEnv("VOTVCOOP_CLASS_SCRIPT_PATHS");
+    const std::string scriptDir = coop::config::ReadEnv("VOTVCOOP_CLASS_SCRIPT_DIR");
+    if (!scriptPaths.empty() && !scriptDir.empty()) {
+        std::stringstream paths(scriptPaths);
+        std::string path;
+        while (std::getline(paths, path, ',')) {
+            const std::wstring w(path.begin(), path.end());
+            ue_wrap::game_thread::RunAndWait([&](std::atomic<int>& d) {
+                void* cls = ue_wrap::asset_load::LoadObjectByPath(w.c_str());
+                if (cls) {
+                    const std::wstring name = R::ToString(R::NameOf(cls));
+                    std::ofstream out(scriptDir + "/" + std::string(name.begin(), name.end()) + "_script.txt",
+                                      std::ios::binary | std::ios::trunc);
+                    for (const R::ObjectRef& o : R::ChildObjectsOf(cls)) {
+                        if (o.className != L"Function") continue;
+                        const ue_wrap::script_fingerprint::Result r = ue_wrap::script_fingerprint::Of(o.object);
+                        out << "=== " << std::string(o.name.begin(), o.name.end()) << '\n' << r.text << '\n';
+                    }
+                }
+                UE_LOGI("class_dump: script of %ls %hs", w.c_str(), cls ? "written" : "did NOT load");
+                d.store(1);
+            });
+        }
+    }
     std::stringstream ss(list);
     std::string one;
     while (std::getline(ss, one, ',')) {

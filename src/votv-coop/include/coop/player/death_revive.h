@@ -50,6 +50,10 @@ void NoteRunEndCancelled(void* author, const wchar_t* authorClass, bool authorIs
 // is cleared over the cleanup window. Any thread.
 void NotePeerPuppetRunEndCancelled();
 
+// A travel to a sub-level was refused on this machine: its site's black screen and pause are cleared.
+// Nothing else of a revive runs. Any thread.
+void NoteSubLevelTravelRefused();
+
 // The unconditional watchdog, driven from the thread that POSTS the pump composite rather than
 // from inside it -- a lens found it riding in the composite, where a stalled game thread stops
 // the watchdog and the task it watches together. If a travel was cancelled and no revive has run

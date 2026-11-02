@@ -1261,6 +1261,10 @@ msgstr ""
 msgid "That text is too long."
 msgstr ""
 
+#: src/coop/player/run_end_travel.cpp
+msgid "That way is closed while playing together."
+msgstr ""
+
 #: src/ui/server_browser_actions.cpp
 msgid "That's your own server -- you're already hosting it."
 msgstr ""

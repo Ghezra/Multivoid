@@ -341,7 +341,16 @@ black screen, a save, then a level travel. In a session that travel ended the se
 host (measured on the rig; that it runs through the client's puppet on the host is inferred). `coop/player/backrooms_guard` keeps
 `backroomsEnabled` off while a session runs, on both roles, so a player that clips stays where the clip left them. Under the map
 the game lifts them back above the same spot, and a fall that kills them ends in the usual revive. The backrooms cannot be reached
-this way in a session, and any other sub-level travel still ends the session for the peer that takes it.
+this way in a session.
+
+## Other levels
+
+Six sites send a player to a level of their own: the puddle, the biotoilet, the shake, the well, the skull zone and the insomniac
+(the level-placed triggers can name more). A session holds one world, and a travel out of it ended the client's own session, or
+everyone's when the host took it. `coop/player/run_end_travel` refuses any travel from the main world to another level while a
+session runs, on both roles, and tells the player. It clears the site's black screen and pause and puts back the slot name two of
+the sites blank. A save or a teleport the site made before its travel stands, and the shake's ragdoll is a death, answered by the
+usual revive. Those levels cannot be visited in a session.
 
 ## Code map
 
@@ -356,6 +365,7 @@ this way in a session, and any other sub-level travel still ends the session for
 | held and toggled items | `coop/player/hand_item`, `coop/player/item_activate`, `coop/player/flashlight_click_sound` |
 | damage and death | `coop/player/player_damage`, `coop/player/death_revive`, `coop/player/run_end_travel`, `coop/player/ragdoll_gate` |
 | no trip to the backrooms | `coop/player/backrooms_guard`, `harness/autotest/autotest_noclip.cpp` (the drill) |
+| no trip to another level | `coop/player/run_end_travel`, `harness/autotest/autotest_level_travel.cpp` (the drill) |
 | sleep | `coop/player/sleep_sync`, `coop/player/sleep_rest` |
 | inventory | `coop/items/player_inventory_sync` |
 | moderation | `coop/moderation/moderation`, `coop/moderation/ban_list`, `coop/moderation/seen_players` |

@@ -651,6 +651,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_ambient_creature.cpp
     src/harness/autotest/autotest_ambient_field.cpp
     src/harness/autotest/autotest_noclip.cpp
+    src/harness/autotest/autotest_level_travel.cpp
     src/harness/autotest/autotest_plant_state.cpp
     src/harness/autotest/autotest_walker_watch.cpp
     src/harness/autotest/autotest_browser_filter.cpp

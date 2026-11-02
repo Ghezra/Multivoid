@@ -1019,6 +1019,9 @@ msgstr "[[That line is too long.]]"
 msgid "That text is too long."
 msgstr "[[That text is too long.]]"
 
+msgid "That way is closed while playing together."
+msgstr "[[That way is closed while playing together.]]"
+
 msgid "That's your own server -- you're already hosting it."
 msgstr "[[That's your own server -- you're already hosting it.]]"
 

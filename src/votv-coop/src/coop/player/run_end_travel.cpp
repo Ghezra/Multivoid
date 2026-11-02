@@ -15,21 +15,31 @@
 
 #include "coop/player/run_end_travel.h"
 
+#include "coop/comms/chat_feed.h"
 #include "coop/config/config.h"
 #include "coop/config/config_registry.h"
 #include "coop/net/session.h"
 #include "coop/player/death_revive.h"
 #include "coop/player/players_registry.h"
 #include "coop/session/net_pump.h"
+#include "coop/session/poll_timer.h"
+#include "coop/text/utf8_codec.h"
+#include "l10n/l10n.h"
+#include "ue_wrap/core/field_io.h"
 #include "ue_wrap/core/game_thread.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
+#include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/core/script_gate.h"
+#include "ue_wrap/engine/world_identity.h"
 #include "ue_wrap/facts/function_row.h"
+#include "ue_wrap/world/world_singleton.h"
 
 #include <windows.h>
 
 #include <atomic>
+#include <chrono>
+#include <cstring>
 #include <string>
 
 namespace coop::player::run_end_travel {
@@ -46,6 +56,9 @@ constexpr int kLoadLevelTag = 0x52554E45;  // 'RUNE'
 
 // The level every run-ending travel names.
 constexpr const wchar_t* kMenuLevel = L"menu";
+
+// The map a session is played on. A travel to it from inside it is not a trip away.
+constexpr const wchar_t* kMainMap = L"untitled_1";
 
 // The class that owns the travel author, and the discriminator against its namesake.
 constexpr const wchar_t* kTravelAuthorClass = L"lib_C";
@@ -78,9 +91,18 @@ std::atomic<unsigned long long> g_seen{0};
 std::atomic<unsigned long long> g_menuSeen{0};
 std::atomic<unsigned long long> g_cancelled{0};
 
-// Rate latch for the sub-level line: a trigger volume can fire its travel more than once, and this
-// seam does not act on those at all, so they are logged as a trail rather than per call.
+// Rate latch for the sub-level lines: a trigger volume can fire its travel more than once.
 unsigned long long g_subLevelLogged = 0;
+
+// insomniac_C and skullzone_C blank the game instance's slot name just before their travel, and the
+// value is gone by the time the travel is seen, so the last one read is kept to put back. Read on the
+// game thread; a session's start clears it before its first tick.
+std::wstring g_slotName;
+coop::session::PollTimer g_slotNamePoll{std::chrono::seconds(1)};
+
+int32_t SlotNameOffset(void* gameInstance) {
+    return R::FindPropertyOffset(R::ClassOf(gameInstance), L"slotName");
+}
 
 // One-shot warnings, so a permanent shortfall says so once instead of once per travel.
 bool g_saidNoRevive = false;
@@ -116,6 +138,35 @@ void EndSessionAtDecision(const char* what) {
         if (s && s->running())
             coop::net_pump::FleeAfterNativeMenuTravel(
                 *s, "left at the quit decision -- the session stops before the menu travel");
+    });
+}
+
+// A session holds one world, and a peer that leaves it stops being in the session: the client's own
+// session ended and the host's ended everyone's (measured on the rig, both at the reaper's flee). So
+// the trip is refused and the player stays. The site has already run up to its travel: what it left is
+// a black screen, on skullzone_C a pause, and on two of them the blank slot name. A save and a teleport
+// it may also have made stand, as a sleep's would. prop_shake_C's ragdoll is a death, whose own menu
+// travel the revive answers. The slot name's repair runs as this seam's own task, out of the VM's body
+// loop.
+void RefuseSubLevelTravel(const R::FName& level, void* author) {
+    g_cancelled.fetch_add(1, std::memory_order_relaxed);
+    coop::death_revive::NoteSubLevelTravelRefused();
+    const unsigned long long n = ++g_subLevelLogged;
+    const bool say = n <= 8 || (n % 50) == 0;
+    if (say)
+        UE_LOGW("run_end_travel: REFUSED lib_C::loadLevel(\"%ls\") authored by %ls (#%llu) -- a session holds "
+                "one world, so the player stays in it", R::ToString(level).c_str(), R::ClassNameOf(author).c_str(), n);
+    ue_wrap::game_thread::Post([say] {
+        void* gi = ue_wrap::world_singleton::GameInstance();
+        const int32_t off = gi ? SlotNameOffset(gi) : -1;
+        if (off >= 0 && !g_slotName.empty() && ue_wrap::field_io::ReadFStringAt(gi, off).empty()) {
+            const bool ok = ue_wrap::field_io::WriteFStringField(gi, off, g_slotName);
+            UE_LOGI("run_end_travel: the slot name the refused travel blanked is back ok=%d", ok ? 1 : 0);
+        }
+        if (!say) return;
+        const char* text = l10n::T("That way is closed while playing together.");
+        coop::chat_feed::Push(coop::text::FromUtf8Lossy(text, std::strlen(text)),
+                              coop::chat_feed::Keep::Transient);
     });
 }
 
@@ -158,14 +209,14 @@ sg::Verdict OnLoadLevelPre(const sg::Call& call) {
     void* author = *reinterpret_cast<void* const*>(call.locals + sAuthorOff);
 
     if (!R::NameEquals(level, kMenuLevel)) {
-        // A sub-level travel (sl_*, the map transitions). It is not this seam's to refuse -- and
-        // it will still end the session for the peer that takes it, which is a separate open
-        // question, so the trail is left deliberately.
-        const unsigned long long n = ++g_subLevelLogged;
-        if (n <= 8 || (n % 50) == 0) {
-            UE_LOGI("run_end_travel: lib_C::loadLevel(\"%ls\") authored by %ls (#%llu) -- not the "
-                    "menu, so not judged here; a sub-level travel still ends this peer's session",
-                    R::ToString(level).c_str(), R::ClassNameOf(author).c_str(), n);
+        // A sub-level travel (sl_*, the map transitions). From the main world in a live session it
+        // is refused; a load into the main world (a join's, a return with no session) runs. A world
+        // still unknown mid-travel is never a refusal.
+        coop::net::Session* s = g_session.load(std::memory_order_acquire);
+        if (s && s->running() && !R::NameEquals(level, kMainMap) &&
+            ue_wrap::world_identity::CurrentWorldKind() == ue_wrap::world_identity::WorldKind::Gameplay) {
+            RefuseSubLevelTravel(level, author);
+            return sg::Verdict::Cancel;
         }
         return sg::Verdict::Run;
     }
@@ -278,9 +329,16 @@ void Tick() {
     // `death_revive` never has to name this module back. The readiness itself is settled in
     // Install, which runs before a session exists; this tick only publishes it.
     coop::death_revive::NoteRunEndSeamReady(g_seamLive.load(std::memory_order_acquire));
+    if (!g_slotNamePoll.Due(std::chrono::steady_clock::now())) return;
+    void* gi = ue_wrap::world_singleton::GameInstance();
+    const int32_t off = gi ? SlotNameOffset(gi) : -1;
+    if (off < 0) return;
+    std::wstring name = ue_wrap::field_io::ReadFStringAt(gi, off);
+    if (!name.empty()) g_slotName = std::move(name);
 }
 
 void OnSessionStart() {
+    g_slotName.clear();
     // Nothing world-scoped is carried across sessions, and this lane now holds nothing that is:
     // both authors are judged by name against the object in hand. What is reset is the counters
     // and the one-shot warnings. The watch itself is process-wide and outlives a session.

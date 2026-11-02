@@ -487,6 +487,7 @@ int g_screenCleanupLeft = 0;
 // The black screen a peer's puppet's false death left on this viewport: its own window, so this
 // machine's revive state is never touched by it.
 std::atomic<bool> g_puppetResidue{false};
+std::atomic<bool> g_travelResidue{false};
 int g_puppetBlackLeft = 0;
 
 // What covers the view after a revive, logged at the screen cleanup's end and again 5 s later: a field client's
@@ -557,6 +558,7 @@ void NoteRunEndCancelled(void* author, const wchar_t* authorClass, bool authorIs
 }
 
 void NotePeerPuppetRunEndCancelled() { g_puppetResidue.store(true, std::memory_order_release); }
+void NoteSubLevelTravelRefused() { g_travelResidue.store(true, std::memory_order_release); }
 
 void OnSessionStart() {
     // Not the game thread (see the window's own note): every field it touches here is atomic.
@@ -568,6 +570,7 @@ void OnSessionStart() {
     g_revivePending.store(false, std::memory_order_release);
     g_cancelAtMsAtomic.store(0, std::memory_order_release);
     g_puppetResidue.store(false, std::memory_order_release);
+    g_travelResidue.store(false, std::memory_order_release);
     g_puppetBlackLeft = 0;
     g_wasDead = false;
     g_reviveRanThisDeath = false;
@@ -667,13 +670,19 @@ void Tick(coop::net::Session& session, void* localPawn) {
     }
     if (haveState) g_wasDead = dead;
 
+    // A refused sub-level travel: the pause now, and its black screen below.
+    if (g_travelResidue.exchange(false, std::memory_order_acq_rel)) {
+        g_puppetBlackLeft = kScreenCleanupTicks;
+        ClearRunEndPause();
+    }
+
     // A peer's puppet's refused run-ending: only its black screen, retried on the cleanup stride.
     if (g_puppetResidue.exchange(false, std::memory_order_acq_rel)) g_puppetBlackLeft = kScreenCleanupTicks;
     if (g_puppetBlackLeft > 0) {
         const int tick = kScreenCleanupTicks - g_puppetBlackLeft--;
         if (tick % kScreenCleanupStride == 0 && ClearBlackScreen()) {
             g_puppetBlackLeft = 0;
-            UE_LOGI("death_revive: a peer puppet's run-ending left no black screen here (checked after %d "
+            UE_LOGI("death_revive: a refused travel left no black screen here (checked after %d "
                     "tick(s))", tick + 1);
         }
     }
