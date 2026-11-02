@@ -1,14 +1,16 @@
 // harness/autotest/autotest_plant_state.cpp -- TEST-ONLY: one state for every plant across two peers.
 //
 // A bush stands before the client joins, from its spawner's own body. Then growth, a client's water, ripening, a client's harvest
-// through the plant's own action, death, a plant a client spawned, a new bush and two removals. Gated by
-// VOTVCOOP_RUN_PLANT_STATE; the folder is VOTVCOOP_CAN_DIR.
+// through the plant's own action and the host's, death, a plant a client spawned, a new bush, two removals, and a whole plant
+// harvested by each peer. Each harvest's sound is played by the other peer's lane. Gated by VOTVCOOP_RUN_PLANT_STATE; the
+// folder is VOTVCOOP_CAN_DIR.
 
 #include "harness/autotest.h"
 
 #include "coop/config/config.h"
 #include "coop/player/players_registry.h"
 #include "coop/session/net_pump.h"
+#include "coop/world/plant_sync.h"
 #include "ue_wrap/actors/growing_plant.h"
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/core/game_thread.h"
@@ -16,6 +18,7 @@
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/types.h"
+#include "ue_wrap/engine/data_table.h"
 #include "ue_wrap/engine/engine.h"
 
 #include <windows.h>
@@ -23,6 +26,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstring>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -31,6 +35,7 @@ namespace harness::autotest {
 namespace {
 
 namespace GP = ue_wrap::growing_plant;
+namespace PS = coop::plant_sync;
 namespace E = ue_wrap::engine;
 namespace R = ue_wrap::reflection;
 namespace OI = ue_wrap::object_index;
@@ -122,6 +127,77 @@ std::string RollBush() {
 
 bool Near(float a, float b, float tol) { return std::fabs(a - b) <= tol; }
 
+// The plant's own use action, by this peer's player: a bush gives its berries, another grown plant goes whole.
+void Harvest(const std::string& key) {
+    OnGameThread([&] {
+        void* p = ByKey(key);
+        void* fn = p ? R::FindDispatchFunctionCached(R::ClassOf(p), L"actionOptionIndex") : nullptr;
+        if (!fn) return;
+        ue_wrap::ParamFrame f(fn);
+        if (!f.valid()) return;
+        f.Set<void*>(L"player", coop::players::Registry::Get().Local());
+        f.Set<uint8_t>(L"action", 4);
+        ue_wrap::Call(p, f);
+    });
+}
+
+// The first list_farmPlants row a harvest takes whole: not a bush (1) or a tree (2), with a crop. "" if none.
+std::string WholeRow() {
+    std::string out;
+    OnGameThread([&] {
+        void* table = R::FindObject(L"list_farmPlants", L"DataTable");
+        void* rowStruct = table ? ue_wrap::data_table::RowStruct(table) : nullptr;
+        const int32_t type = rowStruct ? R::FindPropertyOffsetByPrefix(rowStruct, L"plantType_") : -1;
+        const int32_t range = rowStruct ? R::FindPropertyOffsetByPrefix(rowStruct, L"amount_range_") : -1;
+        std::vector<ue_wrap::data_table::RowRef> rows;
+        if (type < 0 || range < 0 || !ue_wrap::data_table::Rows(table, rows, "plant-state")) return;
+        for (const auto& r : rows) {
+            const uint8_t t = r.row[type];
+            int32_t lo = 0, hi = 0;
+            std::memcpy(&lo, r.row + range, sizeof(lo));
+            std::memcpy(&hi, r.row + range + 4, sizeof(hi));
+            if (t != 1 && t != 2 && (lo > 0 || hi > 0)) {
+                out = Narrow(R::ToString(r.key));
+                return;
+            }
+        }
+    });
+    return out;
+}
+
+void WriteHost(const std::string& key, float grow, float water, float fruit);
+
+// A grown plant of `row` beside this player. "" if it does not stand.
+std::string PlantGrown(const std::string& row, float side) {
+    std::string key;
+    OnGameThread([&] {
+        void* pawn = coop::players::Registry::Get().Local();
+        ue_wrap::FVector me{};
+        if (!pawn || !E::TryGetActorLocation(pawn, me)) return;
+        void* p = GP::Spawn(L"growingPlant_C", L"", Widen(row), L"", true, {me.X - 300.f, me.Y + side, me.Z - 80.f}, {});
+        if (p) key = Narrow(GP::Key(p));
+    });
+    if (!key.empty()) WriteHost(key, 1.f, 500.f, 0.f);
+    return key;
+}
+
+// Waits for this peer's lane to play one more harvest sound than `before`.
+bool HeardHarvest(uint32_t before, int seconds = 10) {
+    for (int i = 0; i < seconds * 10; ++i) {
+        uint32_t now = 0;
+        OnGameThread([&] { now = PS::HarvestSoundsPlayed(); });
+        if (now > before) return true;
+        ::Sleep(100);
+    }
+    return false;
+}
+
+uint32_t HarvestSounds() {
+    uint32_t n = 0;
+    OnGameThread([&] { n = PS::HarvestSoundsPlayed(); });
+    return n;
+}
+
 // Waits for a plant here to meet a test.
 template <class Test>
 bool WaitFor(const std::string& key, Test&& test, int seconds = 15) {
@@ -205,10 +281,12 @@ void RunHost() {
     UE_LOGI("plant-state: ripe grow=%.2f fruit=%.2f amount=%d", ripe.grow, ripe.fruitGrow, ripe.amount);
     // Water the client has not heard of yet, as its slow change is still due: its harvest must not put back the old value.
     WriteHost(bush, 1.f, 3000.f, 1.f);
+    const uint32_t heardBefore = HarvestSounds();
     Mark("ripe", std::to_string(ripe.amount));
     if (!Await("harvest_done")) return;
     if (ripe.amount > 0) {
         Check(WaitFor(bush, [](void*, const GP::Values& v) { return v.amount == 0; }), "the client's harvest emptied the host's plant");
+        Check(HeardHarvest(heardBefore), "the client's harvest sounded on the host");
         GP::Values after;
         OnGameThread([&] { if (void* p = ByKey(bush)) GP::Read(p, after); });
         UE_LOGI("plant-state: host water after the harvest %.0f", after.water);
@@ -218,6 +296,17 @@ void RunHost() {
     OnGameThread([&] { foodsHost = CountOf(L"prop_food_C"); propsHost = CountOf(L"prop_C"); });
     UE_LOGI("plant-state: host item counts after the harvest food=%zu prop=%zu", foodsHost, propsHost);
     Mark("harvest_seen");
+    if (ripe.amount > 0) {
+        // Ripe again, and the host's own harvest.
+        WriteHost(bush, 1.f, 3000.f, 1.f);
+        const bool again = WaitFor(bush, [](void*, const GP::Values& v) { return v.amount > 0; }, 15);
+        Check(again, "the bush ripened again");
+        if (!Await("ripe2_seen")) return;
+        if (again) Harvest(bush);
+        Check(WaitFor(bush, [](void*, const GP::Values& v) { return v.amount == 0; }), "the host's harvest emptied its plant");
+        Mark("host_harvest");
+        if (!Await("host_harvest_heard")) return;
+    }
     if (!Await("planted", nullptr, 120)) return;
 
     // A plant this client spawned stands on the host under the same key, and the host runs it.
@@ -260,6 +349,30 @@ void RunHost() {
     if (!Await("removal")) return;
     Check(WaitGone(planted), "the plant the client removed left the host");
     Mark("removal_seen");
+    if (!Await("removal_quiet")) return;
+
+    // A whole plant: the client's harvest, then the host's.
+    const std::string whole = WholeRow();
+    UE_LOGI("plant-state: a whole-harvest row '%hs'", whole.c_str());
+    Check(!whole.empty(), "a row a harvest takes whole");
+    if (!whole.empty()) {
+        const uint32_t before = HarvestSounds();
+        const std::string first = PlantGrown(whole, -300.f);
+        Check(!first.empty(), "a grown plant stands for the client's harvest");
+        Mark("whole", first);
+        if (!Await("whole_done")) return;
+        Check(WaitGone(first), "the client's whole harvest ended the host's plant");
+        Check(HeardHarvest(before), "the client's whole harvest sounded on the host");
+        const std::string other = PlantGrown(whole, 300.f);
+        Check(!other.empty(), "a grown plant stands for the host's harvest");
+        Mark("whole2", other);
+        if (!Await("whole2_seen")) return;
+        Harvest(other);
+        Check(WaitGone(other, 5), "the host's whole harvest took its plant");
+        Mark("whole2_done");
+    } else {
+        Mark("whole", "none");
+    }
     Await("client_done");
     UE_LOGI("plant-state: DONE on host fails=%d", g_fails);
 }
@@ -331,8 +444,19 @@ void RunClient() {
     } else {
         UE_LOGI("plant-state: this row ripens no berries, so the harvest step is not run");
     }
+    const uint32_t ownHeard = HarvestSounds();
     Mark("harvest_done");
     if (!Await("harvest_seen")) return;
+    if (hostAmount > 0) {
+        Check(HarvestSounds() == ownHeard, "this player's own harvest was not played again by the lane");
+        Check(WaitFor(bush, [](void*, const GP::Values& v) { return v.amount > 0; }), "the host's ripening arrived");
+        const uint32_t before = HarvestSounds();
+        Mark("ripe2_seen");
+        if (!Await("host_harvest")) return;
+        Check(WaitFor(bush, [](void*, const GP::Values& v) { return v.amount == 0; }), "the host's harvest emptied this copy");
+        Check(HeardHarvest(before), "the host's harvest sounded here");
+        Mark("host_harvest_heard");
+    }
 
     // A plant of this player's, as a pot or a seed makes one.
     std::string planted;
@@ -362,9 +486,32 @@ void RunClient() {
     if (!Await("second_gone")) return;
     Check(WaitGone(second), "the host's removal ended it here");
 
+    const uint32_t beforeRemovals = HarvestSounds();
     OnGameThread([&] { if (void* p = ByKey(planted)) GP::Destroy(p); });
     Mark("removal");
     if (!Await("removal_seen")) return;
+    Check(HarvestSounds() == beforeRemovals, "a bush's removal is no harvest");
+    Mark("removal_quiet");
+
+    if (!Await("whole", &body)) return;
+    if (body != "none") {
+        const std::string first = body;
+        Check(WaitFor(first, [](void* p, const GP::Values& v) { return v.grow >= 1.f && GP::HarvestTakesPlant(p); }), "the host's grown plant stands here, a whole harvest");
+        const uint32_t ownWhole = HarvestSounds();
+        Harvest(first);
+        Check(WaitGone(first, 5), "this player's whole harvest took its copy");
+        ::Sleep(1500);
+        Check(HarvestSounds() == ownWhole, "this player's whole harvest was not played again by the lane");
+        Mark("whole_done");
+        if (!Await("whole2", &body)) return;
+        const std::string other = body;
+        Check(WaitFor(other, [](void*, const GP::Values& v) { return v.grow >= 1.f; }), "the host's second grown plant stands here");
+        const uint32_t before = HarvestSounds();
+        Mark("whole2_seen");
+        if (!Await("whole2_done")) return;
+        Check(WaitGone(other), "the host's whole harvest ended it here");
+        Check(HeardHarvest(before), "the host's whole harvest sounded here");
+    }
     Mark("client_done");
     UE_LOGI("plant-state: DONE on client fails=%d", g_fails);
 }

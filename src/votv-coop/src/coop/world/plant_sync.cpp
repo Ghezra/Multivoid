@@ -42,6 +42,14 @@ constexpr int   kSendsPerPoll = 32;
 std::atomic<coop::net::Session*> g_session{nullptr};
 coop::session::PollTimer g_poll{std::chrono::milliseconds(250)};
 uint32_t g_world = 0;
+uint32_t g_harvestSounds = 0;
+
+// The harvesting player's game played it on that peer; this is the sound for everyone else.
+void PlayHarvest(void* plant, const std::wstring& key) {
+    GP::HarvestSound(plant);
+    ++g_harvestSounds;
+    UE_LOGI("plant_sync: another player harvested plant '%ls' -- its sound played here (#%u)", key.c_str(), g_harvestSounds);
+}
 
 // The edges a viewer sees at once; the rest of a plant's change is gradual.
 bool Edge(const GP::Values& a, const GP::Values& b) {
@@ -144,7 +152,10 @@ void HostApplyEdits(std::unordered_map<std::wstring, void*>& index) {
         const std::wstring key = coop::net::StringFromWireKey(p.key);
         auto it = index.find(key);
         if (!p.alive) {
-            if (it != index.end()) GP::Destroy(it->second);
+            if (it != index.end()) {
+                if (GP::HarvestTakesPlant(it->second)) PlayHarvest(it->second, key);
+                GP::Destroy(it->second);
+            }
             index.erase(key);
             UE_LOGI("plant_sync: a client's player removed plant '%ls'", key.c_str());
             continue;
@@ -161,9 +172,15 @@ void HostApplyEdits(std::unordered_map<std::wstring, void*>& index) {
             UE_LOGI("plant_sync: a client's player planted '%ls', row '%ls'", key.c_str(), coop::net::StringFromWireKey(p.row).c_str());
         }
         GP::Values v = ValuesOf(p);
-        if (known && GP::Read(plant, v)) MergeEdit(p, v);
+        int32_t had = 0;
+        if (known && GP::Read(plant, v)) {
+            had = v.amount;
+            MergeEdit(p, v);
+        }
         const bool takeRow = !known || (p.editMask & coop::net::plant_edit::kRow) != 0;
         GP::Apply(plant, takeRow ? coop::net::StringFromWireKey(p.row) : GP::Row(plant), v);
+        // Only a harvest empties a bush.
+        if (had > 0 && v.amount == 0) PlayHarvest(plant, key);
         g_sent[key].pending = true;
     }
 }
@@ -244,8 +261,12 @@ void ApplyInbox(std::unordered_map<std::wstring, void*>& index) {
         auto it = index.find(key);
         if (!p.alive) {
             g_gone.erase(key);
-            g_copies.erase(key);
-            if (it != index.end()) GP::Destroy(it->second);
+            // One the host named before; a copy this player harvested is gone already.
+            const bool copy = g_copies.erase(key) != 0;
+            if (it != index.end()) {
+                if (copy && GP::HarvestTakesPlant(it->second)) PlayHarvest(it->second, key);
+                GP::Destroy(it->second);
+            }
             index.erase(key);
             UE_LOGI("plant_sync: plant '%ls' ended here", key.c_str());
             continue;
@@ -262,7 +283,10 @@ void ApplyInbox(std::unordered_map<std::wstring, void*>& index) {
             UE_LOGI("plant_sync: plant '%ls' row '%ls' stands here", key.c_str(), coop::net::StringFromWireKey(p.row).c_str());
         }
         const std::wstring row = coop::net::StringFromWireKey(p.row);
+        GP::Values before;
+        const bool picked = g_copies.count(key) && GP::Read(plant, before) && before.amount > 0 && p.amount == 0;
         GP::Apply(plant, row, ValuesOf(p));
+        if (picked) PlayHarvest(plant, key);
         g_loaded.erase(plant);
         Copy& c = g_copies[key];
         c.actor = plant;
@@ -368,6 +392,8 @@ void Tick() {
 void OnState(const coop::net::PlantStatePayload& p) { g_inbox.push_back(p); }
 
 void OnEdit(const coop::net::PlantStatePayload& p) { g_edits.push_back(p); }
+
+uint32_t HarvestSoundsPlayed() { return g_harvestSounds; }
 
 void QueueConnectBroadcastForSlot(int /*slot*/) {
     for (auto& entry : g_sent) entry.second.pending = true;

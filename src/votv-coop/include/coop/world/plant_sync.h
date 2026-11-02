@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 namespace coop::net {
 class Session;
 struct PlantStatePayload;
@@ -26,6 +28,9 @@ void OnState(const coop::net::PlantStatePayload& p);
 
 // The host's receiver: what a client's player did to a plant.
 void OnEdit(const coop::net::PlantStatePayload& p);
+
+// How many harvest sounds this peer played for another player's harvest: the harvester's game plays its own.
+uint32_t HarvestSoundsPlayed();
 
 // Every plant again for a joiner.
 void QueueConnectBroadcastForSlot(int slot);
