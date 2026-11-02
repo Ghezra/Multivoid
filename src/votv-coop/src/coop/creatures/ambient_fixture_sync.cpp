@@ -6,6 +6,8 @@
 #include "coop/net/session.h"
 #include "coop/player/players_registry.h"
 #include "coop/player/remote_player.h"
+#include "coop/session/join_progress.h"
+#include "coop/session/net_pump.h"
 #include "coop/session/poll_timer.h"
 
 #include "ue_wrap/actors/ambient_creature.h"
@@ -207,6 +209,9 @@ void ApplyInbox() {
 void ClientPoll() {
     const uint32_t world = ue_wrap::world_identity::Generation();
     if (g_beehiveWorld != world && AC::PauseBeehiveTimers(true)) g_beehiveWorld = world;
+    // The save's branches come with its objects, late in the load: one read before then finds none, and a loaded branch swept
+    // as this client's own takes its nest down with it. The host's arrive after, onto what the load made.
+    if (!coop::net_pump::HasAnnouncedWorldReady() || coop::join_progress::CurrentPhase() != coop::join_progress::Phase::Idle) return;
     std::vector<void*> holes, branches;
     List(holes, branches);
     if (!g_loadedRead) {

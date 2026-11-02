@@ -158,6 +158,19 @@ void ExpectField(const std::string& hostText, bool branches, const char* what) {
 
 void* LocalPawn() { return coop::players::Registry::Get().Local(); }
 
+// The branches whose nest is live: a branch the save brought links its nest by key, and a copy this lane spawned has none.
+size_t BranchesWithNest() {
+    std::vector<void*> v;
+    AC::ListBranches(v);
+    size_t n = 0;
+    for (void* b : v) {
+        const int32_t off = R::FindPropertyOffset(R::ClassOf(b), L"hive");
+        void* hive = off >= 0 ? *reinterpret_cast<void**>(static_cast<uint8_t*>(b) + off) : nullptr;
+        if (hive && R::IsLive(hive)) ++n;
+    }
+    return n;
+}
+
 void RunHost() {
     void* pawn = nullptr;
     for (int i = 0; i < 480 && !pawn; ++i) {
@@ -182,6 +195,15 @@ void RunHost() {
     size_t hiveSpawners = 99;
     OnGameThread([&] { hiveSpawners = CountOf(L"hexahiveSPawner_C"); });
     Check(hiveSpawners == 0, "the hive's spawner destroyed itself");
+    // Read once the client is in: the load's branches come late, and the host's first sus hole roll around a joiner can add a
+    // hole of its own.
+    if (!Await("client_in", nullptr, 480)) return;
+    Field joinBranches;
+    OnGameThread([&] {
+        hive = ReadField(false);
+        joinBranches = ReadField(true);
+    });
+    Mark("join_branches", Text(joinBranches));
     Mark("hive", Text(hive));
     if (!Await("hive_done", nullptr, 480)) return;
 
@@ -308,8 +330,20 @@ void RunClient() {
     bool timerPaused = false;
     OnGameThread([&] { timerPaused = AC::BeehiveTimerPaused(); });
     Check(timerPaused, "this client's beehive timer is paused");
+    Mark("client_in");
 
+    // The save's branches stand with their nests: none was swept as this client's own.
     std::string body;
+    if (!Await("join_branches", &body)) return;
+    ExpectField(body, true, "a joiner has the host's branches, at its places");
+    size_t joinBranches = 0, withNest = 0;
+    OnGameThread([&] {
+        joinBranches = ReadField(true).n;
+        withNest = BranchesWithNest();
+    });
+    UE_LOGI("ambient-field: at join %zu branches, %zu with a live nest", joinBranches, withNest);
+    Check(joinBranches > 0 && withNest == joinBranches, "every branch the load brought keeps its nest");
+
     if (!Await("hive", &body)) return;
     ExpectField(body, false, "a joiner has the hive's field, every hole at the host's place");
 
