@@ -54,8 +54,9 @@ void ListBranches(std::vector<void*>& out);
 // A plain copy of either: a branch spawned this way makes no nest of its own.
 void* SpawnFixture(bool branch, const FVector& at, const FRotator& rot);
 
-// The beehive spawner's repeating timer, which has no tick to take off.
-void PauseBeehiveTimers(bool paused);
+// The beehive spawner's repeating timer, which has no tick to take off. True once a spawner stands and every one reads as asked:
+// the timer arms a moment into the world, so a pause before that takes nothing.
+bool PauseBeehiveTimers(bool paused);
 
 // Whether a spawner's timer stands paused; false with no spawner.
 bool BeehiveTimerPaused();

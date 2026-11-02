@@ -10,6 +10,8 @@
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/engine/engine.h"
 
+#include <unordered_map>
+
 namespace ue_wrap::growing_plant {
 namespace {
 
@@ -21,6 +23,33 @@ constexpr const wchar_t* kFamily[] = {
     L"growingPlant_C",          L"growingPlant_shroom_7_C",  L"growingPlant_pine_C",     L"growingPlant_orangetree_C",
     L"growingPlant_lemontree_C", L"growingPlant_grassPatch_C", L"growingPlant_deadtree_C", L"growingPlant_stolasHerb_C",
 };
+
+// Where one class keeps its values: each lookup is a walk of the class's properties, and a poll reads every plant's. An instance's
+// class pointer names that instance's class whatever else has lived at the address, and the family's fields are all inherited
+// from one base, so an entry cannot read another class's layout.
+struct Offsets {
+    int32_t grow = -1, fertilizer = -1, water = -1, fruitGrow = -1, dryness = -1, amount = -1;
+    bool Complete() const { return grow >= 0 && fertilizer >= 0 && water >= 0 && fruitGrow >= 0 && dryness >= 0 && amount >= 0; }
+};
+const Offsets& OffsetsOf(void* plant) {
+    static std::unordered_map<void*, Offsets> s_byClass;
+    void* cls = R::ClassOf(plant);
+    auto it = s_byClass.find(cls);
+    if (it != s_byClass.end()) return it->second;
+    Offsets o;
+    o.grow = R::FindPropertyOffset(cls, L"grow");
+    o.fertilizer = R::FindPropertyOffset(cls, L"fertilizer");
+    o.water = R::FindPropertyOffset(cls, L"water");
+    o.fruitGrow = R::FindPropertyOffset(cls, L"fruitGrow");
+    o.dryness = R::FindPropertyOffset(cls, L"dryness");
+    o.amount = R::FindPropertyOffset(cls, L"amount");
+    return s_byClass.emplace(cls, o).first->second;
+}
+
+template <class T>
+T& At(void* plant, int32_t off) {
+    return *reinterpret_cast<T*>(static_cast<uint8_t*>(plant) + off);
+}
 
 template <class T>
 T* Field(void* plant, const wchar_t* name) {
@@ -97,14 +126,10 @@ std::wstring AttachParent(void* plant) {
 bool HideDirt(void* plant) { return ReadBool(plant, L"hideDirt"); }
 
 bool Read(void* plant, Values& out) {
-    const float* grow = Field<float>(plant, L"grow");
-    const float* fertilizer = Field<float>(plant, L"fertilizer");
-    const float* water = Field<float>(plant, L"water");
-    const float* fruitGrow = Field<float>(plant, L"fruitGrow");
-    const float* dryness = Field<float>(plant, L"dryness");
-    const int32_t* amount = Field<int32_t>(plant, L"amount");
-    if (!grow || !fertilizer || !water || !fruitGrow || !dryness || !amount) return false;
-    out = Values{*grow, *fertilizer, *water, *fruitGrow, *dryness, *amount};
+    const Offsets& o = OffsetsOf(plant);
+    if (!o.Complete()) return false;
+    out = Values{At<float>(plant, o.grow), At<float>(plant, o.fertilizer), At<float>(plant, o.water),
+                 At<float>(plant, o.fruitGrow), At<float>(plant, o.dryness), At<int32_t>(plant, o.amount)};
     return true;
 }
 
@@ -112,12 +137,13 @@ void Apply(void* plant, const std::wstring& row, const Values& v) {
     Values old;
     if (!Read(plant, old)) return;
     const bool rowChanged = Row(plant) != row;
-    *Field<float>(plant, L"grow") = v.grow;
-    *Field<float>(plant, L"fertilizer") = v.fertilizer;
-    *Field<float>(plant, L"water") = v.water;
-    *Field<float>(plant, L"fruitGrow") = v.fruitGrow;
-    *Field<float>(plant, L"dryness") = v.dryness;
-    *Field<int32_t>(plant, L"amount") = v.amount;
+    const Offsets& o = OffsetsOf(plant);
+    At<float>(plant, o.grow) = v.grow;
+    At<float>(plant, o.fertilizer) = v.fertilizer;
+    At<float>(plant, o.water) = v.water;
+    At<float>(plant, o.fruitGrow) = v.fruitGrow;
+    At<float>(plant, o.dryness) = v.dryness;
+    At<int32_t>(plant, o.amount) = v.amount;
     if (rowChanged) WriteName(plant, L"plant", row);
 
     const bool nowGrown = v.grow >= 1.f;
@@ -125,7 +151,7 @@ void Apply(void* plant, const std::wstring& row, const Values& v) {
     const bool fruitEdge = (old.fruitGrow >= 1.f) != (v.fruitGrow >= 1.f) || old.amount != v.amount;
     if (rowChanged || fruitEdge) CallWithBool(plant, L"upd", L"skipDataTable", !rowChanged);
     // upd's own read of a ripe bush sets amount; the sender's count stands.
-    *Field<int32_t>(plant, L"amount") = v.amount;
+    At<int32_t>(plant, o.amount) = v.amount;
     if (grewEdge || (rowChanged && nowGrown)) {
         WriteBool(plant, L"grew", true);
         CallWithBool(plant, L"processGrown", L"skipGrowCheck", true);

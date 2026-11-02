@@ -5,6 +5,7 @@
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
 #include "coop/net/wire_key_util.h"
+#include "coop/session/poll_timer.h"
 #include "coop/session/join_progress.h"
 #include "coop/session/net_pump.h"
 
@@ -35,12 +36,11 @@ namespace R = ue_wrap::reflection;
 using Clock = std::chrono::steady_clock;
 using Payload = coop::net::PlantStatePayload;
 
-constexpr auto  kPoll = std::chrono::milliseconds(250);
 constexpr auto  kGradual = std::chrono::seconds(5);     // how often a plant's slow change goes out
 constexpr int   kSendsPerPoll = 32;
 
 std::atomic<coop::net::Session*> g_session{nullptr};
-Clock::time_point g_nextPoll{};
+coop::session::PollTimer g_poll{std::chrono::milliseconds(250)};
 uint32_t g_world = 0;
 
 // The edges a viewer sees at once; the rest of a plant's change is gradual.
@@ -354,8 +354,7 @@ void Tick() {
     coop::net::Session* s = g_session.load();
     if (!s) return;
     const Clock::time_point now = Clock::now();
-    if (now < g_nextPoll) return;
-    g_nextPoll = now + kPoll;
+    if (!g_poll.Due(now)) return;
     const uint32_t world = ue_wrap::world_identity::Generation();
     if (world != g_world) {
         g_world = world;

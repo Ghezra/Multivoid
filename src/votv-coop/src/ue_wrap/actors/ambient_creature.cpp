@@ -4,14 +4,16 @@
 
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/core/component_calls.h"
+#include "ue_wrap/core/kismet_timer.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/sdk_profile.h"
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
 
+#include <windows.h>
+
 #include <cstdint>
-#include <cwchar>
 
 namespace ue_wrap::ambient_creature {
 namespace {
@@ -44,22 +46,62 @@ void SetVisible(void* comp, bool visible) {
     Call(comp, f);
 }
 
-// K2_ClearTimer, K2_PauseTimer or K2_UnPauseTimer on KismetSystemLibrary's default object, the name an FString whose count
-// and capacity include the terminator.
-void TimerCall(const wchar_t* verb, void* object, const wchar_t* function) {
-    void* lib = R::FindClassDefaultObject(L"KismetSystemLibrary");
-    void* cls = lib ? R::FindClass(L"KismetSystemLibrary") : nullptr;
-    void* fn = cls ? R::FindFunction(cls, verb) : nullptr;
-    if (!fn) return;
-    ParamFrame f(fn);
-    if (!f.valid()) return;
-    f.Set<void*>(L"Object", object);
-    const int32_t num = static_cast<int32_t>(std::wcslen(function)) + 1;
-    struct { const wchar_t* data; int32_t n; int32_t m; } fs{function, num, num};
-    if (f.SetRaw(L"FunctionName", &fs, sizeof(fs))) Call(lib, f);
+// A bool field's place in a class, looked up when the class changes. An instance's class pointer names that instance's class
+// whatever else has lived at the address, so a match cannot read another class's layout.
+struct BoolField {
+    const wchar_t* name;
+    void* cls = nullptr;
+    int32_t off = -1;
+    uint8_t mask = 0;
+    uint8_t* At(void* obj) {
+        void* c = R::ClassOf(obj);
+        if (c != cls) {
+            cls = c;
+            if (!R::FindBoolProperty(c, name, off, mask)) off = -1;
+        }
+        return off < 0 ? nullptr : static_cast<uint8_t*>(obj) + off;
+    }
+};
+BoolField g_saw{L"saw"};
+BoolField g_looking{L"looking"};
+BoolField g_stand{L"stand"};
+
+void* WalkerAnim(void* walker) {
+    static void* s_cls = nullptr;
+    static int32_t s_off = -1;
+    void* c = R::ClassOf(walker);
+    if (c != s_cls) {
+        s_cls = c;
+        s_off = R::FindPropertyOffset(c, L"anim");
+    }
+    return s_off < 0 ? nullptr : *reinterpret_cast<void**>(static_cast<uint8_t*>(walker) + s_off);
 }
 
-void* WalkerAnim(void* walker) { return ComponentNamed(walker, L"anim"); }
+// The native functions and library objects the view test calls: they last the process, and two of the lookups walk the object
+// table, while the test runs twenty times a second. A miss retries at most once a second.
+struct ViewCalls {
+    void* sysCdo = nullptr;
+    void* libCdo = nullptr;
+    void* bounds = nullptr;
+    void* frustum = nullptr;
+    std::vector<R::ParamInfo> frustumParams;
+    uint64_t nextTryMs = 0;
+    bool Ready() {
+        if (bounds && frustum && frustumParams.size() >= 4) return true;
+        const uint64_t now = ::GetTickCount64();
+        if (now < nextTryMs) return false;
+        nextTryMs = now + 1000;
+        if (!sysCdo) sysCdo = R::FindClassDefaultObject(L"KismetSystemLibrary");
+        if (!libCdo) libCdo = R::FindClassDefaultObject(L"bpCodeLib");
+        void* sysCls = sysCdo ? R::FindClass(L"KismetSystemLibrary") : nullptr;
+        void* libCls = libCdo ? R::FindClass(L"bpCodeLib") : nullptr;
+        if (!bounds && sysCls) bounds = R::FindFunction(sysCls, L"GetComponentBounds");
+        if (!frustum && libCls) frustum = R::FindFunction(libCls, L"isBoxInFrustum");
+        if (frustum && frustumParams.empty()) frustumParams = R::FunctionParams(frustum);
+        return bounds && frustum && frustumParams.size() >= 4;
+    }
+};
+ViewCalls g_view;
 
 }  // namespace
 
@@ -119,55 +161,44 @@ void ListWalkers(std::vector<void*>& out) { Collect(L"prop_wMannequin_C", out); 
 void ParkWalker(void* walker) {
     engine::SetActorTickEnabled(walker, false);
     for (const wchar_t* timer : {L"timer_damage", L"timer_jump", L"timer_pickupWeapon", L"timer_saw", L"timer_unhook"})
-        TimerCall(L"K2_ClearTimer", walker, timer);
+        kismet_timer::Clear(walker, timer);
 }
 
 void UnparkWalker(void* walker) { engine::SetActorTickEnabled(walker, true); }
 
 bool ReadWalkerStanding(void* walker, bool& standing) {
     void* anim = WalkerAnim(walker);
-    int32_t off = -1;
-    uint8_t mask = 0;
-    if (!anim || !R::FindBoolProperty(R::ClassOf(anim), L"stand", off, mask)) return false;
-    standing = (static_cast<uint8_t*>(anim)[off] & mask) != 0;
+    const uint8_t* b = anim ? g_stand.At(anim) : nullptr;
+    if (!b) return false;
+    standing = (*b & g_stand.mask) != 0;
     return true;
 }
 
 void WriteWalkerStanding(void* walker, bool standing) {
     void* anim = WalkerAnim(walker);
-    int32_t off = -1;
-    uint8_t mask = 0;
-    if (!anim || !R::FindBoolProperty(R::ClassOf(anim), L"stand", off, mask)) return;
-    uint8_t& b = static_cast<uint8_t*>(anim)[off];
-    b = standing ? (b | mask) : (b & ~mask);
+    uint8_t* b = anim ? g_stand.At(anim) : nullptr;
+    if (b) *b = standing ? (*b | g_stand.mask) : (*b & static_cast<uint8_t>(~g_stand.mask));
 }
 
 bool WalkerInView(void* walker, void* playerController) {
     void* mesh = ComponentNamed(walker, L"skeletalMesh");
     if (!mesh || !playerController) return false;
-    void* sysCdo = R::FindClassDefaultObject(L"KismetSystemLibrary");
-    void* sysCls = sysCdo ? R::FindClass(L"KismetSystemLibrary") : nullptr;
-    void* boundsFn = sysCls ? R::FindFunction(sysCls, L"GetComponentBounds") : nullptr;
-    void* libCdo = R::FindClassDefaultObject(L"bpCodeLib");
-    void* libCls = libCdo ? R::FindClass(L"bpCodeLib") : nullptr;
-    void* frustumFn = libCls ? R::FindFunction(libCls, L"isBoxInFrustum") : nullptr;
     void* renderedFn = R::FindDispatchFunctionCached(R::ClassOf(mesh), L"WasRecentlyRendered");
-    if (!boundsFn || !frustumFn || !renderedFn) return false;
-    ParamFrame bounds(boundsFn);
+    if (!renderedFn || !g_view.Ready()) return false;
+    ParamFrame bounds(g_view.bounds);
     if (!bounds.valid()) return false;
     bounds.Set<void*>(L"Component", mesh);
-    if (!Call(sysCdo, bounds)) return false;
+    if (!Call(g_view.sysCdo, bounds)) return false;
     const FVector origin = bounds.Get<FVector>(L"Origin");
     const FVector extent = bounds.Get<FVector>(L"BoxExtent");
     // The library's parameter names are the game's own: by their order, controller, origin, extent, return.
-    const std::vector<R::ParamInfo> names = R::FunctionParams(frustumFn);
-    if (names.size() < 4) return false;
-    ParamFrame frustum(frustumFn);
+    const std::vector<R::ParamInfo>& names = g_view.frustumParams;
+    ParamFrame frustum(g_view.frustum);
     if (!frustum.valid()) return false;
     frustum.Set<void*>(names[0].name.c_str(), playerController);
     frustum.Set<FVector>(names[1].name.c_str(), origin);
     frustum.Set<FVector>(names[2].name.c_str(), extent);
-    if (!Call(libCdo, frustum) || !frustum.Get<bool>(names[3].name.c_str())) return false;
+    if (!Call(g_view.libCdo, frustum) || !frustum.Get<bool>(names[3].name.c_str())) return false;
     ParamFrame rendered(renderedFn);
     if (!rendered.valid()) return false;
     rendered.Set<float>(L"Tolerance", 3.f);
@@ -175,21 +206,16 @@ bool WalkerInView(void* walker, void* playerController) {
 }
 
 void HoldWalkerSeen(void* walker) {
-    int32_t off = -1;
-    uint8_t mask = 0;
-    if (R::FindBoolProperty(R::ClassOf(walker), L"saw", off, mask)) static_cast<uint8_t*>(walker)[off] |= mask;
+    if (uint8_t* b = g_saw.At(walker)) *b |= g_saw.mask;
 }
 
 void ReleaseWalkerSeen(void* walker) {
-    int32_t off = -1;
-    uint8_t mask = 0;
-    if (R::FindBoolProperty(R::ClassOf(walker), L"saw", off, mask)) static_cast<uint8_t*>(walker)[off] &= static_cast<uint8_t>(~mask);
+    if (uint8_t* b = g_saw.At(walker)) *b &= static_cast<uint8_t>(~g_saw.mask);
 }
 
 bool ReadWalkerLooking(void* walker) {
-    int32_t off = -1;
-    uint8_t mask = 0;
-    return R::FindBoolProperty(R::ClassOf(walker), L"looking", off, mask) && (static_cast<uint8_t*>(walker)[off] & mask) != 0;
+    const uint8_t* b = g_looking.At(walker);
+    return b && (*b & g_looking.mask) != 0;
 }
 
 void ListHoles(std::vector<void*>& out) { Collect(L"susDirtHole_C", out); }
@@ -205,26 +231,22 @@ void* SpawnFixture(bool branch, const FVector& at, const FRotator& rot) {
     return a;
 }
 
-void PauseBeehiveTimers(bool paused) {
+bool PauseBeehiveTimers(bool paused) {
     std::vector<void*> tickers;
     Collect(L"ticker_beehiveSpawner_C", tickers);
-    for (void* t : tickers) TimerCall(paused ? L"K2_PauseTimer" : L"K2_UnPauseTimer", t, L"Spawn");
+    bool settled = !tickers.empty();
+    for (void* t : tickers) {
+        if (paused) kismet_timer::Pause(t, L"Spawn");
+        else kismet_timer::UnPause(t, L"Spawn");
+        settled = settled && kismet_timer::IsPaused(t, L"Spawn") == paused;
+    }
+    return settled;
 }
 
 bool BeehiveTimerPaused() {
     std::vector<void*> tickers;
     Collect(L"ticker_beehiveSpawner_C", tickers);
-    void* lib = R::FindClassDefaultObject(L"KismetSystemLibrary");
-    void* cls = lib ? R::FindClass(L"KismetSystemLibrary") : nullptr;
-    void* fn = cls ? R::FindFunction(cls, L"K2_IsTimerPaused") : nullptr;
-    if (!fn || tickers.empty()) return false;
-    ParamFrame f(fn);
-    if (!f.valid()) return false;
-    f.Set<void*>(L"Object", tickers[0]);
-    const wchar_t* name = L"Spawn";
-    struct { const wchar_t* data; int32_t n; int32_t m; } fs{name, 6, 6};
-    if (!f.SetRaw(L"FunctionName", &fs, sizeof(fs)) || !Call(lib, f)) return false;
-    return f.Get<bool>(L"ReturnValue");
+    return !tickers.empty() && kismet_timer::IsPaused(tickers[0], L"Spawn");
 }
 
 }  // namespace ue_wrap::ambient_creature

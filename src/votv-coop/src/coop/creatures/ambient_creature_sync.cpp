@@ -7,6 +7,7 @@
 #include "coop/element/registry.h"
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
+#include "coop/session/poll_timer.h"
 #include "coop/net/wire_key_util.h"
 #include "coop/player/players_registry.h"
 #include "coop/props/prop_drive_host.h"
@@ -36,12 +37,23 @@ namespace E = ue_wrap::engine;
 namespace R = ue_wrap::reflection;
 using Clock = std::chrono::steady_clock;
 
-constexpr auto  kPoll = std::chrono::milliseconds(250);
 constexpr auto  kHeartbeat = std::chrono::seconds(5);  // a mirror that came after the last send
 constexpr float kDissolveCm = 5000.f;                  // deer_C's ReceiveTick compares the camera with this
 
 std::atomic<coop::net::Session*> g_session{nullptr};
-Clock::time_point g_nextPoll{};
+coop::session::PollTimer g_poll{std::chrono::milliseconds(250)};
+
+// The walkers this tick, read once by whichever part of it asks first.
+std::vector<void*> g_tickWalkers;
+bool g_tickWalkersRead = false;
+const std::vector<void*>& TickWalkers() {
+    if (!g_tickWalkersRead) {
+        g_tickWalkersRead = true;
+        g_tickWalkers.clear();
+        AC::ListWalkers(g_tickWalkers);
+    }
+    return g_tickWalkers;
+}
 bool g_parkedAny = false;
 
 // HOST: what went out last, by the tree's element.
@@ -101,9 +113,7 @@ void HostHoldWatched(Clock::time_point now) {
             ++it;
         }
     }
-    std::vector<void*> walkers;
-    AC::ListWalkers(walkers);
-    for (void* w : walkers) {
+    for (void* w : TickWalkers()) {
         const std::wstring key = ue_wrap::prop::GetKeyString(w);
         if (g_watchers.count(key)) {
             AC::HoldWalkerSeen(w);
@@ -118,8 +128,7 @@ void HostHoldWatched(Clock::time_point now) {
 }
 
 void ClientWatch(coop::net::Session& s, Clock::time_point now) {
-    std::vector<void*> walkers;
-    AC::ListWalkers(walkers);
+    const std::vector<void*>& walkers = TickWalkers();
     if (walkers.empty() && g_watching.empty()) return;
     void* pawn = coop::players::Registry::Get().Local();
     void* controller = pawn ? E::GetController(pawn) : nullptr;
@@ -151,9 +160,7 @@ void ClientWatch(coop::net::Session& s, Clock::time_point now) {
 
 void HostPoll(coop::net::Session& s, Clock::time_point now) {
     // A walker's brain moves it with no hand and no verb, so the host's drive stream holds it for as long as it stands.
-    std::vector<void*> walkers;
-    AC::ListWalkers(walkers);
-    for (void* w : walkers) coop::prop_drive_host::Claim(w, "walker");
+    for (void* w : TickWalkers()) coop::prop_drive_host::Claim(w, "walker");
 
     std::vector<void*> trees;
     AC::ListTrees(trees);
@@ -190,10 +197,8 @@ void ClientPoll(Clock::time_point now) {
         UE_LOGI("ambient_creature_sync: parked a spawner of '%ls'", R::ToString(R::NameOf(R::ClassOf(spawner))).c_str());
     }
 
-    std::vector<void*> walkers;
-    AC::ListWalkers(walkers);
     std::unordered_map<void*, WalkerSeen> walkersNow;
-    for (void* w : walkers) {
+    for (void* w : TickWalkers()) {
         if (E::IsActorTickEnabled(w)) {
             AC::ParkWalker(w);
             g_parkedAny = true;
@@ -268,14 +273,14 @@ void Tick() {
     coop::net::Session* s = g_session.load();
     if (!s) return;
     const Clock::time_point now = Clock::now();
+    g_tickWalkersRead = false;
     if (s->role() == coop::net::Role::Host) {
         HostHoldWatched(now);
     } else if (s->role() == coop::net::Role::Client && now >= g_nextWatch) {
         g_nextWatch = now + kWatchPoll;
         ClientWatch(*s, now);
     }
-    if (now < g_nextPoll) return;
-    g_nextPoll = now + kPoll;
+    if (!g_poll.Due(now)) return;
     if (s->role() == coop::net::Role::Host) HostPoll(*s, now);
     else if (s->role() == coop::net::Role::Client) ClientPoll(now);
 }

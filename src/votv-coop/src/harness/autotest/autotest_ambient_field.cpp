@@ -18,6 +18,7 @@
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/types.h"
+#include "ue_wrap/core/walk_census.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_pawn.h"
 
@@ -403,6 +404,11 @@ void RunClient() {
     // The host's place is up to a second old, and a far walker runs about 250 cm in that second.
     Check(samples > 0 && worst < 400.f, "the client's walker stays with the host's");
     Check(moving > 0, "the client's walker shows walking while it moves");
+    // The lanes' own cost at rest, with a walker standing: whole-array walks of the object table, against the census.
+    const unsigned long long walksBefore = ue_wrap::walk_census::ArrayWalkCountTotal();
+    ::Sleep(20000);
+    const unsigned long long walks = ue_wrap::walk_census::ArrayWalkCountTotal() - walksBefore;
+    UE_LOGI("ambient-field: whole-array walks in 20 s: %llu (%.1f a second)", walks, static_cast<double>(walks) / 20.0);
     Mark("client_done");
     UE_LOGI("ambient-field: DONE on client fails=%d", g_fails);
 }

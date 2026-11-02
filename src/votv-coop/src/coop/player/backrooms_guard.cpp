@@ -3,6 +3,7 @@
 #include "coop/player/backrooms_guard.h"
 
 #include "coop/net/session.h"
+#include "coop/session/poll_timer.h"
 
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
@@ -18,10 +19,8 @@ namespace {
 namespace R = ue_wrap::reflection;
 using Clock = std::chrono::steady_clock;
 
-constexpr auto kPoll = std::chrono::milliseconds(250);
-
 std::atomic<coop::net::Session*> g_session{nullptr};
-Clock::time_point g_nextPoll{};
+coop::session::PollTimer g_poll{std::chrono::milliseconds(250)};
 bool g_turnedOff = false;
 
 // Writes the flag and says what it was; false with no gamemode.
@@ -43,8 +42,7 @@ void Install(coop::net::Session* session) { g_session.store(session); }
 void Tick() {
     if (!g_session.load()) return;
     const Clock::time_point now = Clock::now();
-    if (now < g_nextPoll) return;
-    g_nextPoll = now + kPoll;
+    if (!g_poll.Due(now)) return;
     bool was = false;
     if (WriteFlag(false, was) && was) {
         g_turnedOff = true;

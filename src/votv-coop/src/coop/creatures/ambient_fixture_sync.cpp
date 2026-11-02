@@ -4,12 +4,14 @@
 
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
+#include "coop/session/poll_timer.h"
 
 #include "ue_wrap/actors/ambient_creature.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/world_identity.h"
 
 #include <atomic>
 #include <chrono>
@@ -28,12 +30,12 @@ namespace R = ue_wrap::reflection;
 using Clock = std::chrono::steady_clock;
 using Payload = coop::net::AmbientFixtureStatePayload;
 
-constexpr auto  kPoll = std::chrono::milliseconds(250);
 constexpr int   kSendsPerPoll = 64;     // a hexahive's field arrives whole in one poll
 constexpr float kAdoptCm = 50.f;        // a loaded branch at the host's place is that branch
 
 std::atomic<coop::net::Session*> g_session{nullptr};
-Clock::time_point g_nextPoll{};
+coop::session::PollTimer g_poll{std::chrono::milliseconds(250)};
+uint32_t g_beehiveWorld = 0;   // the world whose beehive timer this client has paused; 0 until it holds
 
 // HOST: each fixture's number and place, and whether it still has to go out.
 struct Known {
@@ -145,7 +147,8 @@ void ApplyInbox() {
 }
 
 void ClientPoll() {
-    AC::PauseBeehiveTimers(true);
+    const uint32_t world = ue_wrap::world_identity::Generation();
+    if (g_beehiveWorld != world && AC::PauseBeehiveTimers(true)) g_beehiveWorld = world;
     std::vector<void*> holes, branches;
     List(holes, branches);
     if (!g_loadedRead) {
@@ -172,8 +175,7 @@ void Tick() {
     coop::net::Session* s = g_session.load();
     if (!s) return;
     const Clock::time_point now = Clock::now();
-    if (now < g_nextPoll) return;
-    g_nextPoll = now + kPoll;
+    if (!g_poll.Due(now)) return;
     if (s->role() == coop::net::Role::Host) HostPoll(*s);
     else if (s->role() == coop::net::Role::Client) ClientPoll();
 }
@@ -197,6 +199,7 @@ void OnDisconnect() {
     g_spawned.clear();
     g_loaded.clear();
     g_loadedRead = false;
+    g_beehiveWorld = 0;
     g_session.store(nullptr);
 }
 
