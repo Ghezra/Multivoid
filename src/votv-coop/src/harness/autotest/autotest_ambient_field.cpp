@@ -20,6 +20,7 @@
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/core/walk_census.h"
 #include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/engine_nav.h"
 #include "ue_wrap/engine/engine_pawn.h"
 
 #include <windows.h>
@@ -53,6 +54,8 @@ void Mark(const char* name, const std::string& body = "x") {
     { std::ofstream(tmp, std::ios::binary | std::ios::trunc) << body; }
     ::MoveFileExA(tmp.c_str(), (g_dir + "\\" + name).c_str(), MOVEFILE_REPLACE_EXISTING);
 }
+
+bool Seen(const char* name) { return static_cast<bool>(std::ifstream(g_dir + "\\" + name)); }
 
 bool Await(const char* name, std::string* body = nullptr, int seconds = 300) {
     for (int i = 0; i < seconds * 10; ++i) {
@@ -158,6 +161,32 @@ void ExpectField(const std::string& hostText, bool branches, const char* what) {
 
 void* LocalPawn() { return coop::players::Registry::Get().Local(); }
 
+// The beehive's own retries can add a branch and its nest after the host counted, so the host keeps `branchFile` and
+// `nestFile` current and these wait for this peer to agree with the latest.
+void ExpectBranchesLive(const char* branchFile, const char* nestFile, const char* branchWhat, const char* nestWhat) {
+    std::string body, nests;
+    Field host, here;
+    size_t nestsHere = 0;
+    bool same = false, nestsSame = false;
+    for (int i = 0; i < 100 && !(same && nestsSame && i >= 20); ++i) {
+        if (!Await(branchFile, &body) || !Await(nestFile, &nests)) return;
+        std::sscanf(body.c_str(), "%zu %lf %lf %lf", &host.n, &host.x, &host.y, &host.z);
+        OnGameThread([&] {
+            here = ReadField(true);
+            nestsHere = CountOf(L"prop_waspnest_bee_C");
+        });
+        const double tol = 2.0 * static_cast<double>((std::max<size_t>)(host.n, 1));
+        same = here.n == host.n && std::fabs(here.x - host.x) < tol && std::fabs(here.y - host.y) < tol && std::fabs(here.z - host.z) < tol;
+        nestsSame = std::to_string(nestsHere) == nests;
+        ::Sleep(100);
+    }
+    UE_LOGI("ambient-field: %hs here=%hs host=%hs", branchWhat, Text(here).c_str(), body.c_str());
+    Check(same, branchWhat);
+    UE_LOGI("ambient-field: nests here=%zu host=%hs", nestsHere, nests.c_str());
+    Check(nestsSame, nestWhat);
+}
+
+
 // The branches whose nest is live: a branch the save brought links its nest by key, and a copy this lane spawned has none.
 size_t BranchesWithNest() {
     std::vector<void*> v;
@@ -248,7 +277,17 @@ void RunHost() {
     Check(nests > nestsBefore, "the host's branch has its nest");
     Mark("branch", Text(branches));
     Mark("nests", std::to_string(nests));
-    if (!Await("branch_done")) return;
+    // A retry queued by an earlier run of the body can still add a branch and its nest: the counts stay current until the
+    // client is done.
+    for (int i = 0; i < 3000 && !Seen("branch_done"); ++i) {
+        OnGameThread([&] {
+            branches = ReadField(true);
+            nests = CountOf(L"prop_waspnest_bee_C");
+        });
+        Mark("branch", Text(branches));
+        Mark("nests", std::to_string(nests));
+        ::Sleep(100);
+    }
 
     OnGameThread([&] {
         std::vector<void*> v;
@@ -259,7 +298,15 @@ void RunHost() {
     OnGameThread([&] { branches = ReadField(true); nests = CountOf(L"prop_waspnest_bee_C"); });
     Mark("branch_end", Text(branches));
     Mark("nests_end", std::to_string(nests));
-    if (!Await("branch_end_done")) return;
+    for (int i = 0; i < 3000 && !Seen("branch_end_done"); ++i) {
+        OnGameThread([&] {
+            branches = ReadField(true);
+            nests = CountOf(L"prop_waspnest_bee_C");
+        });
+        Mark("branch_end", Text(branches));
+        Mark("nests_end", std::to_string(nests));
+        ::Sleep(100);
+    }
 
     // The walker: the host looks away, so its brain walks it.
     coop::dev::mannequin_drill::SpawnWalker();
@@ -272,6 +319,17 @@ void RunHost() {
     if (!walker) return;
     Mark("walker");
     if (!Await("walker_seen")) return;
+    // The host stands 10 m off on the walker's own level: one spawn point is on the floor above the base, where the walker's
+    // route to a host below ends almost where it stands.
+    OnGameThread([&] {
+        ue_wrap::FVector w{};
+        if (!E::TryGetActorLocation(walker, w)) return;
+        ue_wrap::FVector ground{w.X, w.Y + 1000.f, w.Z};
+        if (!E::ProjectToNav(pawn, ground, {300.f, 300.f, 200.f}, &ground))
+            E::ProjectToNav(pawn, ground, {300.f, 300.f, 3000.f}, &ground);
+        E::TeleportTo(pawn, {ground.X, ground.Y, ground.Z + 100.f}, {});
+    });
+    ::Sleep(1500);
     ue_wrap::FVector start{}, at{};
     OnGameThread([&] { E::TryGetActorLocation(walker, start); });
     float moved = 0.f;
@@ -366,15 +424,7 @@ void RunClient() {
     ExpectField(body, false, "a hole that ended on the host ended here");
     Mark("hole_end_done");
 
-    if (!Await("branch", &body)) return;
-    ExpectField(body, true, "the host's branch stands here at its place");
-    std::string nests;
-    if (!Await("nests", &nests)) return;
-    ::Sleep(2000);
-    size_t nestsHere = 0;
-    OnGameThread([&] { nestsHere = CountOf(L"prop_waspnest_bee_C"); });
-    UE_LOGI("ambient-field: nests here=%zu host=%hs", nestsHere, nests.c_str());
-    Check(std::to_string(nestsHere) == nests, "the nests are one set, the host's");
+    ExpectBranchesLive("branch", "nests", "the host's branch stands here at its place", "the nests are one set, the host's");
     // A roll of this client's own.
     Field branchesHad, branchesNow;
     OnGameThread([&] { branchesHad = ReadField(true); RunBeehiveSpawn(); });
@@ -383,13 +433,7 @@ void RunClient() {
     Check(branchesNow.n == branchesHad.n, "a branch this client rolled itself was swept");
     Mark("branch_done");
 
-    if (!Await("branch_end", &body)) return;
-    ExpectField(body, true, "a branch that ended on the host ended here");
-    if (!Await("nests_end", &nests)) return;
-    ::Sleep(2000);
-    OnGameThread([&] { nestsHere = CountOf(L"prop_waspnest_bee_C"); });
-    UE_LOGI("ambient-field: nests after here=%zu host=%hs", nestsHere, nests.c_str());
-    Check(std::to_string(nestsHere) == nests, "its nest ended with it");
+    ExpectBranchesLive("branch_end", "nests_end", "a branch that ended on the host ended here", "its nest ended with it");
     Mark("branch_end_done");
 
     if (!Await("walker")) return;
