@@ -30,6 +30,7 @@
 
 #include <atomic>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <string>
 
@@ -102,29 +103,82 @@ void Travel(const std::string& level) {
     });
 }
 
-// Spawns the site's class above the player and runs its own path to the travel, for what it leaves behind.
-void FireSite(const std::string& site) {
+void WriteBool(void* actor, const wchar_t* name, bool on) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!R::FindBoolProperty(R::ClassOf(actor), name, off, mask)) {
+        UE_LOGW("level_travel: no bool '%ls' on the site", name);
+        return;
+    }
+    uint8_t& b = static_cast<uint8_t*>(actor)[off];
+    b = on ? (b | mask) : (b & ~mask);
+}
+
+void WriteLevel(void* actor, const std::string& level) {
+    const int32_t off = R::FindPropertyOffset(R::ClassOf(actor), L"level");
+    const std::wstring w(level.begin(), level.end());
+    const R::FName name = ue_wrap::fname_utils::StringToFName(w.c_str());
+    if (off >= 0) std::memcpy(static_cast<uint8_t*>(actor) + off, &name, sizeof(name));
+}
+
+// One way out of the main world: its class, its own function that reaches the travel ("" for a puddle, which walks to the
+// player and sinks it on its own), and where it stands.
+struct Site {
+    const char* name;
+    const wchar_t* path;
+    const wchar_t* fn;
+    bool beside;  // at the player, not above
+};
+constexpr Site kSites[] = {
+    {"well", L"/Game/objects/wellTp.wellTp_C", L"wokeUp", false},
+    {"shake", L"/Game/objects/prop_shake.prop_shake_C", L"BndEvt__prop_shake_Audio_K2Node_ComponentBoundEvent_0_OnAudioFinished__DelegateSignature", false},
+    {"skull", L"/Game/objects/skullzone.skullzone_C", L"BndEvt__dest_K2Node_ComponentBoundEvent_2_ComponentBeginOverlapSignature__DelegateSignature", false},
+    {"puddle", L"/Game/objects/misc/puddle.puddle_C", L"", true},
+    {"biotoilet", L"/Game/objects/prop_biotoilet.prop_biotoilet_C", L"actionOptionIndex", false},
+    {"insomniac", L"/Game/objects/insomniac.insomniac_C", L"OnCompleted_1A9050824C2776F602A04D9627382DA6", false},
+    {"openlevel", L"/Game/objects/triggers/trigger_openLevel.trigger_openLevel_C", L"runTrigger", false},
+    {"maptransition", L"/Game/objects/triggers/trigger_box_openMapTransition.trigger_box_openMapTransition_C",
+     L"BndEvt__Box_K2Node_ComponentBoundEvent_0_ComponentBeginOverlapSignature__DelegateSignature", false},
+};
+
+// Spawns the site's class above the player and runs its own path to the travel, for what it leaves behind. A placed trigger
+// is given VOTVCOOP_TRAVEL_LEVEL.
+void FireSite(const std::string& site, const std::string& level) {
     OnGameThread([&] {
         void* pawn = coop::players::Registry::Get().Local();
         ue_wrap::FVector at{};
         if (!pawn || !E::TryGetActorLocation(pawn, at)) return;
-        const wchar_t* path = site == "well" ? L"/Game/objects/wellTp.wellTp_C"
-                            : site == "shake" ? L"/Game/objects/prop_shake.prop_shake_C"
-                                              : L"/Game/objects/skullzone.skullzone_C";
-        void* cls = ue_wrap::asset_load::LoadObjectByPath(path);
-        void* actor = cls ? E::SpawnActor(cls, {at.X, at.Y, at.Z + 3000.f}) : nullptr;
-        void* fn = nullptr;
-        if (actor) {
-            if (site == "well") fn = R::FindFunction(cls, L"wokeUp");
-            else if (site == "shake") fn = R::FindFunction(cls, L"BndEvt__prop_shake_Audio_K2Node_ComponentBoundEvent_0_OnAudioFinished__DelegateSignature");
-            else fn = R::FindFunction(cls, L"BndEvt__dest_K2Node_ComponentBoundEvent_2_ComponentBeginOverlapSignature__DelegateSignature");
+        const Site* s = nullptr;
+        for (const Site& k : kSites)
+            if (site == k.name) s = &k;
+        void* cls = s ? ue_wrap::asset_load::LoadObjectByPath(s->path) : nullptr;
+        const ue_wrap::FVector where = s && s->beside ? ue_wrap::FVector{at.X + 150.f, at.Y, at.Z} : ue_wrap::FVector{at.X, at.Y, at.Z + 3000.f};
+        // A plain insomniac's begin play ends it far from the player or early in the save; its event flag skips that.
+        void* actor = !cls ? nullptr
+                    : site == "insomniac" ? E::SpawnActor(cls, where, false, [](void*, void* a) { WriteBool(a, L"NewVar_0", true); })
+                                          : E::SpawnActor(cls, where);
+        if (actor && !*s->fn) {
+            UE_LOGI("level_travel: site %hs spawned beside the player", site.c_str());
+            return;
         }
+        void* fn = actor ? R::FindFunction(cls, s->fn) : nullptr;
         if (!fn) {
             UE_LOGW("level_travel: VERDICT ABORT -- site %hs: class=%p actor=%p fn=%p", site.c_str(), cls, actor, fn);
             return;
         }
         ue_wrap::ParamFrame f(fn);
-        if (site == "skull") f.Set<void*>(L"OtherActor", pawn);
+        if (site == "skull" || site == "maptransition") f.Set<void*>(L"OtherActor", pawn);
+        if (site == "biotoilet") {
+            WriteBool(actor, L"NewVar_0_0", true);
+            f.Set<void*>(L"player", pawn);
+            f.Set<uint8_t>(L"action", 4);
+        }
+        if (site == "insomniac") {
+            WriteBool(actor, L"spooker", false);
+            WriteBool(actor, L"NewVar_0", true);
+        }
+        if (site == "openlevel") f.Set<void*>(L"owner", pawn);
+        if (site == "openlevel" || site == "maptransition") WriteLevel(actor, level);
         const bool ok = ue_wrap::Call(actor, f);
         UE_LOGI("level_travel: site %hs fired ok=%d", site.c_str(), ok ? 1 : 0);
     });
@@ -184,7 +238,7 @@ DWORD WINAPI LevelTravelThread(LPVOID /*arg*/) {
     const std::string site = coop::config::ReadEnv("VOTVCOOP_TRAVEL_SITE");
     if (iTravel) {
         if (site.empty()) Travel(level);
-        else FireSite(site);
+        else FireSite(site, level);
     }
     Watch(watch > 8 ? 8 : watch);
     OnGameThread([] {

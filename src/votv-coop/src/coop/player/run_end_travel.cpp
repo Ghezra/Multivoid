@@ -27,6 +27,7 @@
 #include "l10n/l10n.h"
 #include "ue_wrap/core/field_io.h"
 #include "ue_wrap/core/game_thread.h"
+#include "ue_wrap/core/component_calls.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/reflection_props.h"
@@ -122,6 +123,17 @@ bool IsOrDerivesFromNamed(void* obj, const wchar_t* className) {
     return false;
 }
 
+// The sites that came for the player: the level change would have ended them with the world, and a puddle left standing
+// sinks the player again until a fall under the floor kills them (measured on the rig, three trips in 50 s). So a refused
+// trip ends its author too.
+constexpr const wchar_t* kTripAuthors[] = {L"puddle_C", L"insomniac_C"};
+
+bool IsTripAuthor(void* author) {
+    for (const wchar_t* c : kTripAuthors)
+        if (IsOrDerivesFromNamed(author, c)) return true;
+    return false;
+}
+
 // A menu travel this seam lets through ends the session at the decision, before the travel runs:
 // the network first, then the world, so the menu world's own start-up (its gamemode rebuilds the
 // player's carried items and destroys the spawns) never reaches the wire. The decision is recorded
@@ -147,7 +159,7 @@ void EndSessionAtDecision(const char* what) {
 // a black screen, on skullzone_C a pause, and on two of them the blank slot name. A save and a teleport
 // it may also have made stand, as a sleep's would. prop_shake_C's ragdoll is a death, whose own menu
 // travel the revive answers. The slot name's repair runs as this seam's own task, out of the VM's body
-// loop.
+// loop, and so does the end of a site that came for the player.
 void RefuseSubLevelTravel(const R::FName& level, void* author) {
     g_cancelled.fetch_add(1, std::memory_order_relaxed);
     coop::death_revive::NoteSubLevelTravelRefused();
@@ -156,7 +168,14 @@ void RefuseSubLevelTravel(const R::FName& level, void* author) {
     if (say)
         UE_LOGW("run_end_travel: REFUSED lib_C::loadLevel(\"%ls\") authored by %ls (#%llu) -- a session holds "
                 "one world, so the player stays in it", R::ToString(level).c_str(), R::ClassNameOf(author).c_str(), n);
-    ue_wrap::game_thread::Post([say] {
+    void* const trip = IsTripAuthor(author) ? author : nullptr;
+    const int32_t tripIdx = trip ? R::InternalIndexOf(trip) : -1;
+    ue_wrap::game_thread::Post([say, trip, tripIdx] {
+        if (trip && R::IsLiveByIndex(trip, tripIdx) && IsTripAuthor(trip)) {
+            const bool ended = ue_wrap::component_calls::CallParamlessNamed(trip, L"K2_DestroyActor");
+            UE_LOGI("run_end_travel: the %ls that came for the player ended with its trip ok=%d", R::ClassNameOf(trip).c_str(),
+                    ended ? 1 : 0);
+        }
         void* gi = ue_wrap::world_singleton::GameInstance();
         const int32_t off = gi ? SlotNameOffset(gi) : -1;
         if (off >= 0 && !g_slotName.empty() && ue_wrap::field_io::ReadFStringAt(gi, off).empty()) {

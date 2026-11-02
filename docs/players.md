@@ -350,7 +350,9 @@ Six sites send a player to a level of their own: the puddle, the biotoilet, the 
 everyone's when the host took it. `coop/player/run_end_travel` refuses any travel from the main world to another level while a
 session runs, on both roles, and tells the player. It clears the site's black screen and pause and puts back the slot name two of
 the sites blank. A save or a teleport the site made before its travel stands, and the shake's ragdoll is a death, answered by the
-usual revive. Those levels cannot be visited in a session.
+usual revive. The puddle and the insomniac came for the player, and the level change would have ended them: a puddle left
+standing sinks the player again until a fall under the floor kills them, so the refusal ends either with its trip. Those levels
+cannot be visited in a session. Every site above and the two placed triggers were fired in a session on the rig.
 
 ## Code map
 
