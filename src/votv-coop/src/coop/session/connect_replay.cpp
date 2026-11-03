@@ -52,6 +52,7 @@
 #include "coop/creatures/ambient_creature_sync.h"
 #include "coop/creatures/ambient_fixture_sync.h"
 #include "coop/props/prop_fire_sync.h"
+#include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
 #include "coop/world/spill_sync.h"
 #include "coop/world/plant_sync.h"
@@ -138,6 +139,7 @@ void ConnectReplayForSlot(int slot) {
     coop::plant_sync::QueueConnectBroadcastForSlot(slot);  // every plant again
     coop::prop_fire_sync::QueueConnectBroadcastForSlot(slot);  // every burning prop again
     coop::ground_hose_sync::QueueConnectBroadcastForSlot(slot);  // every hose again
+    coop::build_sync::QueueConnectBroadcastForSlot(slot);  // every nail and wall again
     coop::spill_sync::QueueConnectBroadcastForSlot(slot);  // every live spill again
     coop::kitchen_sync::QueueConnectBroadcastForSlot(slot);  // the machines not at their defaults
     coop::props::prop_food_sync::QueueConnectBroadcastForSlot(slot);  // every world food's condition again

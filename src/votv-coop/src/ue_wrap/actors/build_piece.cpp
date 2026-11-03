@@ -1,0 +1,185 @@
+// ue_wrap/actors/build_piece.cpp -- see ue_wrap/actors/build_piece.h.
+
+#include "ue_wrap/actors/build_piece.h"
+
+#include "ue_wrap/core/asset_load.h"
+#include "ue_wrap/core/call.h"
+#include "ue_wrap/core/object_index.h"
+#include "ue_wrap/core/reflection.h"
+#include "ue_wrap/core/reflection_props.h"
+#include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/engine_attach.h"
+#include "ue_wrap/engine/engine_pawn.h"
+
+#include <cstdint>
+#include <cstring>
+
+namespace ue_wrap::build_piece {
+namespace {
+
+namespace R = reflection;
+namespace SR = save_record;
+
+struct ClassRow {
+    const wchar_t* name;
+    Kind kind;
+};
+constexpr ClassRow kClasses[] = {
+    {L"nail_C", Kind::Nail},
+    {L"nail_long_C", Kind::Nail},
+    {L"nail_ball_C", Kind::Nail},
+    {L"nail_ax_C", Kind::Nail},
+    {L"nail_pin_C", Kind::Nail},
+    {L"nail_super_C", Kind::Nail},
+    {L"customWall_unfinished_C", Kind::Unfinished},
+    {L"customWall_C", Kind::Wall},
+    {L"customWall_rad_C", Kind::Wall},
+    {L"customWall_wetConcrete_C", Kind::WetWall},
+};
+
+template <class T>
+bool ReadField(void* obj, const wchar_t* name, T& out) {
+    const int32_t off = obj ? R::FindPropertyOffset(R::ClassOf(obj), name) : -1;
+    if (off < 0) return false;
+    std::memcpy(&out, static_cast<const uint8_t*>(obj) + off, sizeof(out));
+    return true;
+}
+
+template <class T>
+bool WriteField(void* obj, const wchar_t* name, const T& v) {
+    const int32_t off = obj ? R::FindPropertyOffset(R::ClassOf(obj), name) : -1;
+    if (off < 0) return false;
+    std::memcpy(static_cast<uint8_t*>(obj) + off, &v, sizeof(v));
+    return true;
+}
+
+bool WriteFlag(void* obj, const wchar_t* name, bool v) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!obj || !R::FindBoolProperty(R::ClassOf(obj), name, off, mask) || off < 0) return false;
+    uint8_t& b = static_cast<uint8_t*>(obj)[off];
+    b = v ? (b | mask) : (b & ~mask);
+    return true;
+}
+
+void* LiveObj(void* obj, const wchar_t* name) {
+    void* v = nullptr;
+    return ReadField(obj, name, v) && v && R::IsLive(v) ? v : nullptr;
+}
+
+bool CallNoArgs(void* obj, const wchar_t* name) {
+    void* fn = obj ? R::FindDispatchFunctionCached(R::ClassOf(obj), name) : nullptr;
+    if (!fn) return false;
+    ParamFrame f(fn);
+    return f.valid() && Call(obj, f);
+}
+
+bool Default(void* obj) { return R::NameStartsWith(R::NameOf(obj), L"Default__"); }
+
+void* ClassFor(const std::wstring& className) {
+    if (KindOfClass(className) == Kind::None) return nullptr;
+    if (void* cls = object_index::ClassByName(className.c_str())) return cls;
+    const std::wstring leaf = className.substr(0, className.size() - 2);   // without _C
+    return asset_load::LoadObjectByPath((L"/Game/objects/" + leaf + L"." + className).c_str());
+}
+
+}  // namespace
+
+Kind KindOfClass(const std::wstring& className) {
+    for (const ClassRow& c : kClasses)
+        if (className == c.name) return c.kind;
+    return Kind::None;
+}
+
+Kind KindOf(void* actor) {
+    if (!actor || !R::IsLive(actor)) return Kind::None;
+    return KindOfClass(R::ToString(R::NameOf(R::ClassOf(actor))));
+}
+
+void List(std::vector<void*>& out) {
+    out.clear();
+    for (const ClassRow& c : kClasses) {
+        void* cls = object_index::ClassByName(c.name);
+        if (!cls) continue;
+        object_index::ForEachInstance(cls, [](void* ctx, void* obj, int32_t) {
+            if (R::IsLive(obj) && !Default(obj)) static_cast<std::vector<void*>*>(ctx)->push_back(obj);
+        }, &out);
+    }
+}
+
+std::wstring KeyOf(void* piece) {
+    R::FName key{};
+    return ReadField(piece, L"Key", key) ? R::ToString(key) : std::wstring();
+}
+
+bool Capture(void* piece, SR::SaveRecord& out) {
+    void* fn = piece ? R::FindDispatchFunctionCached(R::ClassOf(piece), L"getData") : nullptr;
+    return fn && SR::CaptureRecordVia(piece, fn, out);
+}
+
+void* Spawn(const SR::SaveRecord& r) {
+    void* cls = ClassFor(r.className);
+    if (!cls) return nullptr;
+    const FVector loc{r.xform[4], r.xform[5], r.xform[6]};
+    const FRotator rot = engine::QuatToRotator(r.xform[0], r.xform[1], r.xform[2], r.xform[3]);
+    void* actor = engine::BeginDeferredSpawn(cls, loc, rot);
+    if (!actor) return nullptr;
+    if (!engine::FinishDeferredSpawn(actor, loc, rot)) {
+        engine::DestroyActor(actor);
+        return nullptr;
+    }
+    engine::SetActorScale3D(actor, {r.xform[7], r.xform[8], r.xform[9]});
+    return actor;
+}
+
+bool Apply(void* piece, const SR::SaveRecord& r, void* endA, void* endB, SR::ClassResolver resolve) {
+    void* load = piece ? R::FindDispatchFunctionCached(R::ClassOf(piece), L"loadData") : nullptr;
+    if (!load || !SR::ApplyRecordVia(piece, load, r, resolve)) return false;
+    if (KindOf(piece) != Kind::Nail) return true;
+    WriteField(piece, L"actor_a", endA);
+    WriteField(piece, L"actor_b", endB);
+    return !endA || CallNoArgs(piece, L"aea");   // a nail with no first end stays as the record left it
+}
+
+bool NailKeys(const SR::SaveRecord& r, std::wstring& a, std::wstring& b) {
+    if (r.names.empty() || r.names[0].size() < 2) return false;
+    a = r.names[0][0];
+    b = r.names[0][1];
+    return true;
+}
+
+void* NailEndA(void* nail) { return LiveObj(nail, L"actor_a"); }
+void* NailEndB(void* nail) { return LiveObj(nail, L"actor_b"); }
+
+void Park(void* piece) {
+    switch (KindOf(piece)) {
+    case Kind::Nail:
+        WriteField(piece, L"nailDrop", static_cast<void*>(nullptr));
+        break;
+    case Kind::Unfinished:
+        if (void* overlap = LiveObj(piece, L"Overlap")) engine::SetComponentCollisionEnabled(overlap, 0);
+        break;
+    case Kind::WetWall:
+        if (engine::IsActorTickEnabled(piece)) engine::SetActorTickEnabled(piece, false);
+        break;
+    default:
+        break;
+    }
+}
+
+bool ScaleWallHealth(void* wall, float k) {
+    const Kind kind = KindOf(wall);
+    if (kind != Kind::Wall && kind != Kind::WetWall) return false;
+    float health = 0.f, maxHealth = 0.f;
+    if (!ReadField(wall, L"health", health) || !ReadField(wall, L"maxHealth", maxHealth)) return false;
+    return WriteField(wall, L"health", health * k) && WriteField(wall, L"maxHealth", maxHealth * k);
+}
+
+void DestroyQuiet(void* piece) {
+    if (!piece || !R::IsLive(piece)) return;
+    WriteField(piece, L"nailDrop", static_cast<void*>(nullptr));
+    WriteFlag(piece, L"wasBroken", false);
+    engine::DestroyActor(piece);
+}
+
+}  // namespace ue_wrap::build_piece

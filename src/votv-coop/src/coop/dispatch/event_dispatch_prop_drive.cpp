@@ -20,6 +20,7 @@
 #include "coop/creatures/ambient_creature_sync.h"
 #include "coop/creatures/ambient_fixture_sync.h"
 #include "coop/props/prop_fire_sync.h"
+#include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
 #include "coop/world/spill_sync.h"
 #include "coop/world/plant_sync.h"
@@ -468,6 +469,21 @@ bool HandlePropDriveEvent(net::Session& session,
         std::memcpy(&c, msg.payload, sizeof(c));
         if (intent) ::coop::ground_hose_sync::OnIntentChunk(c, msg.senderPeerSlot);
         else ::coop::ground_hose_sync::OnStateChunk(c, msg.senderPeerSlot);
+        break;
+    }
+    case net::ReliableKind::BuildState:
+    case net::ReliableKind::BuildIntent: {
+        // BuildState HOST->ALL, BuildIntent CLIENT->HOST; both chunked blobs.
+        const bool intent = msg.kind == net::ReliableKind::BuildIntent;
+        if (intent != (session.role() == net::Role::Host)) {
+            UE_LOGW("event_feed: a built piece's message the wrong way from slot %d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::BlobChunkPayload)) break;
+        net::BlobChunkPayload c{};
+        std::memcpy(&c, msg.payload, sizeof(c));
+        if (intent) ::coop::build_sync::OnIntentChunk(c, msg.senderPeerSlot);
+        else ::coop::build_sync::OnStateChunk(c, msg.senderPeerSlot);
         break;
     }
     case net::ReliableKind::SpillState:

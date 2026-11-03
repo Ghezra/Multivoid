@@ -31,7 +31,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 283;
+inline constexpr uint16_t kProtocolVersion = 284;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1307,6 +1307,14 @@ enum class ReliableKind : uint8_t {
     // CLIENT->HOST: a bottle in this client's player's hand poured. Never relayed; the host plays it and sends it on as a
     // SpillPour naming this client. SpillPourPayload.
     SpillPourIntent = 233,
+    // HOST->ALL: a piece of the host's a player built -- a nail, or a custom wall unfinished, wet or finished -- as its own
+    // save record, when it is new or changed, or its key once when it went. A client makes it on its copy, or applies the
+    // record to its piece of that key, a nail tied to the actors its keys name there. Not relayed, not pre-world. Late join:
+    // every piece again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
+    BuildState = 234,
+    // CLIENT->HOST: a piece this client's player made (op 1, its record), or took away (op 2). Never relayed; the host
+    // makes or destroys its own and its next BuildState answers. BlobChunkPayload, as above.
+    BuildIntent = 235,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's

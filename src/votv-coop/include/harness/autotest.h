@@ -293,6 +293,9 @@ DWORD WINAPI GroundHoseThread(LPVOID arg);
 // TEST-ONLY: a coffee spilled by each peer lies on both, the host's decal; a wipe crosses. Gated by VOTVCOOP_RUN_SPILL.
 // See autotest_spill.cpp.
 DWORD WINAPI SpillThread(LPVOID arg);
+// TEST-ONLY: nails and custom walls each peer makes are the host's on both, removals cross, the drops lie once.
+// Gated by VOTVCOOP_RUN_BUILD. See autotest_build.cpp.
+DWORD WINAPI BuildThread(LPVOID arg);
 DWORD WINAPI BrowserFilterThread(LPVOID arg);
 DWORD WINAPI SvRequestThread(LPVOID arg);
 DWORD WINAPI ModuleBuyThread(LPVOID arg);

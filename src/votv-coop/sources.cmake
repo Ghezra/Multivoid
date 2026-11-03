@@ -223,6 +223,7 @@ set(VOTVCOOP_SOURCES
     src/coop/world/plant_sync.cpp
     src/coop/props/prop_fire_sync.cpp
     src/coop/world/ground_hose_sync.cpp
+    src/coop/world/build_sync.cpp
     src/coop/world/spill_sync.cpp
     src/ue_wrap/actors/growing_plant.cpp
     src/ue_wrap/actors/ambient_creature.cpp
@@ -664,6 +665,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_prop_fire.cpp
     src/harness/autotest/autotest_ground_hose.cpp
     src/harness/autotest/autotest_spill.cpp
+    src/harness/autotest/autotest_build.cpp
     src/harness/autotest/autotest_browser_filter.cpp
     src/harness/autotest/autotest_sv_request.cpp
     src/harness/autotest/autotest_module_buy.cpp
