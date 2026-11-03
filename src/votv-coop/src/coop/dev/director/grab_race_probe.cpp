@@ -5,7 +5,8 @@
 // their own trace takes it, log ARRIVED and wait on the driver's GO instant, then run the use key's grab chain at
 // it. Each peer then watches the prop for a few seconds -- does its own player hold it, which slot's drive moves
 // its copy, and how many ticks both were true -- and logs a RESULT the driver compares across the two peers:
-// one holder, and the other peer's copy driven by that holder's slot. "control" mode fires the host alone.
+// one holder, and the other peer's copy driven by that holder's slot. "control" mode fires the host alone, and
+// VOTVCOOP_RACE_FIRE_DELAY_MS holds a peer's fire past GO.
 
 #include "coop/dev/director/aimed_grab.h"
 #include "coop/dev/director/director.h"
@@ -29,6 +30,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -258,6 +260,13 @@ void RunGrabRace() {
         d.store(1);
     });
     if (shouldFire) {
+        // A held-back fire, so a client's hold can reach the host before the host's own grab: at GO the host's grab
+        // runs on its own machine at once while a client's waits a round trip.
+        const int delayMs = std::atoi(coop::config::ReadEnv("VOTVCOOP_RACE_FIRE_DELAY_MS").c_str());
+        if (delayMs > 0) {
+            UE_LOGI("grab-race: role=%s holds its fire %d ms past GO", role.c_str(), delayMs);
+            ::Sleep(static_cast<DWORD>(delayMs));
+        }
         grab->Fire();
         for (int i = 0; i < 60 && *state == GrabState::Working && !g_faultedStep; ++i) {
             Step("the grab", [grab, state](std::atomic<int>& d) { *state = grab->Tick(); d.store(1); });
