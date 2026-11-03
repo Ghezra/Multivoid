@@ -30,7 +30,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 282;
+inline constexpr uint16_t kProtocolVersion = 283;
 
 // Default LAN port (overridable via multivoid.ini "net.port=").
 inline constexpr uint16_t kDefaultPort = 47621;
@@ -1268,6 +1268,20 @@ enum class ReliableKind : uint8_t {
     // CLIENT->HOST: a hose this client's player finished laying or changed (op 1, its record), or took up (op 2). Never
     // relayed; the host lays or takes up its own and its next GroundHoseState answers. BlobChunkPayload, as above.
     GroundHoseIntent = 229,
+    // HOST->ALL: a spilled liquid's decal on the host (a coffee cup, beer, wine, a gas bottle), where it landed. A client
+    // makes the same decal there, so the grime lane's position key names it on both. Not relayed, not pre-world. Late
+    // join: every live spill again at the ready edge, a client keeping one it already has there. SpillPayload.
+    SpillState = 230,
+    // CLIENT->HOST: a liquid this client's player held spilled, and its decal landed here; the client's own decal is
+    // removed. Never relayed; the host checks the class and the reach and makes it, and its SpillState answers.
+    // SpillPayload.
+    SpillIntent = 231,
+    // HOST->ALL: a bottle on the host poured, or a client's pour the host relays: each peer that did not pour it plays the
+    // bottle's pour sound there. Not relayed further, not pre-world, nothing at late join. SpillPourPayload.
+    SpillPour = 232,
+    // CLIENT->HOST: a bottle in this client's player's hand poured. Never relayed; the host plays it and sends it on as a
+    // SpillPour naming this client. SpillPourPayload.
+    SpillPourIntent = 233,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
@@ -2083,6 +2097,30 @@ struct PropFirePayload {
     uint8_t _pad[3];    // 3 -- zero
 };
 static_assert(sizeof(PropFirePayload) == 44, "PropFirePayload must be 44 bytes");
+
+// A spilled liquid's decal (SpillState), or a client's (SpillIntent).
+struct SpillPayload {
+    WireKey cls;           // 32 -- the decal's grime class name
+    float   loc[3];        // 12 -- its world location
+    float   rot[3];        // 12 -- its rotation: pitch, yaw, roll
+    float   scale[3];      // 12 -- its scale
+    float   decalRot[3];   // 12 -- its decal component's world rotation (begin play turns it at random)
+    float   process;       // 4 -- its dirt; -1: wiped away
+    int32_t type;          // 4 -- its grime Type
+    uint8_t splash;        // 1 -- it just landed: a peer that did not hear it plays the splash
+    uint8_t origin;        // 1 -- the slot whose own flight landed it, which heard it; 0xFF none
+    uint8_t _pad[2];       // 2 -- zero
+};
+static_assert(sizeof(SpillPayload) == 92, "SpillPayload must be 92 bytes");
+
+// A bottle's pour, heard where it poured (SpillPour, SpillPourIntent).
+struct SpillPourPayload {
+    float   loc[3];        // 12 -- the bottle
+    uint8_t cue;           // 1 -- which pour sound: 1 a beer's or wine's fuel1
+    uint8_t origin;        // 1 -- the slot that poured it, which heard it; 0xFF none
+    uint8_t _pad[2];       // 2 -- zero
+};
+static_assert(sizeof(SpillPourPayload) == 16, "SpillPourPayload must be 16 bytes");
 
 namespace kitchen_flags {
 inline constexpr uint8_t kDoorOpen = 1;  // its `opened`

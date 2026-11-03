@@ -21,6 +21,7 @@
 #include "coop/creatures/ambient_fixture_sync.h"
 #include "coop/props/prop_fire_sync.h"
 #include "coop/world/ground_hose_sync.h"
+#include "coop/world/spill_sync.h"
 #include "coop/world/plant_sync.h"
 #include "coop/world/media_device_sync.h"            // a placed radio's track and play state
 #include "coop/props/prop_drive_stream.h"  // the driven-prop end edge
@@ -467,6 +468,39 @@ bool HandlePropDriveEvent(net::Session& session,
         std::memcpy(&c, msg.payload, sizeof(c));
         if (intent) ::coop::ground_hose_sync::OnIntentChunk(c, msg.senderPeerSlot);
         else ::coop::ground_hose_sync::OnStateChunk(c, msg.senderPeerSlot);
+        break;
+    }
+    case net::ReliableKind::SpillState:
+    case net::ReliableKind::SpillIntent: {
+        // SpillState HOST->ALL, SpillIntent CLIENT->HOST.
+        const bool intent = msg.kind == net::ReliableKind::SpillIntent;
+        if (intent != (session.role() == net::Role::Host)) {
+            UE_LOGW("event_feed: a spill message the wrong way from slot %d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::SpillPayload)) {
+            UE_LOGW("event_feed: spill payload too short (%zu < %zu)", static_cast<size_t>(msg.payloadLen),
+                    sizeof(net::SpillPayload));
+            break;
+        }
+        net::SpillPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (intent) ::coop::spill_sync::OnIntent(msg.senderPeerSlot, p);
+        else ::coop::spill_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::SpillPour:
+    case net::ReliableKind::SpillPourIntent: {
+        // SpillPour HOST->ALL, SpillPourIntent CLIENT->HOST.
+        const bool intent = msg.kind == net::ReliableKind::SpillPourIntent;
+        if (intent != (session.role() == net::Role::Host) || msg.payloadLen < sizeof(net::SpillPourPayload)) {
+            UE_LOGW("event_feed: a malformed or misdirected pour from slot %d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        net::SpillPourPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (intent) ::coop::spill_sync::OnPourIntent(msg.senderPeerSlot, p);
+        else ::coop::spill_sync::OnPour(p);
         break;
     }
     case net::ReliableKind::DevLoadFiller: {

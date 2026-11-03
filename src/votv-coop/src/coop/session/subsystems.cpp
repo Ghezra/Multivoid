@@ -92,6 +92,7 @@
 #include "coop/player/backrooms_guard.h"
 #include "coop/props/prop_fire_sync.h"
 #include "coop/world/ground_hose_sync.h"
+#include "coop/world/spill_sync.h"
 #include "coop/world/plant_sync.h"
 #include "coop/world/media_device_sync.h"
 #include "coop/world/world_sound_sync.h"
@@ -299,6 +300,7 @@ void Install(coop::net::Session& session) {
     coop::plant_sync::Install(&session);  // the host runs every plant
     coop::prop_fire_sync::Install(&session);  // the host burns every keyed prop
     coop::ground_hose_sync::Install(&session);  // the host's garden hoses
+    coop::spill_sync::Install(&session);  // the host's spilled liquids
     coop::kitchen_sync::Install(&session);  // a microwave's and a mini oven's controls
     coop::props::prop_food_sync::Install(&session);  // a world food's one author, the host
     coop::props::prop_food_state::Install();  // the food family claims its own live state off the record lane
@@ -493,6 +495,7 @@ DisconnectStats DisconnectAll() {
     coop::plant_sync::OnDisconnect();
     coop::prop_fire_sync::OnDisconnect();
     coop::ground_hose_sync::OnDisconnect();
+    coop::spill_sync::OnDisconnect();
     coop::kitchen_sync::OnDisconnect();
     coop::props::prop_food_sync::OnDisconnect();  // a parked copy gets its tick back
     coop::prop_tool_flags::OnDisconnect();  // drop the pending press and the counters
@@ -666,6 +669,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     coop::plant_sync::Tick();  // the plants' poll
     coop::prop_fire_sync::Tick();  // the burning props' poll
     coop::ground_hose_sync::Tick();  // the hoses' poll
+    coop::spill_sync::Tick();  // the spills the hook saw
     coop::kitchen_sync::Tick();  // the machines' poll
     coop::props::prop_food_sync::Tick();  // the host's poll, the client's parking
     coop::prop_tool_flags::Tick();  // the init watch's names resolve until it is live (one flag test after)

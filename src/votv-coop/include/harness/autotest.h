@@ -290,6 +290,9 @@ DWORD WINAPI PropFireThread(LPVOID arg);
 // TEST-ONLY: a garden hose laid by each peer, run, cut from its sprinkler and taken up, checked on the other. Gated
 // by VOTVCOOP_RUN_GROUND_HOSE. See autotest_ground_hose.cpp.
 DWORD WINAPI GroundHoseThread(LPVOID arg);
+// TEST-ONLY: a coffee spilled by each peer lies on both, the host's decal; a wipe crosses. Gated by VOTVCOOP_RUN_SPILL.
+// See autotest_spill.cpp.
+DWORD WINAPI SpillThread(LPVOID arg);
 DWORD WINAPI BrowserFilterThread(LPVOID arg);
 DWORD WINAPI SvRequestThread(LPVOID arg);
 DWORD WINAPI ModuleBuyThread(LPVOID arg);

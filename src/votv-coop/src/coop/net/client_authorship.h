@@ -47,6 +47,8 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::WalkerWatch:
     case ReliableKind::PropFireRequest:
     case ReliableKind::GroundHoseIntent:
+    case ReliableKind::SpillIntent:
+    case ReliableKind::SpillPourIntent:
     case ReliableKind::PropSpawn:
     case ReliableKind::PropDestroy:
     case ReliableKind::LightState:
@@ -250,6 +252,8 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::WalkerAngry:
     case ReliableKind::PropFireState:
     case ReliableKind::GroundHoseState:
+    case ReliableKind::SpillState:
+    case ReliableKind::SpillPour:
     case ReliableKind::SwingerRestPose:
     case ReliableKind::GeomOctaEvent:
     case ReliableKind::DevLoadFiller:
