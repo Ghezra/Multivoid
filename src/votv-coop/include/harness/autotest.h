@@ -281,6 +281,9 @@ DWORD WINAPI SusHoleThread(LPVOID arg);
 // A spawner's drop inside a join's sweep window: spared, while the sweep still runs. Client only; gated by
 // VOTVCOOP_RUN_JOIN_DROP. See autotest_join_drop.cpp.
 DWORD WINAPI JoinDropThread(LPVOID arg);
+// A statue turned into a walker by the game's ticker, and a real fire angering it, read on both peers. Gated by
+// VOTVCOOP_RUN_WALKER_STATUE. See autotest_walker_statue.cpp.
+DWORD WINAPI WalkerStatueThread(LPVOID arg);
 DWORD WINAPI BrowserFilterThread(LPVOID arg);
 DWORD WINAPI SvRequestThread(LPVOID arg);
 DWORD WINAPI ModuleBuyThread(LPVOID arg);

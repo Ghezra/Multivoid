@@ -1,7 +1,8 @@
 // harness/autotest/autotest_walker_target.cpp -- TEST-ONLY: a walking mannequin goes for the nearest player.
 //
 // The host spawns a walker on open ground and both peers look away. The peers stand where each step needs them, and each step
-// reads which way the walker closes: the host nearest, the client nearest, the host out of its range, the host down. The client
+// reads which way the walker closes: the host nearest, the client nearest, the host nearest again, the host out of its range,
+// the host down. The client
 // then angers its own copy, which must anger the host's, the walker's hit must take the client's health with its sound played
 // there and not on the host, and a client lying down must take no more. Last the host angers a second walker of its own, which
 // must anger the client's copy. Gated by VOTVCOOP_RUN_WALKER_TARGET; the folder is VOTVCOOP_CAN_DIR.
@@ -223,6 +224,16 @@ void RunHost() {
     Measure(walker, 2, h, c, w);
     Check(w > 100.f && c > 100.f && c > h, "with the client nearest it closes on the client");
 
+    // The host nearest again: the walker turns back from the client.
+    OnGameThread([&] { E::TryGetActorLocation(walker, at); });
+    StandAt(at, 0.f, 1000.f);
+    WritePlace("place2b", at);
+    Mark("go2b");
+    if (!Await("there2b")) return;
+    Check(WaitFree(walker), "it goes free with the host nearest again");
+    Measure(walker, 2, h, c, w);
+    Check(w > 100.f && h > 100.f && h > c, "with the host nearest again it turns back to the host");
+
     // The host out of the walker's own range.
     OnGameThread([&] { E::TryGetActorLocation(walker, at); });
     StandAt(at, 25000.f, 0.f);
@@ -341,6 +352,10 @@ void RunClient() {
     StandAt(ReadPlace("place2"), -1000.f, 0.f);
     OnGameThread([&] { FaceAway(walker); });
     Mark("there2");
+    HoldAwayUntil(walker, "go2b", 60);
+    StandAt(ReadPlace("place2b"), -4000.f, 0.f);
+    OnGameThread([&] { FaceAway(walker); });
+    Mark("there2b");
     HoldAwayUntil(walker, "go3", 60);
     StandAt(ReadPlace("place3"), -1000.f, 0.f);
     OnGameThread([&] { FaceAway(walker); });

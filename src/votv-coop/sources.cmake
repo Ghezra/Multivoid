@@ -657,6 +657,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_walker_target.cpp
     src/harness/autotest/autotest_sus_hole.cpp
     src/harness/autotest/autotest_join_drop.cpp
+    src/harness/autotest/autotest_walker_statue.cpp
     src/harness/autotest/autotest_browser_filter.cpp
     src/harness/autotest/autotest_sv_request.cpp
     src/harness/autotest/autotest_module_buy.cpp
