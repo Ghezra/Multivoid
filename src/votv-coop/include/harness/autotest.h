@@ -278,6 +278,9 @@ DWORD WINAPI PlantStateThread(LPVOID arg);
 DWORD WINAPI WalkerWatchThread(LPVOID arg);
 DWORD WINAPI WalkerTargetThread(LPVOID arg);
 DWORD WINAPI SusHoleThread(LPVOID arg);
+// A spawner's drop inside a join's sweep window: spared, while the sweep still runs. Client only; gated by
+// VOTVCOOP_RUN_JOIN_DROP. See autotest_join_drop.cpp.
+DWORD WINAPI JoinDropThread(LPVOID arg);
 DWORD WINAPI BrowserFilterThread(LPVOID arg);
 DWORD WINAPI SvRequestThread(LPVOID arg);
 DWORD WINAPI ModuleBuyThread(LPVOID arg);
