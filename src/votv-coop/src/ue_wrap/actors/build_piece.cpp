@@ -175,6 +175,38 @@ bool ScaleWallHealth(void* wall, float k) {
     return WriteField(wall, L"health", health * k) && WriteField(wall, L"maxHealth", maxHealth * k);
 }
 
+bool WallHealth(void* wall, float& out) {
+    const Kind kind = KindOf(wall);
+    return (kind == Kind::Wall || kind == Kind::WetWall) && ReadField(wall, L"health", out);
+}
+
+bool HitWall(void* wall, float damage) {
+    FVector at{};
+    float h = 0.f;
+    if (!WallHealth(wall, h) || !engine::TryGetActorLocation(wall, at)) return false;
+    void* fn = R::FindDispatchFunctionCached(R::ClassOf(wall), L"Damage");
+    if (!fn) return false;
+    ParamFrame f(fn);
+    if (!f.valid()) return false;
+    f.Set(L"damage", damage);
+    f.Set(L"location", at);
+    return Call(wall, f);
+}
+
+bool RepairWall(void* wall, float amount) {
+    float h = 0.f, m = 0.f;
+    if (!WallHealth(wall, h) || !ReadField(wall, L"maxHealth", m)) return false;
+    WriteField(wall, L"health", h + amount < m ? h + amount : m);
+    return CallNoArgs(wall, L"setHealthCracks");
+}
+
+bool NailBroken(void* nail) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    return KindOf(nail) == Kind::Nail && R::FindBoolProperty(R::ClassOf(nail), L"broken", off, mask) && off >= 0 &&
+           (static_cast<const uint8_t*>(nail)[off] & mask) != 0;
+}
+
 void DestroyQuiet(void* piece) {
     if (!piece || !R::IsLive(piece)) return;
     WriteField(piece, L"nailDrop", static_cast<void*>(nullptr));

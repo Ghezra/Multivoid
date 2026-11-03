@@ -37,6 +37,9 @@ void QueueConnectBroadcastForSlot(int slot);
 
 void OnPeerLeftSlot(int slot);
 
+// The wall hits and repairs this client has sent, for the drill.
+unsigned WallChangesSent();
+
 void OnDisconnect();
 
 }  // namespace coop::build_sync

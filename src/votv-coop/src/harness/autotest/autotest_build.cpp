@@ -1,15 +1,17 @@
 // harness/autotest/autotest_build.cpp -- TEST-ONLY: nails and custom walls are the host's, and every peer has them.
 //
-// A. The host fires a nail gun's projectile down through two cutting boards: the client has the nail, tied to its copies
-//    of the same two boards. B. The client fires one into a board of the host's: the host makes it under the client's key
-//    and the client keeps its own. C. The client takes the host's nail away (the nail's own addDamage): it goes on the host,
-//    and the one nail item it drops is on both. D. The host takes the client's nail away, the same. E. The host places an
-//    unfinished wall: the client has it and counts no bricks. F. The host's wall is finished (concrete, the game's own
-//    buildWall): the client has the finished wall with the host's cracks. G. A wet concrete wall, made as buildWall makes
-//    one: the client's copy does not dry; the host's dries, and the client has the dry one. H. A hit on the client's copy breaks nothing on either. I. The host breaks it: it goes here and there. J. The client
-//    places an unfinished wall: the host makes it and the client keeps its own. K. The client is killed and rejoins: every
-//    piece of the host's is here once (VOTVCOOP_BUILD_REJOIN=1 runs that half). Gated by VOTVCOOP_RUN_BUILD; the folder is
-//    VOTVCOOP_CAN_DIR.
+// A. The host fires a nail gun's projectile down through two cutting boards: the client has the nail, tied to its
+//    copies of the same two boards. B. The client fires one into a board of the host's: the host makes it under the
+//    client's key and the client keeps its own. S. The host's nail snaps on the client's copy alone: it is tied again
+//    there. C. The client takes the host's nail away (the nail's own addDamage): it goes on the host, and the one nail
+//    item it drops is on both. D. The host takes the client's nail away, the same. E. The host places an unfinished
+//    wall: the client has it and counts no bricks. F. The host's wall is finished (concrete, the game's own buildWall):
+//    the client has the finished wall with the host's cracks. G. A wet concrete wall, made as buildWall makes one: the
+//    client's copy does not dry; the host's dries, and the client has the dry one. H. A client's hit (the wall's
+//    addDamage) and repair (its fix) on its copy reach the host's wall; a log either peer throws at it is counted once,
+//    through the host's wall. I. The host breaks it: it goes here and there. J. The client places an unfinished wall:
+//    the host makes it and the client keeps its own. K. The client is killed and rejoins: every piece of the host's is
+//    here once (VOTVCOOP_BUILD_REJOIN=1 runs that half). Gated by VOTVCOOP_RUN_BUILD; the folder is VOTVCOOP_CAN_DIR.
 
 #include "harness/autotest.h"
 
@@ -19,6 +21,7 @@
 #include "coop/player/remote_player.h"
 #include "coop/props/prop_key_index.h"
 #include "coop/session/net_pump.h"
+#include "coop/world/build_sync.h"
 #include "ue_wrap/actors/build_piece.h"
 #include "ue_wrap/actors/prop.h"
 #include "ue_wrap/core/asset_load.h"
@@ -32,9 +35,11 @@
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_attach.h"
 #include "ue_wrap/engine/engine_pawn.h"
+#include "ue_wrap/engine/engine_physics.h"
 
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -262,6 +267,23 @@ void* NewWall(const std::set<std::string>& before) {
     return nullptr;
 }
 
+// A log thrown from `from` at `wall`, 3000 cm/s, from 200 cm before it.
+void ThrowLogAt(void* from, void* wall) {
+    void* cls = ue_wrap::asset_load::LoadObjectByPath(L"/Game/objects/prop_logcut.prop_logcut_C");
+    ue_wrap::FVector wa{}, me{};
+    if (!wall || !cls || !E::TryGetActorLocation(wall, wa) || !E::TryGetActorLocation(from, me)) return;
+    float dx = wa.X - me.X, dy = wa.Y - me.Y;
+    const float n = std::sqrt(dx * dx + dy * dy);
+    if (n < 1.f) return;
+    dx /= n;
+    dy /= n;
+    void* log = E::SpawnActor(cls, {wa.X - dx * 200.f, wa.Y - dy * 200.f, wa.Z});
+    void* root = log ? ue_wrap::engine::RootComponentOf(log) : nullptr;
+    if (!root) return;
+    ue_wrap::engine::SetComponentSimulatePhysics(root, true);
+    ue_wrap::engine::SetComponentLinearVelocity(root, dx * 3000.f, dy * 3000.f, 0.f);
+}
+
 bool WorldReady() {
     bool ready = false;
     for (int i = 0; i < 480 && !ready; ++i) {
@@ -311,8 +333,15 @@ void RunHost() {
           }, 10),
           "the client's nail is made here, in the same board");
     Mark("b_ok");
-    // C.
     const auto an = Split(rowA);
+    // S.
+    if (!Await("s_done") || an.empty()) return;
+    OnGameThread([&] {
+        void* n = PieceByKey(an[0]);
+        Check(n && !B::NailBroken(n), "the snap on the client's copy left the host's nail tied");
+    });
+    Mark("s_ok");
+    // C.
     if (!Await("c_took") || an.empty()) return;
     Check(WaitFor([&] { return !PieceByKey(an[0]); }, 8), "the client took the host's nail away here");
     ::Sleep(3000);
@@ -393,13 +422,50 @@ void RunHost() {
     Mark("g_dry", gw);
     if (!Await("g_ok")) return;
     // H.
-    std::string h0, h1;
-    OnGameThread([&] { if (dry) h0 = WallRow(dry); });
-    if (!Await("h_hit")) return;
-    ::Sleep(2000);
-    OnGameThread([&] { if (dry && R::IsLive(dry)) h1 = WallRow(dry); });
-    Check(!h0.empty() && h0 == h1, "the client's hit on its copy left the host's wall as it was");
-    Mark("h_ok");
+    float h0 = 0.f;
+    OnGameThread([&] { B::WallHealth(dry, h0); });
+    std::string hit;
+    if (!Await("h_hit", &hit)) return;
+    const float d = std::stof(hit);
+    Check(WaitFor([&] {
+              float h = 0.f;
+              return B::WallHealth(dry, h) && std::fabs(h - (h0 - d)) < 0.05f;
+          }, 5),
+          "the client's hit took the host's wall down by its damage");
+    std::string hr;
+    OnGameThread([&] { hr = WallRow(dry); });
+    Mark("h_hit_ok", hr);
+    if (!Await("h_fix")) return;
+    Check(WaitFor([&] {
+              float h = 0.f;
+              return B::WallHealth(dry, h) && std::fabs(h - (h0 - d + 5.f)) < 0.05f;
+          }, 5),
+          "the client's repair put 5 back on the host's wall");
+    std::string fr;
+    float wallBefore = 0.f, wallAfter = 0.f;
+    OnGameThread([&] {
+        fr = WallRow(dry);
+        B::WallHealth(dry, wallBefore);
+    });
+    Mark("h_ok", fr);
+    if (!Await("t_thrown")) return;
+    ::Sleep(4000);
+    OnGameThread([&] { B::WallHealth(dry, wallAfter); });
+    UE_LOGI("build-drill: the client's thrown log -- the host's wall %.2f -> %.2f", wallBefore, wallAfter);
+    Mark("t_ok");
+    if (!Await("t2_go")) return;
+    OnGameThread([&] {
+        B::WallHealth(dry, wallBefore);
+        ThrowLogAt(Me(), dry);
+    });
+    ::Sleep(4000);
+    std::string t2;
+    OnGameThread([&] {
+        B::WallHealth(dry, wallAfter);
+        t2 = WallRow(dry);
+    });
+    UE_LOGI("build-drill: the host's thrown log -- its wall %.2f -> %.2f", wallBefore, wallAfter);
+    Mark("t2", t2);
     // I.
     OnGameThread([&] {
         ue_wrap::FVector at{};
@@ -467,6 +533,24 @@ void RunClient() {
     ::Sleep(11000);   // past the lane's wait for the host's answer
     Check(bn.size() == 4 && WaitFor([&] { return PiecesWithKey(bn[0]) == 1; }, 2),
           "this player's nail stands here once, the host's answer");
+    // S. The host's nail snaps on this copy alone: its constraint broken and its own broken event run.
+    bool snapped = false;
+    OnGameThread([&] {
+        void* n = PieceByKey(an[0]);
+        void* pc = nullptr;
+        if (!n || !ReadField(n, L"PhysicsConstraint", pc) || !pc) return;
+        CallFn(pc, L"BreakConstraint");
+        CallFn(n, L"BndEvt__PhysicsConstraint_K2Node_ComponentBoundEvent_0_ConstraintBrokenSignature__DelegateSignature");
+        snapped = B::NailBroken(n);
+    });
+    Check(snapped, "the host's nail snapped on this copy");
+    Check(WaitFor([&] {
+              void* n = PieceByKey(an[0]);
+              return n && !B::NailBroken(n);
+          }, 6),
+          "and is tied again, as the host's is");
+    Mark("s_done");
+    if (!Await("s_ok")) return;
     // C.
     size_t items0 = 0;
     bool took = false;
@@ -542,20 +626,48 @@ void RunClient() {
         Check(wn.size() == 3 && !PieceByKey(wn[0]), "the wet wall went here");
     });
     Mark("g_ok");
-    // H.
+    // H. A hit as a melee lands it, through the wall's own addDamage, then the wall's own fix.
+    float hitDmg = 0.f;
     OnGameThread([&] {
         void* w = PieceByKey(gw[0]);
-        ue_wrap::FVector at{};
-        if (w && E::TryGetActorLocation(w, at))
-            CallFn(w, L"Damage", [&](ue_wrap::ParamFrame& p) {
-                p.Set(L"damage", 500.f);
-                p.Set(L"location", at);
-            });
+        float m = 0.f;
+        if (!w || !ReadField(w, L"maxHealth", m)) return;
+        hitDmg = (std::min)(20.f, 0.2f * m / 10000.f);
+        CallFn(w, L"addDamage", [&](ue_wrap::ParamFrame& p) { p.Set(L"damage", hitDmg); });
     });
-    ::Sleep(1000);
-    Check(WaitFor([&] { return PieceByKey(gw[0]) != nullptr; }, 1), "a hit on this copy does not break it");
-    Mark("h_hit");
-    if (!Await("h_ok")) return;
+    UE_LOGI("build-drill: this player hit its copy of the wall for %.2f", hitDmg);
+    Mark("h_hit", std::to_string(hitDmg));
+    std::string hr;
+    if (!Await("h_hit_ok", &hr)) return;
+    Check(WaitFor([&] {
+              void* w = PieceByKey(gw[0]);
+              return w && WallRow(w) == hr;
+          }, 5),
+          "this copy has the host's cracks after the hit");
+    OnGameThread([&] { CallFn(PieceByKey(gw[0]), L"fix"); });
+    Mark("h_fix");
+    std::string fr;
+    if (!Await("h_ok", &fr)) return;
+    Check(WaitFor([&] {
+              void* w = PieceByKey(gw[0]);
+              return w && WallRow(w) == fr;
+          }, 5),
+          "this copy has the host's cracks after the repair");
+    // A log thrown at the wall, to read which copies count its impact.
+    OnGameThread([&] { ThrowLogAt(Me(), PieceByKey(gw[0])); });
+    Mark("t_thrown");
+    if (!Await("t_ok")) return;
+    // The host's log: its own copy counts it, and this one must not count it again.
+    const unsigned sent0 = coop::build_sync::WallChangesSent();
+    Mark("t2_go");
+    std::string t2;
+    if (!Await("t2", &t2)) return;
+    Check(WaitFor([&] {
+              void* w = PieceByKey(gw[0]);
+              return w && WallRow(w) == t2;
+          }, 5),
+          "this copy has the host's cracks after the host's log");
+    Check(coop::build_sync::WallChangesSent() == sent0, "the host's log was not counted here as well");
     // I.
     if (!Await("i_gone")) return;
     Check(WaitFor([&] { return !PieceByKey(gw[0]); }, 5), "the wall the host broke went here");

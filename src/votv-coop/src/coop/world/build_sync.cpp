@@ -44,15 +44,19 @@ using SaveRecord = ue_wrap::save_record::SaveRecord;
 
 constexpr uint8_t kOpState = 1;   // BuildState: the record. BuildIntent: a piece this client made, its record
 constexpr uint8_t kOpGone = 2;    // the piece went (state) or this client took it away (intent)
+constexpr uint8_t kOpChange = 3;  // intent only: this client's player hit (below zero) or repaired a wall by this much
 
 constexpr size_t kMaxElements = 4096;      // every value of a record, all told
 constexpr float kMakeReachCm = 3000.f;     // a client's new piece from its sender: a nail flies
 constexpr float kTakeReachCm = 800.f;      // a removal's sender from the piece
+constexpr float kChangeReachCm = 3000.f;   // a hit's or repair's sender from the wall
+constexpr float kMaxChange = 100000.f;     // one hit or repair, at most
 constexpr size_t kMaxClientPieces = 512;   // pieces the host makes for clients, all told
 constexpr float kWallHealthScale = 10000.f;
 constexpr auto kStateLife = std::chrono::seconds(10);   // a nail state whose ends are not here yet waits this long
 constexpr auto kEchoLife = std::chrono::seconds(10);    // a piece of this player's the host has not answered was refused
 constexpr auto kSaveLife = std::chrono::seconds(20);    // a piece of the save the host never names is not the host's
+constexpr auto kSnapWait = std::chrono::milliseconds(1500);   // a snap the host's state has not named by then is tied again
 constexpr auto kSweepEvery = std::chrono::seconds(1);
 constexpr auto kAssemblyTtl = std::chrono::seconds(20);
 
@@ -75,6 +79,7 @@ struct Intent {
     uint8_t op = 0;
     std::wstring key;
     SaveRecord rec;
+    float change = 0.f;
 };
 std::vector<Intent> g_intents;
 size_t g_clientMade = 0;
@@ -86,6 +91,9 @@ struct Known {
     uint64_t print = 0;        // the print of the record last applied here, or of this player's own piece
     bool confirmed = false;    // the host's state has named it
     Clock::time_point since{};
+    float health = 0.f;        // a wall's health as last applied here, scaled
+    bool hasHealth = false;
+    Clock::time_point snapped{};   // when this copy's nail was first seen broken, the host's not
 };
 std::unordered_map<std::wstring, Known> g_known;
 struct Pending {
@@ -97,7 +105,8 @@ std::unordered_map<std::wstring, Pending> g_inbox;
 std::unordered_map<std::wstring, Clock::time_point> g_saveKeys;   // pieces the save made here, till the host names them
 bool g_seeded = false;
 
-uint32_t g_sent = 0, g_applied = 0, g_made = 0, g_refused = 0, g_taken = 0;
+uint32_t g_sent = 0, g_applied = 0, g_made = 0, g_refused = 0, g_taken = 0, g_changes = 0, g_reties = 0;
+std::atomic<unsigned> g_changesSent{0};
 
 coop::net::Session* Live() {
     coop::net::Session* s = g_session.load(std::memory_order_acquire);
@@ -151,20 +160,27 @@ uint64_t Print(const SaveRecord& r) {
     return coop::blob_chunks::Fnv64(b);
 }
 
-std::vector<uint8_t> Blob(uint8_t op, const std::wstring& key, const SaveRecord* rec) {
+std::vector<uint8_t> Blob(uint8_t op, const std::wstring& key, const SaveRecord* rec, float change = 0.f) {
     std::vector<uint8_t> b;
     W::AppU8(b, op);
     W::AppWStr(b, key);
     if (rec) W::SerSave(b, *rec);
+    if (op == kOpChange) W::AppF32(b, change);
     return b;
 }
 
-bool Parse(const std::vector<uint8_t>& b, uint8_t& op, std::wstring& key, SaveRecord& rec) {
+bool Parse(const std::vector<uint8_t>& b, uint8_t& op, std::wstring& key, SaveRecord& rec, float& change) {
     size_t o = 0;
     if (!W::RdU8(b, o, op) || !W::RdWStr(b, o, key) || !ValidKey(key)) return false;
     if (op == kOpGone) return o == b.size();
+    if (op == kOpChange)
+        return W::RdF32(b, o, change) && o == b.size() && std::isfinite(change) && change != 0.f &&
+               std::fabs(change) <= kMaxChange;
     return op == kOpState && W::DeSave(b, o, rec) && o == b.size() && rec.key == key && RecordSane(rec);
 }
+
+// Whether a nail's record has it broken (bools[0] = broken, static, nailed).
+bool RecordBroken(const SaveRecord& r) { return !r.bools.empty() && !r.bools[0].empty() && r.bools[0][0]; }
 
 std::unordered_map<std::wstring, void*> PiecesByKey() {
     std::vector<void*> pieces;
@@ -274,11 +290,30 @@ void HostTake(coop::net::Session& s, const Intent& in) {
     E::DestroyActor(piece);   // the game's own drop, which the prop lanes carry
 }
 
+// A client's hit or repair on its copy of a wall: the host's wall takes it, a hit through its own Damage.
+void HostChange(coop::net::Session& s, const Intent& in) {
+    void* wall = PieceByKey(in.key);
+    float h = 0.f;
+    ue_wrap::FVector at{};
+    if (!s.IsSlotWorldReady(in.slot) || !B::WallHealth(wall, h) || !E::TryGetActorLocation(wall, at)) return;
+    if (!Within(Body(in.slot), at.X, at.Y, at.Z, kChangeReachCm)) {
+        ++g_refused;
+        UE_LOGW("build_sync: slot %d's change to '%ls' out of reach -- refused", in.slot, in.key.c_str());
+        return;
+    }
+    ++g_changes;
+    UE_LOGI("build_sync: slot %d %s wall '%ls' by %.2f (health %.2f)", in.slot, in.change < 0.f ? "hit" : "repaired",
+            in.key.c_str(), std::fabs(in.change), h);
+    if (in.change < 0.f) B::HitWall(wall, -in.change);
+    else B::RepairWall(wall, in.change);
+}
+
 void HostPoll(coop::net::Session& s) {
     std::vector<Intent> intents;
     intents.swap(g_intents);
     for (const Intent& in : intents) {
         if (in.op == kOpState) HostMake(s, in);
+        else if (in.op == kOpChange) HostChange(s, in);
         else HostTake(s, in);
     }
     // No client to send to yet: a joiner gets every piece at its ready edge.
@@ -327,8 +362,9 @@ void HostPoll(coop::net::Session& s) {
 
 // ---- CLIENT --------------------------------------------------------------------------------------------------------
 
-bool SendIntent(coop::net::Session& s, uint8_t op, const std::wstring& key, const SaveRecord* rec) {
-    const std::vector<uint8_t> blob = Blob(op, key, rec);
+bool SendIntent(coop::net::Session& s, uint8_t op, const std::wstring& key, const SaveRecord* rec,
+                float change = 0.f) {
+    const std::vector<uint8_t> blob = Blob(op, key, rec, change);
     return coop::blob_chunks::SendBlob(&s, coop::net::ReliableKind::BuildIntent, ++g_blobSeq, blob);
 }
 
@@ -351,6 +387,8 @@ bool Make(const std::wstring& key, const SaveRecord& rec, void* piece, bool last
     }
     B::ScaleWallHealth(piece, kWallHealthScale);
     B::Park(piece);
+    k.hasHealth = B::WallHealth(piece, k.health);
+    k.snapped = {};
     k.ref.Set(piece);
     k.rec = rec;
     k.print = print;
@@ -407,6 +445,37 @@ void ClientPoll(coop::net::Session& s, Clock::time_point now) {
         k.since = now;
         UE_LOGI("build_sync: this player made %s '%ls' -- the host makes it", KindName(B::KindOf(e.second)),
                 e.first.c_str());
+    }
+    // The host's pieces as this copy holds them: a wall's health moved by this player's hit or repair goes to the host,
+    // whose state answers; a nail whose tie broke here alone is tied again once the host has had time to name a snap.
+    for (auto& e : g_known) {
+        Known& k = e.second;
+        const auto p = here.find(e.first);
+        if (!k.confirmed || p == here.end() || g_inbox.count(e.first)) continue;
+        float h = 0.f;
+        if (k.hasHealth && B::WallHealth(p->second, h) && std::fabs(h - k.health) > 0.01f) {
+            if (!SendIntent(s, kOpChange, e.first, nullptr, h - k.health)) continue;
+            UE_LOGI("build_sync: this player %s wall '%ls' by %.2f -- the host takes it", h < k.health ? "hit" : "repaired",
+                    e.first.c_str(), std::fabs(h - k.health));
+            k.health = h;
+            ++g_changesSent;
+            continue;
+        }
+        if (!B::NailBroken(p->second) || RecordBroken(k.rec)) {
+            k.snapped = {};
+            continue;
+        }
+        if (k.snapped == Clock::time_point{}) {
+            k.snapped = now;
+            continue;
+        }
+        if (now - k.snapped < kSnapWait) continue;
+        k.print = 0;
+        const SaveRecord rec = k.rec;
+        if (Make(e.first, rec, p->second, true, now)) {
+            ++g_reties;
+            UE_LOGI("build_sync: the host's nail '%ls' snapped here alone -- tied again", e.first.c_str());
+        }
     }
     for (auto it = g_known.begin(); it != g_known.end();) {
         Known& k = it->second;
@@ -492,7 +561,8 @@ void OnStateChunk(const coop::net::BlobChunkPayload& p, int senderSlot) {
     uint8_t op = 0;
     std::wstring key;
     SaveRecord rec;
-    if (!Parse(blob, op, key, rec)) {
+    float change = 0.f;
+    if (!Parse(blob, op, key, rec, change) || op == kOpChange) {
         UE_LOGW("build_sync: a malformed piece from the host -- dropped");
         return;
     }
@@ -509,7 +579,7 @@ void OnIntentChunk(const coop::net::BlobChunkPayload& p, int senderSlot) {
     std::vector<uint8_t> blob;
     if (!g_asmIntent.OnChunk(p, static_cast<uint8_t>(senderSlot), blob)) return;
     Intent in;
-    if (!Parse(blob, in.op, in.key, in.rec)) {
+    if (!Parse(blob, in.op, in.key, in.rec, in.change)) {
         UE_LOGW("build_sync: a malformed piece from slot %d -- dropped", senderSlot);
         return;
     }
@@ -517,6 +587,8 @@ void OnIntentChunk(const coop::net::BlobChunkPayload& p, int senderSlot) {
     in.slot = senderSlot;
     g_intents.push_back(std::move(in));
 }
+
+unsigned WallChangesSent() { return g_changesSent.load(); }
 
 void QueueConnectBroadcastForSlot(int /*slot*/) {
     for (auto& entry : g_rows) entry.second.pending = true;
@@ -528,10 +600,10 @@ void OnPeerLeftSlot(int slot) {
 }
 
 void OnDisconnect() {
-    if (g_sent || g_applied || g_made || g_refused || g_taken)
-        UE_LOGI("build_sync: session end -- states sent=%u made here=%u client pieces=%u taken=%u refused=%u", g_sent,
-                g_applied, g_made, g_taken, g_refused);
-    g_sent = g_applied = g_made = g_refused = g_taken = 0;
+    if (g_sent || g_applied || g_made || g_refused || g_taken || g_changes || g_reties)
+        UE_LOGI("build_sync: session end -- states sent=%u made here=%u client pieces=%u taken=%u wall changes=%u "
+                "re-tied=%u refused=%u", g_sent, g_applied, g_made, g_taken, g_changes, g_reties, g_refused);
+    g_sent = g_applied = g_made = g_refused = g_taken = g_changes = g_reties = 0;
     Reset();
     g_asmState.Clear();
     g_asmIntent.Clear();

@@ -63,6 +63,19 @@ void Park(void* piece);
 // takes it below zero.
 bool ScaleWallHealth(void* wall, float k);
 
+// A finished or wet wall's health as it stands.
+bool WallHealth(void* wall, float& out);
+
+// A hit on the wall through its own Damage, at its location: below zero it breaks, drops its material and goes.
+bool HitWall(void* wall, float damage);
+
+// A repair as the wall's own fix makes one, without its sound and hint for the local player: health up by `amount`,
+// never past its maximum, and the cracks drawn again.
+bool RepairWall(void* wall, float amount);
+
+// Whether a nail's tie has broken (its constraint's broken event sets it).
+bool NailBroken(void* nail);
+
 // Destroy the piece leaving nothing behind: no nail drop, no wall's material.
 void DestroyQuiet(void* piece);
 

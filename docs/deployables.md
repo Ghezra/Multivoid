@@ -73,9 +73,14 @@ maximum are scaled by 10,000, so the cracks read the host's ratio and no hit the
 makes keeps its key and goes to the host, which checks the class, the world and the reach (30 m) and makes its own under
 that key; one the host does not answer in 10 s was refused and goes. A nail or unfinished wall that player takes away
 goes to the host as a removal within 8 m, and the host destroys its own, dropping what the game drops; a piece lost on a
-client otherwise is made again from its record `[V]` (`harness/autotest/autotest_build.cpp`, three runs, each with a
-rejoin: nails fired by each peer through two boards, each peer's removal with its one dropped nail item on both, an
-unfinished wall, its finish, a wet wall drying, a hit on a client's copy, the host's break, a client's wall builder).
+client otherwise is made again from its record. A wall's health on a client's copy moves only by what that peer does to
+it -- its player's hit or repair, or a prop it threw -- so the difference from the host's last value goes to the host
+(within 30 m): a loss through the host's wall's own `Damage`, which breaks and drops there, a gain as `fix` adds it, up to
+the maximum. A host nail whose tie snaps on a client's copy alone is tied again from the host's record once 1.5 s have
+passed without the host's own snap `[V]` (`harness/autotest/autotest_build.cpp`, each run with a rejoin: nails fired by
+each peer through two boards, a snap on the client's copy, each peer's removal with its one dropped nail item on both, an
+unfinished wall, its finish, a wet wall drying, a client's hit and repair, a log thrown by each peer counted once, the
+host's break, a client's wall builder).
 
 ## Who owns what
 
@@ -116,9 +121,8 @@ only through the save.
 | Limit | Evidence |
 |---|---|
 | The timed explosives, the fishing rod and the physgun are not synced | `[V]` no lane carries them |
-| A client's own hit on a finished wall does nothing: its copy cannot break, and only the host's copy counts damage. An explosion runs on the host and a thrown prop's host copy hits there, but a hit that lands on the client's copy alone is lost | `[RD]` `coop/world/build_sync` scales a client copy's health; the wall's `Damage` |
+| A hit or repair on a client's copy reaches the host on the lane's next poll, so the cracks there catch up within a second. A host nail that snaps on a client alone is loose there for 1.5 s, and a pin nail (`nail_pin_C`) destroys itself as it snaps, so on a client with its player near it is sent as that player's removal | `[RD]` `coop/world/build_sync`; `nail_pin_C.detached` |
 | A brick a client drops into an unfinished wall counts when the host's copy of the brick touches the host's wall; that path was not run, nor was a real wall builder's or nail gun's press | `[?]` the drill places walls and fires projectiles as the tools' own scripts do |
-| A wall's repair (`fix`) on a client is not carried, and a nail whose constraint snaps on a client's copy stays broken there until the host's record changes | `[RD]` `coop/world/build_sync` sends no client change to a host piece |
 | The host captures every piece's record twice a second; the cost with hundreds of nails is not measured | `[?]` `coop/world/build_sync` |
 | A garden hose reaches the others only once it is finished: while one player lays it, the others see the faucet without it. A sprinkler a hose ties is made static by the coil on the laying peer only | `[V]` `coop/world/ground_hose_sync` sends no laying hose; `prop_sprinkler_C`'s `connectHose` calls `setPropProps`, which the lane does not replay |
 | The drill lays hoses by their records and runs the cut by the hose's own `detachSprinkler`; a hose walked out with a coil, and a cut by grabbing the sprinkler, are not driven on the rig | `[?]` `harness/autotest/autotest_ground_hose.cpp` |
