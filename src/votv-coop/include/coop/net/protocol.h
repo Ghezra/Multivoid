@@ -30,7 +30,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 280;
+inline constexpr uint16_t kProtocolVersion = 281;
 
 // Default LAN port (overridable via multivoid.ini "net.port=").
 inline constexpr uint16_t kDefaultPort = 47621;
@@ -1254,6 +1254,13 @@ enum class ReliableKind : uint8_t {
     // HOST->ALL: a walking mannequin of the host's is angry, once for each walker, and every angry one again at the ready edge.
     // A client's copy takes the anger, which nothing undoes. Not relayed, not pre-world. WalkerWatchPayload, `angered` set.
     WalkerAngry = 225,
+    // HOST->ALL: a keyed prop of the host's burns, with its flame's fuel and speed, at the edge, on a refuel and every 2 s while
+    // it burns, or it stopped. A client's copy shows that flame and burns nothing down. Not relayed, not pre-world. Late join:
+    // every burning prop again at the ready edge. PropFirePayload.
+    PropFireState = 226,
+    // CLIENT->HOST: this client's player lit a keyed prop with a lighter or a torch, with the fuel the light gives. Never relayed;
+    // the host lights its own copy and its next PropFireState answers. PropFirePayload.
+    PropFireRequest = 227,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
@@ -2059,6 +2066,16 @@ struct WalkerWatchPayload {
     uint8_t _pad[2];   // 2 -- zero
 };
 static_assert(sizeof(WalkerWatchPayload) == 36, "WalkerWatchPayload must be 36 bytes");
+
+// A burning prop (PropFireState), or a client's light (PropFireRequest).
+struct PropFirePayload {
+    WireKey key;        // 32 -- the prop's key
+    float   fuel;       // 4 -- the flame's fuel, or the light's
+    float   fuelSpeed;  // 4 -- how fast the flame spends it; 0 on a request
+    uint8_t burning;    // 1 -- 0: the flame went out
+    uint8_t _pad[3];    // 3 -- zero
+};
+static_assert(sizeof(PropFirePayload) == 44, "PropFirePayload must be 44 bytes");
 
 namespace kitchen_flags {
 inline constexpr uint8_t kDoorOpen = 1;  // its `opened`

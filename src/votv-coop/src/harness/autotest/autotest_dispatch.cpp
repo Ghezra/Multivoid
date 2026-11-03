@@ -208,6 +208,7 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIf("VOTVCOOP_RUN_SUS_HOLE", "sus hole drill", &SusHoleThread, role);
     SpawnIf("VOTVCOOP_RUN_JOIN_DROP", "join window drop drill", &JoinDropThread, role);
     SpawnIf("VOTVCOOP_RUN_WALKER_STATUE", "statue walker drill", &WalkerStatueThread, role);
+    SpawnIf("VOTVCOOP_RUN_PROP_FIRE", "burning prop drill", &PropFireThread, role);
     SpawnIf("VOTVCOOP_RUN_SV_REQUEST", "sv.request drill", &SvRequestThread, role);
     SpawnIf("VOTVCOOP_RUN_MODULE_BUY", "module row drill", &ModuleBuyThread, role);
     SpawnIf("VOTVCOOP_RUN_DISC_RACE", "disc race drill", &DiscRaceThread, role);

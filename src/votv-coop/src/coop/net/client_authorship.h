@@ -45,6 +45,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::MediaDeviceState:
     case ReliableKind::PlantEdit:
     case ReliableKind::WalkerWatch:
+    case ReliableKind::PropFireRequest:
     case ReliableKind::PropSpawn:
     case ReliableKind::PropDestroy:
     case ReliableKind::LightState:
@@ -246,6 +247,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::AmbientFixtureState:
     case ReliableKind::PlantState:
     case ReliableKind::WalkerAngry:
+    case ReliableKind::PropFireState:
     case ReliableKind::SwingerRestPose:
     case ReliableKind::GeomOctaEvent:
     case ReliableKind::DevLoadFiller:

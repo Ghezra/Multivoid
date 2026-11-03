@@ -221,6 +221,7 @@ set(VOTVCOOP_SOURCES
     src/coop/creatures/ambient_fixture_sync.cpp
     src/coop/player/backrooms_guard.cpp
     src/coop/world/plant_sync.cpp
+    src/coop/props/prop_fire_sync.cpp
     src/ue_wrap/actors/growing_plant.cpp
     src/ue_wrap/actors/ambient_creature.cpp
     src/coop/world/world_sound_sync.cpp
@@ -658,6 +659,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_sus_hole.cpp
     src/harness/autotest/autotest_join_drop.cpp
     src/harness/autotest/autotest_walker_statue.cpp
+    src/harness/autotest/autotest_prop_fire.cpp
     src/harness/autotest/autotest_browser_filter.cpp
     src/harness/autotest/autotest_sv_request.cpp
     src/harness/autotest/autotest_module_buy.cpp

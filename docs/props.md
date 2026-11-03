@@ -466,6 +466,18 @@ carries its channel, volume, brightness and squeeze; its openLink needs its powe
 for its cord `[V]` (`harness/autotest/autotest_tv_state.cpp`: the same from each peer with a channel and the picture, with
 a silent audio-only `.mp4`, powered by a write, so no picture was decoded).
 
+A keyed prop's fire (`coop/props/prop_fire_sync`) is its `flameBase`, whose fuel burns it down through its own
+`fireDamage`, which only the host decides, so the host owns it. The host polls the burning props and sends each one's
+flame, its fuel and the speed it spends it, at its edge, on a refuel, every 2 s while it burns and once when it goes
+out (`PropFireState`); a client's copy shows that flame, lit by `prop_C`'s own `ignite`, and burns nothing down. A
+prop's `ignite` is refused on a client's copy whatever called it; inside the client's own lighter or torch it is that
+player's light and goes to the host with its fuel (`PropFireRequest`), and the host, with the sender within 8 m of the
+prop, lights its own copy, as single player would. A flame spreading or a burning body is the host's to roll. Salt
+rockets keep their own lane, a prop in a hand is left to its holder, and a joiner gets every burning prop again at its
+ready edge `[V]` (`harness/autotest/autotest_prop_fire.cpp`, three runs: a log the host lights and puts out, shown and
+out on the client, and a log the client's lighter lights by its own click, its copy unlit at the click and the host's
+flame back on it).
+
 ## Who owns what
 
 | State | Owner | Shape |
@@ -480,6 +492,7 @@ a silent audio-only `.mp4`, powered by a write, so no picture was decoded).
 | a self-changing prop's progression | the host | park, corrector or anchor, per prop |
 | notebook editor occupancy | the host arbitrates | a claim keyed by the owning prop |
 | notebook page text | the editing peer; the host takes it from the claim's holder, or from anyone while it is free | the notebook's own save record on the record lane, at the editor's commit and at the close |
+| a keyed prop's fire | the host | its flame on every copy; a client's light is a request |
 | a client's shared-world spawners | the host | refused on a client at the script-body gate; shared-world content arrives only from the host |
 
 ## Wire messages
@@ -492,6 +505,7 @@ a silent audio-only `.mp4`, powered by a write, so no picture was decoded).
 | `MediaDeviceState` | the host to all; a client to the host | a placed radio's or TV's track hash, time, play state and mode, a TV's channel and picture; what a client's interface changed |
 | `KitchenState` | the presser to all; the host's burn of a grill's coals | a microwave's or a mini oven's setting and whether it runs; a grill's coals, fire, lid and burn |
 | `FoodState`, `FoodBite`, `FoodRelease`, `FoodHand` | the host to all; a client to the host; a client to the host; the holder to all | a world food's temperature, ripeness and uses; a client's bite; the condition of a food a client let go; the condition of the food in a hand |
+| `PropFireState`, `PropFireRequest` | the host to all; a client to the host | a keyed prop's flame, its fuel and speed, or that it went out; a client's light with its fuel |
 | `PropToolFlags` | the tool's user to all | a prop's static, frozen and sleep as a toolgun tool left them `[?]` |
 | `PropSettle` | the releaser to all | where its released copy rests: the transform, its frozen and sleep, and the hold whose release it follows `[?]` |
 | `PropHoldRefused` | the host to every client | a hold the host refused, by its holder's slot and generation, the prop's key, and the slot whose hold keeps the prop |
@@ -561,6 +575,7 @@ prop resolves.
 | a prop under a hook's drive or a broom's push | `coop/props/prop_drive_host` (the host's set and stream), `coop/props/prop_drive_stream` (the receiver), `coop/items/hook_prop_claim` (the hook lane feeding it), `coop/items/hook_constraint` (the tie itself, host-only), `coop/items/broom_push` (the broom's push feeding it) |
 | containers | `coop/props/container_contents_sync`, `coop/items/save_record_wire`, `coop/interactables/interactable_sync` |
 | a world food's condition | `coop/props/prop_food_sync`, `ue_wrap/actors/food` |
+| a keyed prop's fire | `coop/props/prop_fire_sync`, `ue_wrap/actors/prop_fire` |
 | a microwave's, a mini oven's and a grill's controls | `coop/interactables/kitchen_sync`, `ue_wrap/devices/kitchen` |
 | a placed radio or TV | `coop/world/media_device_sync`, `ue_wrap/world/media_device` |
 | a record that changes in place | `coop/props/prop_record_refresh` (the drive box, the reel case), `coop/props/prop_can_state` (the canned food) |

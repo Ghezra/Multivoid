@@ -19,6 +19,7 @@
 #include "coop/interactables/kitchen_sync.h"  // a microwave's and a mini oven's controls
 #include "coop/creatures/ambient_creature_sync.h"
 #include "coop/creatures/ambient_fixture_sync.h"
+#include "coop/props/prop_fire_sync.h"
 #include "coop/world/plant_sync.h"
 #include "coop/world/media_device_sync.h"            // a placed radio's track and play state
 #include "coop/props/prop_drive_stream.h"  // the driven-prop end edge
@@ -427,6 +428,29 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         ::coop::ambient_creature_sync::OnWalkerAngry(p);
+        break;
+    }
+    case net::ReliableKind::PropFireState:
+    case net::ReliableKind::PropFireRequest: {
+        // PropFireState HOST->ALL, PropFireRequest CLIENT->HOST.
+        const bool request = msg.kind == net::ReliableKind::PropFireRequest;
+        if (request != (session.role() == net::Role::Host)) {
+            UE_LOGW("event_feed: a prop fire message the wrong way from slot %d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::PropFirePayload)) {
+            UE_LOGW("event_feed: prop fire payload too short (%zu < %zu)",
+                    static_cast<size_t>(msg.payloadLen), sizeof(net::PropFirePayload));
+            break;
+        }
+        net::PropFirePayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.burning > 1 || !std::isfinite(p.fuel) || !std::isfinite(p.fuelSpeed)) {
+            UE_LOGW("event_feed: prop fire message malformed -- dropping");
+            break;
+        }
+        if (request) ::coop::prop_fire_sync::OnRequest(msg.senderPeerSlot, p);
+        else ::coop::prop_fire_sync::OnState(p);
         break;
     }
     case net::ReliableKind::DevLoadFiller: {
