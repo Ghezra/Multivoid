@@ -240,10 +240,10 @@ bool RowPartsAt(int32_t i, RowParts& out) {
 // does); the details panel spells out both sides.
 std::string MismatchMark(const Row& r) {
     const bool gameBad = !r.game.empty() && r.game != sm::GameTarget();
-    const bool protoBad = r.proto > 0 && r.proto != static_cast<int>(coop::net::kProtocolVersion);
+    const bool protoBad = r.proto > 0 && r.proto != static_cast<int>(coop::net::kWireBuild);
     if (gameBad) return "!" + r.game;
     if (coop::game_build::DiffersFromOurs(r.gameBuild)) return "!" + coop::game_build::MarkText(r.gameBuild);
-    if (protoBad) return "!b" + std::to_string(r.proto);
+    if (protoBad) return "!" + coop::net::BuildTag(static_cast<uint32_t>(r.proto));
     return {};
 }
 

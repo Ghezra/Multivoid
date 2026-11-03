@@ -201,7 +201,7 @@ std::string DisplayVersion() {
     // made for carries the mark wherever the label is shown.
     static const std::string kLabel =
         std::string("Multivoid ") + coop::version::kGameTarget +
-        " b" + std::to_string(static_cast<int>(net::kProtocolVersion)) +
+        " " + net::OurBuildTag() +
         coop::build_trust::StatusSuffix() +
         (coop::game_build::Running().kind == coop::game_build::Kind::Target ? "" : " (untested game version)");
     return kLabel;
@@ -228,6 +228,12 @@ namespace {
 // older than `games` gets today's comparison of its one record. No URL: the label is a one-line UTextBlock,
 // not a hyperlink, so an address would cost ~37 characters to deliver a string nobody can act on.
 void ComposeLatest(const lobby::LatestInfo& info, std::string* line, LatestNote* note, bool* outdated) {
+    // The master lists upstream's releases, whose numbers name other wires than a build line's own: a line build
+    // shows its version and judges nothing against them.
+    if (net::kLineBit) {
+        *line = DisplayVersion();
+        return;
+    }
     const int ours = static_cast<int>(net::kProtocolVersion);
     const auto tag = [](const lobby::LatestGame& g) { return g.mod.empty() ? "b" + std::to_string(g.proto) : g.mod; };
     const coop::game_build::Detected& running = coop::game_build::Running();

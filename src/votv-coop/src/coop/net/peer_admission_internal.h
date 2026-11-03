@@ -54,8 +54,8 @@ inline void BuildBlob(Blob out, uint8_t dir, const PubKey& hostPub, const PubKey
     // a wire revision. It costs nothing -- the version gate already refuses a
     // cross-build pairing -- and it means a future change to any payload here
     // invalidates old signatures by construction rather than by remembering to.
-    out[o++] = static_cast<uint8_t>(kProtocolVersion & 0xFF);
-    out[o++] = static_cast<uint8_t>((kProtocolVersion >> 8) & 0xFF);
+    out[o++] = static_cast<uint8_t>(kWireBuild & 0xFF);
+    out[o++] = static_cast<uint8_t>((kWireBuild >> 8) & 0xFF);
     std::memcpy(out + o, hostPub.data(), hostPub.size());      o += hostPub.size();
     std::memcpy(out + o, clientPub.data(), clientPub.size());  o += clientPub.size();
     std::memcpy(out + o, nonce, kAuthNonceBytes);              o += kAuthNonceBytes;

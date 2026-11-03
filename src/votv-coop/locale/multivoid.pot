@@ -1611,6 +1611,11 @@ msgstr ""
 
 #: src/ui/server_browser_panels.cpp
 #, c-format
+msgid "Version: %1$s%2$s  -- another build line, which no update joins"
+msgstr ""
+
+#: src/ui/server_browser_panels.cpp
+#, c-format
 msgid "Version: %1$s%2$s  -- built for a different game version"
 msgstr ""
 

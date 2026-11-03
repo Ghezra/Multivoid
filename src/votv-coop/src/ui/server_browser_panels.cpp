@@ -270,13 +270,15 @@ void Sync(bool force) {
         // we are.
         const bool gameBad = !r.game.empty() && r.game != sm::GameTarget();
         const bool buildBad = !gameBad && coop::game_build::DiffersFromOurs(r.gameBuild);
-        const int ourProto = static_cast<int>(coop::net::kProtocolVersion);
+        const int ourProto = static_cast<int>(coop::net::kWireBuild);
+        const bool otherLine = r.proto > 0 && !coop::net::SameLine(static_cast<uint32_t>(r.proto));
         const bool protoBad = r.proto > 0 && r.proto != ourProto;
         // The game target, build number and master's version are identifiers; the word "unknown" is not.
         const std::string which =
             r.game.empty() ? (r.version.empty() ? std::string(l10n::T("unknown")) : r.version)
                            : r.game;
-        const std::string build = r.proto > 0 ? " b" + std::to_string(r.proto) : std::string();
+        const std::string build =
+            r.proto > 0 ? " " + coop::net::BuildTag(static_cast<uint32_t>(r.proto)) : std::string();
         // One msgid per verdict: the clause is a sentence's end and moves with the language.
         char ver[256];
         if (gameBad) {
@@ -286,6 +288,9 @@ void Sync(bool force) {
         } else if (buildBad) {
             l10n::Fmt(ver, sizeof(ver), l10n::T("Version: %1$s%2$s  -- the host's game is VOTV %3$s"),
                       which.c_str(), build.c_str(), coop::game_build::VersionText(r.gameBuild).c_str());
+        } else if (otherLine) {
+            l10n::Fmt(ver, sizeof(ver), l10n::T("Version: %1$s%2$s  -- another build line, which no update joins"),
+                      which.c_str(), build.c_str());
         } else if (protoBad && r.proto < ourProto) {
             l10n::Fmt(ver, sizeof(ver), l10n::T("Version: %1$s%2$s  -- the host must update"),
                       which.c_str(), build.c_str());

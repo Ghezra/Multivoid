@@ -35,7 +35,18 @@ if(NOT CMAKE_MATCH_1)
     message(FATAL_ERROR "could not parse kProtocolVersion out of protocol.h")
 endif()
 set(VOTVCOOP_BUILD ${CMAKE_MATCH_1})
-message(STATUS "multivoid identity: game ${VOTVCOOP_GAME_TARGET}, build ${VOTVCOOP_BUILD}")
+
+# The BUILD LINE: Ghezra/Multivoid mints its own build numbers, so its builds are their own line, shown "bg283"
+# where upstream's are "b283". "g" here sets the line bit every peer-facing build number carries
+# (coop::net::kWireBuild in protocol.h), so a "bg" and a "b" build of one number refuse each other; "" is upstream's.
+set(VOTVCOOP_BUILD_LINE "g" CACHE STRING "build line after the b: empty for upstream, g for Ghezra/Multivoid")
+if(VOTVCOOP_BUILD_LINE STREQUAL "g")
+    add_compile_definitions(VOTVCOOP_BUILD_LINE_G)
+elseif(NOT VOTVCOOP_BUILD_LINE STREQUAL "")
+    message(FATAL_ERROR "VOTVCOOP_BUILD_LINE is '${VOTVCOOP_BUILD_LINE}': only empty or g is a line")
+endif()
+set(VOTVCOOP_BUILD_TAG "b${VOTVCOOP_BUILD_LINE}${VOTVCOOP_BUILD}")
+message(STATUS "multivoid identity: game ${VOTVCOOP_GAME_TARGET}, build ${VOTVCOOP_BUILD_TAG}")
 
 # Materialize VOTVCOOP_GAME_TARGET into a generated header that the DLL
 # includes (boot banner + the announce/gate identity).

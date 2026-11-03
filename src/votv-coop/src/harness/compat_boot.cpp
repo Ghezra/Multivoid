@@ -143,8 +143,8 @@ void EngineSection() {
 void WriteBuild() {
     const GB::Detected& d = GB::Running();
     char made[128];
-    std::snprintf(made, sizeof made, "Multivoid %s b%u is made for VOTV %s.", coop::version::kGameTarget,
-                  static_cast<unsigned>(coop::net::kProtocolVersion), coop::version::kGameTarget);
+    std::snprintf(made, sizeof made, "Multivoid %s %s is made for VOTV %s.", coop::version::kGameTarget,
+                  coop::net::OurBuildTag().c_str(), coop::version::kGameTarget);
     const std::string pak = d.id.pakRead ? HashHex(d.id.pakHash, sizeof d.id.pakHash)
                                          : std::string("not read (") + (d.id.pakProblem ? d.id.pakProblem : "?") + ")";
     char stamp[16];

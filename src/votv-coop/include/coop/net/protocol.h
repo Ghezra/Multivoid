@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <string>
 
 namespace coop::net {
 
@@ -31,6 +32,30 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
 inline constexpr uint16_t kProtocolVersion = 283;
+
+// The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
+// are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
+// what crosses to another peer -- the packet header, the admission challenge, the lobby record -- carries kWireBuild,
+// so a "bg" build and a "b" build of the same number refuse each other as any two builds do. kProtocolVersion stays
+// the build number itself, which the ledger, the release signature and the build scripts read. CMake's
+// VOTVCOOP_BUILD_LINE ("" upstream, "g" on Ghezra/Multivoid) defines VOTVCOOP_BUILD_LINE_G.
+#ifdef VOTVCOOP_BUILD_LINE_G
+inline constexpr uint16_t kLineBit = 0x8000;
+#else
+inline constexpr uint16_t kLineBit = 0;
+#endif
+static_assert(kProtocolVersion < 0x8000, "the build number must leave the line bit free");
+inline constexpr uint16_t kWireBuild = kProtocolVersion | kLineBit;
+
+// A build as a player reads it: "b265", or "bg283" for a number on the wire with the line bit.
+inline std::string BuildTag(uint32_t wire) {
+    return std::string((wire & 0x8000u) ? "bg" : "b") + std::to_string(wire & 0x7FFFu);
+}
+inline std::string OurBuildTag() { return BuildTag(kWireBuild); }
+// What follows a "b" a text already writes: "265", or "g283" on the line.
+inline std::string OurBuildAfterB() { return OurBuildTag().substr(1); }
+// The same build line as ours, read off a peer's wire number.
+inline bool SameLine(uint32_t wire) { return (wire & 0x8000u) == kLineBit; }
 
 // Default LAN port (overridable via multivoid.ini "net.port=").
 inline constexpr uint16_t kDefaultPort = 47621;
@@ -4500,7 +4525,7 @@ inline constexpr float kMaxSpeed = 1.0e5f;  // cm/s (well above any real walk/sp
 inline void WriteHeader(PacketHeader& h, MsgType type, uint32_t seq,
                         uint32_t senderEpoch, uint8_t senderSlot = 0) {
     h.magic = kMagic;
-    h.version = kProtocolVersion;
+    h.version = kWireBuild;
     h.type = static_cast<uint8_t>(type);
     h.originContext = 0;
     h.seq = seq;
@@ -4517,7 +4542,7 @@ inline bool ParseHeader(const void* data, int len, MsgType& outType, uint32_t& o
     if (len < static_cast<int>(sizeof(PacketHeader))) return false;
     PacketHeader h;
     std::memcpy(&h, data, sizeof(h));
-    if (h.magic != kMagic || h.version != kProtocolVersion) return false;
+    if (h.magic != kMagic || h.version != kWireBuild) return false;
     outType = static_cast<MsgType>(h.type);
     outSeq = h.seq;
     outSenderEpoch = h.senderEpoch;

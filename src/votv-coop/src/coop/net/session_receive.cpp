@@ -60,10 +60,10 @@ void Session::HandlePendingMessage(int pendIdx, uint32_t hConn, const void* data
         // A protocol mismatch is worth saying to an unadmitted peer too; the silent alternative is
         // a connection that stays "Connected" forever with every packet dropped.
         const uint16_t peerVer = PeekProtocolVersion(data, len);
-        if (peerVer != 0 && peerVer != kProtocolVersion) {
+        if (peerVer != 0 && peerVer != kWireBuild) {
             char reason[64];
-            std::snprintf(reason, sizeof(reason), "protocol mismatch: peer=v%u, ours=v%u",
-                          static_cast<unsigned>(peerVer), static_cast<unsigned>(kProtocolVersion));
+            std::snprintf(reason, sizeof(reason), "protocol mismatch: peer=%s, ours=%s", BuildTag(peerVer).c_str(),
+                          OurBuildTag().c_str());
             UE_LOGW("net: %s -- closing PENDING %d", reason, pendIdx);
             RetirePending(pendIdx, hConn, EndReason::BuildMismatch, reason);
         }
@@ -167,13 +167,11 @@ void Session::HandleMessage(int peerSlot, uint32_t hConn, const void* data, int 
         // close with a readable reason, so both ends see why): the silent alternative is a
         // connection that stays "Connected" with every packet dropped.
         const uint16_t peerVer = PeekProtocolVersion(data, len);
-        if (peerVer != 0 && peerVer != kProtocolVersion &&
+        if (peerVer != 0 && peerVer != kWireBuild &&
             peerSlot >= 0 && peerSlot < kMaxPeers) {
             char reason[64];
-            std::snprintf(reason, sizeof(reason),
-                          "protocol mismatch: peer=v%u, ours=v%u",
-                          static_cast<unsigned>(peerVer),
-                          static_cast<unsigned>(kProtocolVersion));
+            std::snprintf(reason, sizeof(reason), "protocol mismatch: peer=%s, ours=%s", BuildTag(peerVer).c_str(),
+                          OurBuildTag().c_str());
             // Through the teardown funnels, never a bare close: a host frees the seat, a client
             // records the code and drops its state so the join fails on screen instead of
             // sitting on the cover until the failsafe.
@@ -182,8 +180,10 @@ void Session::HandleMessage(int peerSlot, uint32_t hConn, const void* data, int 
                         Describe(EndReason::BuildMismatch).id);
                 Kick(peerSlot, EndReason::BuildMismatch, reason);
             } else if (peerSlot == 0) {
-                const EndReason code = peerVer > kProtocolVersion ? EndReason::HostNewer
-                                                                  : EndReason::HostOlder;
+                // A host of another line is neither: it is refused as a build mismatch.
+                const EndReason code = !SameLine(peerVer)       ? EndReason::BuildMismatch
+                                       : peerVer > kWireBuild ? EndReason::HostNewer
+                                                              : EndReason::HostOlder;
                 UE_LOGW("net: %s -- leaving the host [%s]", reason, Describe(code).id);
                 LeaveHost(code, reason);
             }

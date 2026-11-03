@@ -1289,6 +1289,10 @@ msgid "Version: %1$s%2$s"
 msgstr "[[Version: %1$s%2$s]]"
 
 #, c-format
+msgid "Version: %1$s%2$s  -- another build line, which no update joins"
+msgstr "[[Version: %1$s%2$s  -- another build line, which no update joins]]"
+
+#, c-format
 msgid "Version: %1$s%2$s  -- built for a different game version"
 msgstr "[[Version: %1$s%2$s  -- built for a different game version]]"
 

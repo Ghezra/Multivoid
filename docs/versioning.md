@@ -23,6 +23,18 @@ after the version. A host refuses a player on a build of the other kind -- an un
 official host (MV-H30), the official build on a modified host (MV-H31) -- unless it allows other
 builds (`net.allow_other_builds`).
 
+Ghezra/Multivoid mints its own build numbers, so its builds are their own line, shown `bg283` where
+upstream's are `b283`: one number names two different wires. CMake's `VOTVCOOP_BUILD_LINE` (`g` on
+Ghezra/Multivoid, empty upstream) sets a line bit (0x8000) on every build number a peer sees, the packet
+header, the admission challenge and the lobby's `proto` (`kWireBuild` in `coop/net/protocol.h`), so a
+`bg` and a `b` build of one number refuse each other the way any two builds do, through the official
+master with no change there; the displays read the bit back as the `g`. `kProtocolVersion` stays the
+build number itself, which the ledger, the release signature and the scripts read; the DLL's version
+resource says `0.9.0n bg283`. The update check judges nothing on a line build, since the master lists
+upstream's releases, and the release scripts (`publish.ps1`, the ledger's `-b` tags) know only
+upstream's line `[V]` (on the rig: a `bg283` host and a `b283` client of one tree refused each other both
+ways with MV-H23, "peer=b283, ours=bg283", and two `bg283` peers joined).
+
 Two peers play together only when their pairs are byte-equal. The build number rides every
 packet header, so a peer on another build never parses a message; the game target rides the
 Join and is compared on the host, which refuses with a reason the client shows; and the browser

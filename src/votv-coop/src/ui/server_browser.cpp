@@ -262,9 +262,9 @@ void Render() {
                 const bool verMismatch =
                     gameMismatch ||
                     (r.proto > 0 &&
-                     r.proto != static_cast<int>(coop::net::kProtocolVersion));
+                     r.proto != static_cast<int>(coop::net::kWireBuild));
                 std::string verCell = !r.game.empty() ? r.game : r.version;
-                if (r.proto > 0) verCell += " b" + std::to_string(r.proto);
+                if (r.proto > 0) verCell += " " + coop::net::BuildTag(static_cast<uint32_t>(r.proto));
                 if (verMismatch)
                     ImGui::TextColored(ImVec4(1.00f, 0.78f, 0.35f, 1.0f), "%s (!)",
                                        verCell.c_str());

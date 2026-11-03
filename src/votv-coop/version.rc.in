@@ -27,8 +27,8 @@ BEGIN
             VALUE "InternalName", "multivoid"
             VALUE "OriginalFilename", "main.dll"
             VALUE "FileDescription", "Multivoid - Voices of the Void co-op mod"
-            VALUE "ProductVersion", "@VOTVCOOP_GAME_TARGET@ b@VOTVCOOP_BUILD@"
-            VALUE "FileVersion", "@VOTVCOOP_GAME_TARGET@ b@VOTVCOOP_BUILD@"
+            VALUE "ProductVersion", "@VOTVCOOP_GAME_TARGET@ @VOTVCOOP_BUILD_TAG@"
+            VALUE "FileVersion", "@VOTVCOOP_GAME_TARGET@ @VOTVCOOP_BUILD_TAG@"
         END
     END
     BLOCK "VarFileInfo"

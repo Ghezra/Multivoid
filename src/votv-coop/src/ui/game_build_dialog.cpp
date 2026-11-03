@@ -69,7 +69,7 @@ void OpenReleasesPage() {
 // then the way out. One msgid per sentence, each argument once (the l10n grammar refuses an argument read twice).
 // Returns false when a format was refused (the selftest's question).
 bool ComposeBody(GB::Kind kind, const char* display, const char* version, unsigned lastBuild, std::string* out) {
-    const std::string build = std::to_string(coop::net::kProtocolVersion);
+    const std::string build = coop::net::OurBuildAfterB();   // after the msgid's own "b": "283", or "g283" on the line
     const char* target = coop::version::kGameTarget;
     char first[512] = {};
     char second[512] = {};

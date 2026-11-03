@@ -130,7 +130,7 @@ void LogUe4ssPresence() {
 std::wstring BuildsSentence() {
     namespace GB = coop::game_build;
     const GB::Detected& d = GB::Running();
-    std::string mine = "This Multivoid (b" + std::to_string(coop::net::kProtocolVersion) + ") is made for VOTV " +
+    std::string mine = "This Multivoid (" + coop::net::OurBuildTag() + ") is made for VOTV " +
                        coop::version::kGameTarget + ". ";
     switch (d.kind) {
     case GB::Kind::Target:
@@ -162,8 +162,7 @@ DWORD WINAPI BootThread(LPVOID rawTag) {
     WriteMarker(entryTag);
     UE_LOGI("==== %s ====", coop::version::kDisplayLabel);
     // The Paper-pair identity line: game target + build number (= kProtocolVersion).
-    UE_LOGI("boot: Multivoid %s b%u", coop::version::kGameTarget,
-            static_cast<unsigned>(coop::net::kProtocolVersion));
+    UE_LOGI("boot: Multivoid %s %s", coop::version::kGameTarget, coop::net::OurBuildTag().c_str());
     // Build triage lines: the compile time below, then build_trust's line with this DLL's own hash
     // and its type (official, signed by the test key, or unofficial and why). The exe identity
     // beside kGameTarget makes an install-skew report (mod built for cook X running on exe Y)

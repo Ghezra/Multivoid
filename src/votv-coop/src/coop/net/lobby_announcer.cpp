@@ -64,7 +64,7 @@ std::string HostBody(const AnnounceRequest& r, bool listed, const BuildClaim& cl
     // field -- the mod-semver axis was retired whole (RULE 2).
     b["game"] = coop::version::kGameTarget;      // join gate tier 1
     b["game_build"] = coop::game_build::Running().id.key;  // the game this host runs, for the browser's mark
-    b["proto"] = static_cast<int>(coop::net::kProtocolVersion);  // the build number (tier 2)
+    b["proto"] = static_cast<int>(coop::net::kWireBuild);  // the build number, with its line (tier 2)
     b["world"] = r.world;
     // The identity joiners dial. It is this install's durable PUBLIC KEY rendered `gen:<64 hex>` --
     // the same value the admission challenge proves possession of, so the rendezvous name and the

@@ -103,11 +103,14 @@ PreflightVerdict VersionMismatchVerdict(const std::string& hostGame, int hostPro
                     coop::game_build::VersionText(coop::game_build::Running().id.key)};
     }
     // Tier 2, the build (the wire revision).
-    if (hostProto > 0 && hostProto != static_cast<int>(net::kProtocolVersion)) {
-        const bool hostNewer = hostProto > static_cast<int>(net::kProtocolVersion);
-        return {hostNewer ? net::EndReason::HostNewer : net::EndReason::HostOlder,
-                std::string("host runs b") + std::to_string(hostProto) + ", you run b" +
-                    std::to_string(net::kProtocolVersion) +
+    if (hostProto > 0 && hostProto != static_cast<int>(net::kWireBuild)) {
+        // A host of another build line is neither older nor newer: no update reaches it.
+        const bool sameLine = net::SameLine(static_cast<uint32_t>(hostProto));
+        const bool hostNewer = sameLine && hostProto > static_cast<int>(net::kWireBuild);
+        return {!sameLine   ? net::EndReason::BuildMismatch
+                : hostNewer ? net::EndReason::HostNewer
+                            : net::EndReason::HostOlder,
+                "host runs " + net::BuildTag(static_cast<uint32_t>(hostProto)) + ", you run " + net::OurBuildTag() +
                     (hostNewer ? std::string(" -- update: ") + net::kReleasesUrl : "")};
     }
     return {};
@@ -168,10 +171,10 @@ bool JoinLobby(const std::string& masterUrl, const std::string& lobbyId,
     {
         const PreflightVerdict verdict = VersionMismatchVerdict(hostGame, hostProto, hostGameBuild);
         if (verdict.code != net::EndReason::None) {
-            UE_LOGW("session_manager: JOIN rejected -- [%s] %s (host game='%s' b%d; ours %s b%u)",
+            UE_LOGW("session_manager: JOIN rejected -- [%s] %s (host game='%s' %s; ours %s %s)",
                     net::Describe(verdict.code).id, verdict.text.c_str(), hostGame.c_str(),
-                    hostProto, coop::version::kGameTarget,
-                    static_cast<unsigned>(net::kProtocolVersion));
+                    net::BuildTag(static_cast<uint32_t>(hostProto)).c_str(), coop::version::kGameTarget,
+                    net::OurBuildTag().c_str());
             coop::join_progress::RefuseJoin(verdict.code, verdict.text);
             if (refused) *refused = net::Refusal{verdict.code, verdict.text};
             return false;
