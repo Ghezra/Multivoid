@@ -287,6 +287,9 @@ DWORD WINAPI WalkerStatueThread(LPVOID arg);
 // A burning prop both ways: the host's flame on the client's copy, and a client's lighter lighting the host's prop. Gated
 // by VOTVCOOP_RUN_PROP_FIRE. See autotest_prop_fire.cpp.
 DWORD WINAPI PropFireThread(LPVOID arg);
+// TEST-ONLY: a garden hose laid by each peer, run, cut from its sprinkler and taken up, checked on the other. Gated
+// by VOTVCOOP_RUN_GROUND_HOSE. See autotest_ground_hose.cpp.
+DWORD WINAPI GroundHoseThread(LPVOID arg);
 DWORD WINAPI BrowserFilterThread(LPVOID arg);
 DWORD WINAPI SvRequestThread(LPVOID arg);
 DWORD WINAPI ModuleBuyThread(LPVOID arg);

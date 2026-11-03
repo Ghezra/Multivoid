@@ -20,6 +20,7 @@
 #include "coop/creatures/ambient_creature_sync.h"
 #include "coop/creatures/ambient_fixture_sync.h"
 #include "coop/props/prop_fire_sync.h"
+#include "coop/world/ground_hose_sync.h"
 #include "coop/world/plant_sync.h"
 #include "coop/world/media_device_sync.h"            // a placed radio's track and play state
 #include "coop/props/prop_drive_stream.h"  // the driven-prop end edge
@@ -451,6 +452,21 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         if (request) ::coop::prop_fire_sync::OnRequest(msg.senderPeerSlot, p);
         else ::coop::prop_fire_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::GroundHoseState:
+    case net::ReliableKind::GroundHoseIntent: {
+        // GroundHoseState HOST->ALL, GroundHoseIntent CLIENT->HOST; both chunked blobs.
+        const bool intent = msg.kind == net::ReliableKind::GroundHoseIntent;
+        if (intent != (session.role() == net::Role::Host)) {
+            UE_LOGW("event_feed: a garden hose message the wrong way from slot %d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::BlobChunkPayload)) break;
+        net::BlobChunkPayload c{};
+        std::memcpy(&c, msg.payload, sizeof(c));
+        if (intent) ::coop::ground_hose_sync::OnIntentChunk(c, msg.senderPeerSlot);
+        else ::coop::ground_hose_sync::OnStateChunk(c, msg.senderPeerSlot);
         break;
     }
     case net::ReliableKind::DevLoadFiller: {

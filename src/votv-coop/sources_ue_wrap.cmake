@@ -51,6 +51,7 @@ set(VOTVCOOP_SOURCES_UE_WRAP_1
     src/ue_wrap/actors/sleepingbag.cpp
     src/ue_wrap/actors/notebook.cpp
     src/ue_wrap/actors/hook.cpp
+    src/ue_wrap/actors/ground_hose.cpp
     src/ue_wrap/world/keyed_objects.cpp
 )
 

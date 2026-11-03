@@ -46,6 +46,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::PlantEdit:
     case ReliableKind::WalkerWatch:
     case ReliableKind::PropFireRequest:
+    case ReliableKind::GroundHoseIntent:
     case ReliableKind::PropSpawn:
     case ReliableKind::PropDestroy:
     case ReliableKind::LightState:
@@ -248,6 +249,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::PlantState:
     case ReliableKind::WalkerAngry:
     case ReliableKind::PropFireState:
+    case ReliableKind::GroundHoseState:
     case ReliableKind::SwingerRestPose:
     case ReliableKind::GeomOctaEvent:
     case ReliableKind::DevLoadFiller:

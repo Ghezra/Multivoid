@@ -91,6 +91,7 @@
 #include "coop/creatures/ambient_fixture_sync.h"
 #include "coop/player/backrooms_guard.h"
 #include "coop/props/prop_fire_sync.h"
+#include "coop/world/ground_hose_sync.h"
 #include "coop/world/plant_sync.h"
 #include "coop/world/media_device_sync.h"
 #include "coop/world/world_sound_sync.h"
@@ -297,6 +298,7 @@ void Install(coop::net::Session& session) {
     coop::backrooms_guard::Install(&session);  // no level travel from a clip through a wall
     coop::plant_sync::Install(&session);  // the host runs every plant
     coop::prop_fire_sync::Install(&session);  // the host burns every keyed prop
+    coop::ground_hose_sync::Install(&session);  // the host's garden hoses
     coop::kitchen_sync::Install(&session);  // a microwave's and a mini oven's controls
     coop::props::prop_food_sync::Install(&session);  // a world food's one author, the host
     coop::props::prop_food_state::Install();  // the food family claims its own live state off the record lane
@@ -433,6 +435,7 @@ void DisconnectSlot(coop::net::Session& session, int slot) {
     coop::voice_chat::OnDisconnectSlot(slot);  // drop the leaver's voice channel + icon state
     coop::sleep_sync::OnDisconnectForSlot(slot);  // the leaver's rest state back to awake, told to every client
     coop::owner_entity_sync::OnPeerLeftSlot(slot);  // destroy the leaver's owner-entity mirrors (its eyer dies with it)
+    coop::ground_hose_sync::OnPeerLeftSlot(slot);  // the leaver's half-sent hoses
     coop::hook_sync::OnPeerLeftSlot(slot);  // the leaver's OWNER-PHASE hook mirrors; anchored ones are the host's and stay
     coop::player_inventory_sync::OnDisconnectForSlot(slot);  // re-arm the on-join push; the leaver's profile stays held
 }
@@ -489,6 +492,7 @@ DisconnectStats DisconnectAll() {
     coop::backrooms_guard::OnDisconnect();
     coop::plant_sync::OnDisconnect();
     coop::prop_fire_sync::OnDisconnect();
+    coop::ground_hose_sync::OnDisconnect();
     coop::kitchen_sync::OnDisconnect();
     coop::props::prop_food_sync::OnDisconnect();  // a parked copy gets its tick back
     coop::prop_tool_flags::OnDisconnect();  // drop the pending press and the counters
@@ -661,6 +665,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     coop::backrooms_guard::Tick();  // the backrooms flag's poll
     coop::plant_sync::Tick();  // the plants' poll
     coop::prop_fire_sync::Tick();  // the burning props' poll
+    coop::ground_hose_sync::Tick();  // the hoses' poll
     coop::kitchen_sync::Tick();  // the machines' poll
     coop::props::prop_food_sync::Tick();  // the host's poll, the client's parking
     coop::prop_tool_flags::Tick();  // the init watch's names resolve until it is live (one flag test after)

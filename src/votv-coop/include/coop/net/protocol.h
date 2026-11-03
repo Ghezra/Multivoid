@@ -30,7 +30,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 281;
+inline constexpr uint16_t kProtocolVersion = 282;
 
 // Default LAN port (overridable via multivoid.ini "net.port=").
 inline constexpr uint16_t kDefaultPort = 47621;
@@ -1261,6 +1261,13 @@ enum class ReliableKind : uint8_t {
     // CLIENT->HOST: this client's player lit a keyed prop with a lighter or a torch, with the fuel the light gives. Never relayed;
     // the host lights its own copy and its next PropFireState answers. PropFirePayload.
     PropFireRequest = 227,
+    // HOST->ALL: a finished garden hose of the host's, as its own save record, when it is new or changed, or its key once
+    // when it went. A client lays it on its copy, tied to its faucet and sprinkler. Not relayed, not pre-world. Late
+    // join: every hose again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
+    GroundHoseState = 228,
+    // CLIENT->HOST: a hose this client's player finished laying or changed (op 1, its record), or took up (op 2). Never
+    // relayed; the host lays or takes up its own and its next GroundHoseState answers. BlobChunkPayload, as above.
+    GroundHoseIntent = 229,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
