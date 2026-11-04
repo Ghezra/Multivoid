@@ -227,6 +227,12 @@ CFG_FLAG(browser_hide_incompatible, "browser.hide_incompatible", "ui", false, nu
 CFG_FLAG(browser_hide_locked, "browser.hide_locked", "ui", false, nullptr,
     "Leave out of the server browser every server that asks for a password (remembered automatically from the checkbox on "
     "that screen).")
+CFG_INT(browser_width, "browser.width", "ui", 980, 980, 7680, nullptr,
+    "The server browser's width, in the window's own units (remembered automatically when its corner is dragged). Its "
+    "layout is measured at 980, the least it takes.")
+CFG_INT(browser_height, "browser.height", "ui", 662, 662, 4320, nullptr,
+    "The server browser's height, in the window's own units (remembered automatically when its corner is dragged). Its "
+    "layout is measured at 662, the least it takes.")
 CFG_FLAG(multiplayer_menu_off, "multiplayer_menu_off", "ui", false, nullptr,
     "Set to 1 to hide the Multiplayer main-menu button (the mod stays loaded).")
 CFG_STRING(game_build_ack, "game_build_ack", "ui", "", nullptr, false,
