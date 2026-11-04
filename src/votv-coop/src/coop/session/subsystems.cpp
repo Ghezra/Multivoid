@@ -96,6 +96,7 @@
 #include "coop/world/spill_sync.h"
 #include "coop/world/plant_sync.h"
 #include "coop/world/media_device_sync.h"
+#include "coop/world/vent_crawler_sync.h"
 #include "coop/world/world_sound_sync.h"
 #include "coop/props/prop_food_sync.h"
 #include "coop/props/prop_tool_flags.h"
@@ -294,6 +295,7 @@ void Install(coop::net::Session& session) {
     coop::props::prop_record_refresh::Install(&session);  // drive box + reel case republish their own record
     coop::props::prop_can_state::Install(&session);  // a canned food's lid and contents: its record on a change
     coop::world_sound_sync::Install(&session);  // the sky's two sounds, a faucet's click
+    coop::vent_crawler_sync::Install(&session);  // the crawl's start, for a client's sounds
     coop::media_device_sync::Install(&session);  // a placed radio's track and play state
     coop::ambient_creature_sync::Install(&session);  // the host's deer and walking trees
     coop::ambient_fixture_sync::Install(&session);  // the host's dirt holes and beehive branches
@@ -491,6 +493,7 @@ DisconnectStats DisconnectAll() {
     coop::prop_hold_claim::OnDisconnect();  // drop the refusal records and the notice cooldown
     coop::prop_settle::OnDisconnect();  // drop the watched releases
     coop::world_sound_sync::OnDisconnect();
+    coop::vent_crawler_sync::OnDisconnect();
     coop::media_device_sync::OnDisconnect();
     coop::ambient_creature_sync::OnDisconnect();
     coop::ambient_fixture_sync::OnDisconnect();
@@ -674,6 +677,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     coop::prop_fire_sync::Tick();  // the burning props' poll
     coop::ground_hose_sync::Tick();  // the hoses' poll
     coop::build_sync::Tick();  // the nails' and walls' poll
+    coop::vent_crawler_sync::Tick();  // a client's crawl sounds as their times come
     coop::spill_sync::Tick();  // the spills the hook saw
     coop::kitchen_sync::Tick();  // the machines' poll
     coop::props::prop_food_sync::Tick();  // the host's poll, the client's parking

@@ -296,6 +296,9 @@ DWORD WINAPI SpillThread(LPVOID arg);
 // TEST-ONLY: nails and custom walls each peer makes are the host's on both, removals cross, the drops lie once.
 // Gated by VOTVCOOP_RUN_BUILD. See autotest_build.cpp.
 DWORD WINAPI BuildThread(LPVOID arg);
+// TEST-ONLY: the vent crawler event on host and client, its doors, keypads and vent compared.
+// Gated by VOTVCOOP_RUN_VENT_CRAWLER. See autotest_vent_crawler.cpp.
+DWORD WINAPI VentCrawlerThread(LPVOID arg);
 DWORD WINAPI BrowserFilterThread(LPVOID arg);
 DWORD WINAPI SvRequestThread(LPVOID arg);
 DWORD WINAPI ModuleBuyThread(LPVOID arg);

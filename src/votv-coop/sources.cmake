@@ -227,6 +227,7 @@ set(VOTVCOOP_SOURCES
     src/coop/world/spill_sync.cpp
     src/ue_wrap/actors/growing_plant.cpp
     src/ue_wrap/actors/ambient_creature.cpp
+    src/coop/world/vent_crawler_sync.cpp
     src/coop/world/world_sound_sync.cpp
     src/ue_wrap/world/media_device.cpp
     src/ue_wrap/devices/kitchen.cpp
@@ -666,6 +667,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_ground_hose.cpp
     src/harness/autotest/autotest_spill.cpp
     src/harness/autotest/autotest_build.cpp
+    src/harness/autotest/autotest_vent_crawler.cpp
     src/harness/autotest/autotest_browser_filter.cpp
     src/harness/autotest/autotest_sv_request.cpp
     src/harness/autotest/autotest_module_buy.cpp

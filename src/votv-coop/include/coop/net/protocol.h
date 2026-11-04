@@ -31,7 +31,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 286;
+inline constexpr uint16_t kProtocolVersion = 287;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -459,6 +459,7 @@ enum class ReliableKind : uint8_t {
     KerfurConvert = 74,
 
     // Host to all: a cosmetic emitter cue (a starfall) at this position; clients spawn the emitter.
+    // Ids from 100 are sounds (coop/world/world_sound_sync), 102 a vent crawl's start (coop/world/vent_crawler_sync).
     // EventCuePayload.
     EventCue = 75,
 
