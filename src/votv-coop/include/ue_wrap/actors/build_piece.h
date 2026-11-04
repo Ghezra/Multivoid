@@ -44,7 +44,7 @@ void* Spawn(const save_record::SaveRecord& r);
 
 // Hand `r` to the piece (loadData, which runs a wall's Init). A nail then takes `endA` and `endB`, the actors its record's
 // keys name in this world (NailKeys; either may be null), and its `aea` attaches and ties it, as the save's load does a
-// frame after processKeys.
+// frame after processKeys; a broken record's `aea` only attaches it, so a tie the nail still has is broken first.
 bool Apply(void* piece, const save_record::SaveRecord& r, void* endA, void* endB,
            save_record::ClassResolver resolve = nullptr);
 
@@ -55,9 +55,10 @@ bool NailKeys(const save_record::SaveRecord& r, std::wstring& a, std::wstring& b
 void* NailEndA(void* nail);
 void* NailEndB(void* nail);
 
-// A copy that runs nothing of its own: a nail drops no item when it goes, an unfinished wall counts no bricks, a wet wall
-// does not dry. Called on every poll, as an unfinished wall's own upd turns its overlap back on.
-void Park(void* piece);
+// A copy that runs nothing of its own: a nail drops no item when it goes and, while `tieHeld`, no force breaks its tie;
+// an unfinished wall counts no bricks, a wet wall does not dry. Called on every poll, as an unfinished wall's own upd
+// turns its overlap back on.
+void Park(void* piece, bool tieHeld = true);
 
 // A finished wall's health and its maximum, both times `k`: the cracks read their ratio, and Damage on this copy never
 // takes it below zero.
@@ -75,6 +76,24 @@ bool RepairWall(void* wall, float amount);
 
 // Whether a nail's tie has broken (its constraint's broken event sets it).
 bool NailBroken(void* nail);
+
+// Whether force can break a nail's tie (its constraint's profile, linear or angular); true when that cannot be read.
+bool NailBreakable(void* nail);
+
+// A nail's tie that no force breaks: its constraint's SetLinearBreakable and SetAngularBreakable, both off, the
+// thresholds kept. A pin (nail_pin_C) destroys itself when its tie breaks, so on a copy that would read as the player
+// taking it away.
+bool HoldNail(void* nail);
+
+// A held tie let go: breakable again as its class's nails are, at the thresholds it kept.
+bool FreeNail(void* nail);
+
+// The nail's tie broken as force breaks it: the constraint ended, then the nail's own broken event (it sets broken,
+// attaches to its first end and runs detached, which destroys a pin). False when it is broken already.
+bool SnapNail(void* nail);
+
+// A finished or wet wall's health set, never past its maximum, and its cracks drawn again.
+bool SetWallHealth(void* wall, float health);
 
 // Destroy the piece leaving nothing behind: no nail drop, no wall's material.
 void DestroyQuiet(void* piece);

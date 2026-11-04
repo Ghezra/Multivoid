@@ -2,16 +2,17 @@
 //
 // A. The host fires a nail gun's projectile down through two cutting boards: the client has the nail, tied to its
 //    copies of the same two boards. B. The client fires one into a board of the host's: the host makes it under the
-//    client's key and the client keeps its own. S. The host's nail snaps on the client's copy alone: it is tied again
-//    there. C. The client takes the host's nail away (the nail's own addDamage): it goes on the host, and the one nail
-//    item it drops is on both. D. The host takes the client's nail away, the same. E. The host places an unfinished
-//    wall: the client has it and counts no bricks. F. The host's wall is finished (concrete, the game's own buildWall):
-//    the client has the finished wall with the host's cracks. G. A wet concrete wall, made as buildWall makes one: the
-//    client's copy does not dry; the host's dries, and the client has the dry one. H. A client's hit (the wall's
-//    addDamage) and repair (its fix) on its copy reach the host's wall; a log either peer throws at it is counted once,
-//    through the host's wall. I. The host breaks it: it goes here and there. J. The client places an unfinished wall:
-//    the host makes it and the client keeps its own. K. The client is killed and rejoins: every piece of the host's is
-//    here once (VOTVCOOP_BUILD_REJOIN=1 runs that half). Gated by VOTVCOOP_RUN_BUILD; the folder is VOTVCOOP_CAN_DIR.
+//    client's key and the client keeps its own. S. The client's copy of the host's nail has a held tie; one broken
+//    there outright is tied again. P. The host's pin, its board tied to the world, stays on both when the client shoves
+//    the board. C. The client takes the host's nail away: it goes on the host, and the one nail item it drops is on
+//    both. D. The host takes the client's nail away, the same. R. The client grabs the pinned board and drags it: the
+//    pull snaps the pin there and on the host. E. The host places an unfinished wall: the client has it and counts no
+//    bricks. F. The host's wall is finished: the client has it with the host's cracks. G. A wet concrete wall: the
+//    client's copy does not dry; the host's dries, and the client has the dry one. H. A client's hit and repair show on
+//    its copy at once and reach the host's wall; a log either peer throws at it is counted once. I. The host breaks it:
+//    it goes here and there. J. The client places an unfinished wall: the host makes it and the client keeps its own.
+//    K. The client is killed and rejoins: every piece of the host's is here once (VOTVCOOP_BUILD_REJOIN=1 runs that
+//    half). Gated by VOTVCOOP_RUN_BUILD; the folder is VOTVCOOP_CAN_DIR.
 
 #include "harness/autotest.h"
 
@@ -31,9 +32,11 @@
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
+#include "ue_wrap/core/sdk_profile.h"
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_attach.h"
+#include "ue_wrap/engine/engine_mainplayer.h"
 #include "ue_wrap/engine/engine_pawn.h"
 #include "ue_wrap/engine/engine_physics.h"
 
@@ -57,6 +60,7 @@ namespace {
 namespace B = ue_wrap::build_piece;
 namespace E = ue_wrap::engine;
 namespace F = ue_wrap::prop;
+namespace P = ue_wrap::profile;
 namespace R = ue_wrap::reflection;
 
 constexpr const wchar_t* kBoardPath = L"/Game/objects/prop_workbench_cuttingboard.prop_workbench_cuttingboard_C";
@@ -249,6 +253,57 @@ void* PlaceUnfinished(void* actor) {
     return E::FinishDeferredSpawn(w, at, {}) ? w : nullptr;
 }
 
+// A wall's health over its maximum, as its cracks read it.
+float WallRatio(void* w) {
+    float h = 0.f, m = 0.f;
+    return w && ReadField(w, L"health", h) && ReadField(w, L"maxHealth", m) && m > 0.f ? h / m : -1.f;
+}
+
+// The nail's first end, shoved up at 3000 cm/s.
+void ShoveEnd(void* nail) {
+    void* root = B::NailEndA(nail) ? E::RootComponentOf(B::NailEndA(nail)) : nullptr;
+    if (root) E::SetComponentLinearVelocity(root, 0.f, 0.f, 3000.f);
+}
+
+// The local player's physics handle on a prop, as its grab holds one: the handle's functions, where the hold started.
+struct Hold {
+    void* player = nullptr;
+    void* handle = nullptr;
+    void* setTarget = nullptr;
+    void* release = nullptr;
+    ue_wrap::FVector at{};
+};
+
+// The local player grabs `prop` where it lies and the game counts it held.
+bool GrabProp(void* prop, Hold& h) {
+    h.player = Me();
+    void* mesh = prop ? F::GetStaticMesh(prop) : nullptr;
+    h.handle = h.player ? E::ReadMainPlayerGrabHandle(h.player) : nullptr;
+    void* phc = R::FindClass(P::name::PhysicsHandleComponentClass);
+    void* grab = phc ? R::FindFunction(phc, P::name::GrabComponentAtLocationFn) : nullptr;
+    h.setTarget = phc ? R::FindFunction(phc, P::name::SetTargetLocationFn) : nullptr;
+    h.release = phc ? R::FindFunction(phc, P::name::ReleaseComponentFn) : nullptr;
+    if (!mesh || !h.handle || !grab || !h.setTarget || !h.release || !E::TryGetActorLocation(prop, h.at)) return false;
+    ue_wrap::ParamFrame f(grab);
+    f.Set<void*>(L"Component", mesh);
+    f.Set<ue_wrap::FVector>(L"GrabLocation", h.at);
+    if (!f.valid() || !ue_wrap::Call(h.handle, f)) return false;
+    E::WriteMainPlayerGrabbingPair(h.player, prop, mesh);
+    return true;
+}
+
+void MoveHold(const Hold& h, float up) {
+    ue_wrap::ParamFrame f(h.setTarget);
+    f.Set<ue_wrap::FVector>(L"NewLocation", ue_wrap::FVector{h.at.X, h.at.Y, h.at.Z + up});
+    if (f.valid()) ue_wrap::Call(h.handle, f);
+}
+
+void LetGo(const Hold& h) {
+    ue_wrap::ParamFrame f(h.release);
+    if (f.valid()) ue_wrap::Call(h.handle, f);
+    E::WriteMainPlayerGrabbingPair(h.player, nullptr, nullptr);
+}
+
 std::string WallRow(void* w) {
     float h = 0.f, m = 0.f;
     ReadField(w, L"health", h);
@@ -339,8 +394,44 @@ void RunHost() {
     OnGameThread([&] {
         void* n = PieceByKey(an[0]);
         Check(n && !B::NailBroken(n), "the snap on the client's copy left the host's nail tied");
+        Check(n && B::NailBreakable(n), "the host's own tie can break");
     });
     Mark("s_ok");
+    // P. A pin in the first nail's place, its board tied to the world, made as the save's load makes one.
+    void* pin = nullptr;
+    OnGameThread([&] {
+        void* n = an.empty() ? nullptr : PieceByKey(an[0]);
+        ue_wrap::save_record::SaveRecord rec;
+        if (!n || !B::Capture(n, rec) || rec.names.empty() || rec.names[0].size() < 2) return;
+        rec.className = L"nail_pin_C";
+        rec.key = L"drillpin" + std::to_wstring(::GetTickCount64());
+        rec.names[0][1] = L"None";
+        void* p = B::Spawn(rec);
+        // With no second end, the game's second pin is the nail's own place in the world.
+        ue_wrap::FVector at{};
+        ue_wrap::FRotator rot{};
+        if (!p || !E::TryGetActorLocation(p, at) || !E::TryGetActorRotation(p, rot) || rec.vectors.empty() ||
+            rec.vectors[0].size() < 2 || rec.rotators.empty() || rec.rotators[0].size() < 2)
+            return;
+        rec.vectors[0][1] = {at.X, at.Y, at.Z};
+        rec.rotators[0][1] = {rot.Pitch, rot.Yaw, rot.Roll};
+        if (B::Apply(p, rec, B::NailEndA(n), nullptr)) pin = p;
+    });
+    Check(WaitFor([&] { return pin && R::IsLive(pin) && B::NailEndA(pin) == boardB && !B::NailBroken(pin); }, 3),
+          "the host's pin ties its board to the world");
+    std::string rowP;
+    OnGameThread([&] {
+        if (pin) rowP = NailRow(pin);
+        Check(pin && ClassName(pin) == "nail_pin_C" && B::NailBreakable(pin), "it is a pin, its tie breakable here");
+    });
+    Mark("p_pin", rowP);
+    if (!Await("p_done")) return;
+    const auto pn = Split(rowP);
+    OnGameThread([&] {
+        void* n = pn.empty() ? nullptr : PieceByKey(pn[0]);
+        Check(n && !B::NailBroken(n), "the client's shove left the host's pin in place");
+    });
+    Mark("p_ok");
     // C.
     if (!Await("c_took") || an.empty()) return;
     Check(WaitFor([&] { return !PieceByKey(an[0]); }, 8), "the client took the host's nail away here");
@@ -361,6 +452,10 @@ void RunHost() {
     OnGameThread([&] { items2 = NailItems(); });
     Mark("d_host", std::to_string(items2 - items1));
     if (!Await("d_ok")) return;
+    // R. The client drags the pinned board away: the host's pin snaps as the pull's.
+    if (!Await("r_pulled") || pn.empty()) return;
+    Check(WaitFor([&] { return !PieceByKey(pn[0]); }, 5), "the client's pull snapped the host's pin");
+    Mark("r_ok");
     // E.
     std::string unf;
     OnGameThread([&] {
@@ -417,13 +512,15 @@ void RunHost() {
         if (wall && R::IsLive(wall)) E::DestroyActor(wall);   // the concrete wall is done with
     });
     std::string gw;
-    OnGameThread([&] { if (dry) gw = WallRow(dry); });
+    float h0 = 0.f;   // read before the client may hit it: its hit lands as it comes
+    OnGameThread([&] {
+        if (dry) gw = WallRow(dry);
+        B::WallHealth(dry, h0);
+    });
     UE_LOGI("build-drill: host dry wall %hs", gw.c_str());
     Mark("g_dry", gw);
     if (!Await("g_ok")) return;
     // H.
-    float h0 = 0.f;
-    OnGameThread([&] { B::WallHealth(dry, h0); });
     std::string hit;
     if (!Await("h_hit", &hit)) return;
     const float d = std::stof(hit);
@@ -466,6 +563,7 @@ void RunHost() {
     });
     UE_LOGI("build-drill: the host's thrown log -- its wall %.2f -> %.2f", wallBefore, wallAfter);
     Mark("t2", t2);
+    if (!Await("t2_ok")) return;
     // I.
     OnGameThread([&] {
         ue_wrap::FVector at{};
@@ -533,7 +631,11 @@ void RunClient() {
     ::Sleep(11000);   // past the lane's wait for the host's answer
     Check(bn.size() == 4 && WaitFor([&] { return PiecesWithKey(bn[0]) == 1; }, 2),
           "this player's nail stands here once, the host's answer");
-    // S. The host's nail snaps on this copy alone: its constraint broken and its own broken event run.
+    // S. This copy's tie is held; the host's nail broken here outright (its constraint and its own broken event).
+    OnGameThread([&] {
+        void* n = PieceByKey(an[0]);
+        Check(n && !B::NailBreakable(n), "this copy's tie is held");
+    });
     bool snapped = false;
     OnGameThread([&] {
         void* n = PieceByKey(an[0]);
@@ -551,6 +653,23 @@ void RunClient() {
           "and is tied again, as the host's is");
     Mark("s_done");
     if (!Await("s_ok")) return;
+    // P. The host's pin, its first board shoved hard here: the pin stays, here and on the host.
+    std::string pinRow;
+    if (!Await("p_pin", &pinRow)) return;
+    const auto pn = Split(pinRow);
+    Check(pn.size() == 4 && WaitFor([&] { return PieceByKey(pn[0]) != nullptr; }, 10), "the host's pin is made here");
+    OnGameThread([&] {
+        void* n = pn.size() == 4 ? PieceByKey(pn[0]) : nullptr;
+        Check(n && !B::NailBreakable(n), "this copy's pin is held");
+        if (n) ShoveEnd(n);
+    });
+    ::Sleep(2000);
+    OnGameThread([&] {
+        void* n = pn.size() == 4 ? PieceByKey(pn[0]) : nullptr;
+        Check(n && !B::NailBroken(n), "the shove left this copy's pin in place");
+    });
+    Mark("p_done");
+    if (!Await("p_ok")) return;
     // C.
     size_t items0 = 0;
     bool took = false;
@@ -577,6 +696,31 @@ void RunClient() {
     Check(bn.size() == 4 && !PieceByKey(bn[0]), "the host took this player's nail away here");
     Check(std::to_string(items2 - items1) == d && d == "1", "the nail the host's dropped lies here once");
     Mark("d_ok");
+    // R. The host's pinned board grabbed here and dragged up: the pull snaps the pin, here and on the host.
+    void* pinBoard = nullptr;
+    Hold hold;
+    bool grabbed = false;
+    OnGameThread([&] {
+        void* n = pn.size() == 4 ? PieceByKey(pn[0]) : nullptr;
+        pinBoard = n ? B::NailEndA(n) : nullptr;
+        grabbed = pinBoard && GrabProp(pinBoard, hold);
+    });
+    Check(grabbed, "this player grabbed the pinned board");
+    ::Sleep(500);
+    OnGameThread([&] {
+        void* n = pn.size() == 4 ? PieceByKey(pn[0]) : nullptr;
+        Check(!n || B::NailBreakable(n), "the pin's tie is let go while the board is in hand (or snapped already)");
+    });
+    for (int i = 1; grabbed && i <= 12; ++i) {
+        ::Sleep(150);
+        OnGameThread([&] { MoveHold(hold, 25.f * static_cast<float>(i)); });
+    }
+    Check(WaitFor([&] { return !PieceByKey(pn[0]); }, 3), "the pull snapped this copy's pin");
+    if (grabbed) OnGameThread([&] { LetGo(hold); });
+    Mark("r_pulled");
+    if (!Await("r_ok")) return;
+    ::Sleep(3000);
+    OnGameThread([&] { Check(!PieceByKey(pn[0]), "the pin is not made again here"); });
     // E.
     std::string e;
     if (!Await("e_unf", &e)) return;
@@ -627,16 +771,26 @@ void RunClient() {
     });
     Mark("g_ok");
     // H. A hit as a melee lands it, through the wall's own addDamage, then the wall's own fix.
-    float hitDmg = 0.f;
+    float hitDmg = 0.f, maxReal = 0.f, r0 = 0.f;
     OnGameThread([&] {
         void* w = PieceByKey(gw[0]);
         float m = 0.f;
         if (!w || !ReadField(w, L"maxHealth", m)) return;
-        hitDmg = (std::min)(20.f, 0.2f * m / 10000.f);
+        maxReal = m / 10000.f;
+        r0 = WallRatio(w);
+        hitDmg = (std::min)(20.f, 0.2f * maxReal);
         CallFn(w, L"addDamage", [&](ue_wrap::ParamFrame& p) { p.Set(L"damage", hitDmg); });
     });
     UE_LOGI("build-drill: this player hit its copy of the wall for %.2f", hitDmg);
     Mark("h_hit", std::to_string(hitDmg));
+    const auto shown = [&](float ratio) {
+        void* w = PieceByKey(gw[0]);
+        return w && std::fabs(WallRatio(w) - ratio) < 1e-4f;
+    };
+    ULONGLONG t0 = ::GetTickCount64();
+    Check(maxReal > 0.f && WaitFor([&] { return shown(r0 - hitDmg / maxReal); }, 1) && ::GetTickCount64() - t0 < 300,
+          "this copy shows the hit within 300 ms");
+    UE_LOGI("build-drill: the hit showed here in %llu ms", ::GetTickCount64() - t0);
     std::string hr;
     if (!Await("h_hit_ok", &hr)) return;
     Check(WaitFor([&] {
@@ -644,8 +798,17 @@ void RunClient() {
               return w && WallRow(w) == hr;
           }, 5),
           "this copy has the host's cracks after the hit");
-    OnGameThread([&] { CallFn(PieceByKey(gw[0]), L"fix"); });
+    float r1 = 0.f;
+    OnGameThread([&] {
+        r1 = WallRatio(PieceByKey(gw[0]));
+        CallFn(PieceByKey(gw[0]), L"fix");
+    });
     Mark("h_fix");
+    t0 = ::GetTickCount64();
+    Check(maxReal > 0.f && WaitFor([&] { return shown((std::min)(1.f, r1 + 5.f / maxReal)); }, 1) &&
+              ::GetTickCount64() - t0 < 300,
+          "this copy shows the repair within 300 ms");
+    UE_LOGI("build-drill: the repair showed here in %llu ms", ::GetTickCount64() - t0);
     std::string fr;
     if (!Await("h_ok", &fr)) return;
     Check(WaitFor([&] {
@@ -668,6 +831,7 @@ void RunClient() {
           }, 5),
           "this copy has the host's cracks after the host's log");
     Check(coop::build_sync::WallChangesSent() == sent0, "the host's log was not counted here as well");
+    Mark("t2_ok");
     // I.
     if (!Await("i_gone")) return;
     Check(WaitFor([&] { return !PieceByKey(gw[0]); }, 5), "the wall the host broke went here");

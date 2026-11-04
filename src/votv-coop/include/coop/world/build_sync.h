@@ -6,10 +6,12 @@
 //     a key no piece here has -- and made here under that key; a client's removal is checked against its reach and the
 //     host's piece destroyed, dropping what the game drops.
 //   - CLIENT: the host's piece is made on this copy, or the record applied to the one of that key, a nail tied to this
-//     world's actors of its keys. A copy runs nothing of its own: a nail drops no item, an unfinished wall counts no
-//     bricks, wet concrete does not dry, and a wall's health is scaled so no hit here breaks it. A piece this player made
-//     goes to the host, whose state answers; one unanswered in 10 s was refused and goes. A nail or unfinished wall this
-//     player took away goes to the host as a removal; one lost here otherwise is made again from its record.
+//     world's actors of its keys. A copy runs nothing of its own: a nail drops no item and its tie is held but while
+//     this player holds an end, whose pull snaps go to the host to judge; an unfinished wall counts no bricks, wet
+//     concrete does not dry, and a wall's health is scaled so no hit here breaks it; this player's hit or repair goes
+//     to the host as it lands and shows here until the host answers. A piece this player made goes to the host, whose
+//     state answers; one unanswered in 10 s was refused and goes. A nail or unfinished wall this player took away goes
+//     to the host as a removal; one lost here otherwise is made again from its record.
 // Game thread.
 
 #pragma once

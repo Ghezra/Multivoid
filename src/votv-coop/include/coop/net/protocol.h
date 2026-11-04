@@ -31,7 +31,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 285;
+inline constexpr uint16_t kProtocolVersion = 286;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1312,9 +1312,9 @@ enum class ReliableKind : uint8_t {
     // record to its piece of that key, a nail tied to the actors its keys name there. Not relayed, not pre-world. Late join:
     // every piece again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
     BuildState = 234,
-    // CLIENT->HOST: a piece this client's player made (op 1, its record), took away (op 2), or a wall it hit or repaired
-    // (op 3, [f32] the health it lost, negative, or gained). Never relayed; the host makes, destroys, hits or repairs its
-    // own and its next BuildState answers. BlobChunkPayload, as above.
+    // CLIENT->HOST: a piece this client's player made (op 1, its record), took away (op 2), a wall it hit or repaired
+    // (op 3, [f32] the health it lost, negative, or gained), or a nail its pull snapped (op 4). Never relayed; the host
+    // makes, destroys, hits, repairs or snaps its own and its BuildState answers. BlobChunkPayload, as above.
     BuildIntent = 235,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with

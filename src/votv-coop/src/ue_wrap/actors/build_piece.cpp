@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <unordered_map>
 
 namespace ue_wrap::build_piece {
 namespace {
@@ -76,6 +77,54 @@ bool CallNoArgs(void* obj, const wchar_t* name) {
 
 bool Default(void* obj) { return R::NameStartsWith(R::NameOf(obj), L"Default__"); }
 
+// The tie's profile (PhysicsConstraint.ConstraintInstance.ProfileInstance) and its struct. Null when it cannot be read.
+uint8_t* TieProfile(void* nail, void*& profile) {
+    static void* ci = R::FindObject(L"ConstraintInstance", L"ScriptStruct");
+    static void* prof = R::FindObject(L"ConstraintProfileProperties", L"ScriptStruct");
+    profile = prof;
+    void* comp = LiveObj(nail, L"PhysicsConstraint");
+    const int32_t ciOff = comp ? R::FindPropertyOffset(R::ClassOf(comp), L"ConstraintInstance") : -1;
+    const int32_t piOff = ci ? R::FindPropertyOffset(ci, L"ProfileInstance") : -1;
+    return ciOff < 0 || piOff < 0 || !prof ? nullptr : static_cast<uint8_t*>(comp) + ciOff + piOff;
+}
+
+bool TieFlag(void* nail, const wchar_t* flag, bool& out) {
+    void* profile = nullptr;
+    const uint8_t* p = TieProfile(nail, profile);
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!p || !R::FindBoolProperty(profile, flag, off, mask) || off < 0) return false;
+    out = (p[off] & mask) != 0;
+    return true;
+}
+
+float TieThreshold(void* nail, const wchar_t* name) {
+    void* profile = nullptr;
+    const uint8_t* p = TieProfile(nail, profile);
+    const int32_t off = p ? R::FindPropertyOffset(profile, name) : -1;
+    float v = 0.f;
+    if (off >= 0) std::memcpy(&v, p + off, sizeof(v));
+    return v;
+}
+
+// Its threshold kept, so the game's own comes back when the tie is let go.
+bool SetTieBreakable(void* nail, const wchar_t* fnName, const wchar_t* flag, const wchar_t* threshold, bool on) {
+    void* comp = LiveObj(nail, L"PhysicsConstraint");
+    void* fn = comp ? R::FindDispatchFunctionCached(R::ClassOf(comp), fnName) : nullptr;
+    if (!fn) return false;
+    ParamFrame f(fn);
+    if (!f.valid()) return false;
+    f.Set(flag, on);
+    f.Set(threshold, TieThreshold(nail, threshold));
+    return Call(comp, f);
+}
+
+// Each nail class's own breakability, as the first of it seen breakable had it.
+struct TieRow {
+    bool linear = true, angular = true;
+};
+std::unordered_map<std::wstring, TieRow> g_ties;
+
 void* ClassFor(const std::wstring& className) {
     if (KindOfClass(className) == Kind::None) return nullptr;
     if (void* cls = object_index::ClassByName(className.c_str())) return cls;
@@ -136,6 +185,9 @@ bool Apply(void* piece, const SR::SaveRecord& r, void* endA, void* endB, SR::Cla
     void* load = piece ? R::FindDispatchFunctionCached(R::ClassOf(piece), L"loadData") : nullptr;
     if (!load || !SR::ApplyRecordVia(piece, load, r, resolve)) return false;
     if (KindOf(piece) != Kind::Nail) return true;
+    // A broken record's aea only attaches the nail, so a tie this copy still has is broken here.
+    if (NailBroken(piece))
+        if (void* comp = LiveObj(piece, L"PhysicsConstraint")) CallNoArgs(comp, L"BreakConstraint");
     WriteField(piece, L"actor_a", endA);
     WriteField(piece, L"actor_b", endB);
     return !endA || CallNoArgs(piece, L"aea");   // a nail with no first end stays as the record left it
@@ -151,10 +203,11 @@ bool NailKeys(const SR::SaveRecord& r, std::wstring& a, std::wstring& b) {
 void* NailEndA(void* nail) { return LiveObj(nail, L"actor_a"); }
 void* NailEndB(void* nail) { return LiveObj(nail, L"actor_b"); }
 
-void Park(void* piece) {
+void Park(void* piece, bool tieHeld) {
     switch (KindOf(piece)) {
     case Kind::Nail:
         WriteField(piece, L"nailDrop", static_cast<void*>(nullptr));
+        if (tieHeld && NailBreakable(piece)) HoldNail(piece);
         break;
     case Kind::Unfinished:
         if (void* overlap = LiveObj(piece, L"Overlap")) engine::SetComponentCollisionEnabled(overlap, 0);
@@ -197,6 +250,47 @@ bool RepairWall(void* wall, float amount) {
     float h = 0.f, m = 0.f;
     if (!WallHealth(wall, h) || !ReadField(wall, L"maxHealth", m)) return false;
     WriteField(wall, L"health", h + amount < m ? h + amount : m);
+    return CallNoArgs(wall, L"setHealthCracks");
+}
+
+bool NailBreakable(void* nail) {
+    if (KindOf(nail) != Kind::Nail) return false;
+    bool linear = true, angular = true;
+    const bool read = TieFlag(nail, L"bLinearBreakable", linear) && TieFlag(nail, L"bAngularBreakable", angular);
+    return !read || linear || angular;
+}
+
+bool HoldNail(void* nail) {
+    if (KindOf(nail) != Kind::Nail) return false;
+    TieRow row;
+    if (TieFlag(nail, L"bLinearBreakable", row.linear) && TieFlag(nail, L"bAngularBreakable", row.angular) &&
+        (row.linear || row.angular))
+        g_ties.emplace(R::ToString(R::NameOf(R::ClassOf(nail))), row);
+    return SetTieBreakable(nail, L"SetLinearBreakable", L"bLinearBreakable", L"LinearBreakThreshold", false) &&
+           SetTieBreakable(nail, L"SetAngularBreakable", L"bAngularBreakable", L"AngularBreakThreshold", false);
+}
+
+bool FreeNail(void* nail) {
+    if (KindOf(nail) != Kind::Nail) return false;
+    const auto it = g_ties.find(R::ToString(R::NameOf(R::ClassOf(nail))));
+    const TieRow row = it == g_ties.end() ? TieRow{} : it->second;
+    return SetTieBreakable(nail, L"SetLinearBreakable", L"bLinearBreakable", L"LinearBreakThreshold", row.linear) &&
+           SetTieBreakable(nail, L"SetAngularBreakable", L"bAngularBreakable", L"AngularBreakThreshold", row.angular);
+}
+
+bool SnapNail(void* nail) {
+    void* comp = KindOf(nail) == Kind::Nail ? LiveObj(nail, L"PhysicsConstraint") : nullptr;
+    if (!comp || NailBroken(nail)) return false;
+    CallNoArgs(comp, L"BreakConstraint");
+    return CallNoArgs(nail,
+                      L"BndEvt__PhysicsConstraint_K2Node_ComponentBoundEvent_0_ConstraintBrokenSignature__DelegateSignature");
+}
+
+bool SetWallHealth(void* wall, float health) {
+    float m = 0.f;
+    const Kind kind = KindOf(wall);
+    if ((kind != Kind::Wall && kind != Kind::WetWall) || !ReadField(wall, L"maxHealth", m)) return false;
+    WriteField(wall, L"health", health < m ? health : m);
     return CallNoArgs(wall, L"setHealthCracks");
 }
 
