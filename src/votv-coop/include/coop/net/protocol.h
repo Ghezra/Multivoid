@@ -31,7 +31,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 287;
+inline constexpr uint16_t kProtocolVersion = 288;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1317,6 +1317,14 @@ enum class ReliableKind : uint8_t {
     // (op 3, [f32] the health it lost, negative, or gained), or a nail its pull snapped (op 4). Never relayed; the host
     // makes, destroys, hits, repairs or snaps its own and its BuildState answers. BlobChunkPayload, as above.
     BuildIntent = 235,
+    // HOST->ALL: a woodchipper of the host's, its fuel and whether it is on, when either changes, every second while it
+    // runs, and every chipper again at the ready edge. A client's copy takes both. Not relayed, not pre-world.
+    // WoodchipperPayload, op 0.
+    WoodchipperState = 236,
+    // CLIENT->HOST: this client's player poured fuel into a woodchipper (op 1, the fuel it gained) or pressed its button
+    // (op 2, whether it is on after). Never relayed; the host fuels or switches its own, and its WoodchipperState
+    // answers. WoodchipperPayload.
+    WoodchipperIntent = 237,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
@@ -2132,6 +2140,17 @@ struct PropFirePayload {
     uint8_t _pad[3];    // 3 -- zero
 };
 static_assert(sizeof(PropFirePayload) == 44, "PropFirePayload must be 44 bytes");
+
+// A woodchipper's state (WoodchipperState), or a client's pour or press (WoodchipperIntent).
+inline constexpr uint8_t kWoodchipperOpState = 0, kWoodchipperOpPour = 1, kWoodchipperOpButton = 2;
+struct WoodchipperPayload {
+    WireKey key;       // 32 -- the chipper's key
+    float   fuel;      // 4 -- its fuel (0..100); a pour's gain
+    uint8_t active;    // 1 -- on; a press's result
+    uint8_t op;        // 1 -- kWoodchipperOp*
+    uint8_t _pad[2];   // 2 -- zero
+};
+static_assert(sizeof(WoodchipperPayload) == 40, "WoodchipperPayload must be 40 bytes");
 
 // A spilled liquid's decal (SpillState), or a client's (SpillIntent).
 struct SpillPayload {

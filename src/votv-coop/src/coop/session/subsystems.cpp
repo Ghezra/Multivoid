@@ -93,6 +93,7 @@
 #include "coop/props/prop_fire_sync.h"
 #include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
+#include "coop/interactables/woodchipper_sync.h"
 #include "coop/world/spill_sync.h"
 #include "coop/world/plant_sync.h"
 #include "coop/world/media_device_sync.h"
@@ -303,6 +304,7 @@ void Install(coop::net::Session& session) {
     coop::plant_sync::Install(&session);  // the host runs every plant
     coop::prop_fire_sync::Install(&session);  // the host burns every keyed prop
     coop::ground_hose_sync::Install(&session);  // the host's garden hoses
+    coop::woodchipper_sync::Install(&session);  // the host's woodchippers
     coop::build_sync::Install(&session);  // the host's nails and walls
     coop::spill_sync::Install(&session);  // the host's spilled liquids
     coop::kitchen_sync::Install(&session);  // a microwave's and a mini oven's controls
@@ -501,6 +503,7 @@ DisconnectStats DisconnectAll() {
     coop::plant_sync::OnDisconnect();
     coop::prop_fire_sync::OnDisconnect();
     coop::ground_hose_sync::OnDisconnect();
+    coop::woodchipper_sync::OnDisconnect();
     coop::build_sync::OnDisconnect();
     coop::spill_sync::OnDisconnect();
     coop::kitchen_sync::OnDisconnect();
@@ -676,6 +679,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     coop::plant_sync::Tick();  // the plants' poll
     coop::prop_fire_sync::Tick();  // the burning props' poll
     coop::ground_hose_sync::Tick();  // the hoses' poll
+    coop::woodchipper_sync::Tick();  // the woodchippers' poll
     coop::build_sync::Tick();  // the nails' and walls' poll
     coop::vent_crawler_sync::Tick();  // a client's crawl sounds as their times come
     coop::spill_sync::Tick();  // the spills the hook saw

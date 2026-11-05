@@ -308,6 +308,10 @@ DWORD WINAPI DiscRaceThread(LPVOID arg);
 // Gated by VOTVCOOP_RUN_DESK_VIEW; the peers' shared folder in VOTVCOOP_CAN_DIR. See autotest_desk_view.cpp.
 DWORD WINAPI DeskViewThread(LPVOID arg);
 
+// The woodchipper drill: each peer pours a gas can and the client presses the on/off button; fuel, active and power read
+// on both. Gated by VOTVCOOP_RUN_WOODCHIPPER; the peers' shared folder in VOTVCOOP_CAN_DIR. See autotest_woodchipper.cpp.
+DWORD WINAPI WoodchipperThread(LPVOID arg);
+
 // The event force-now smoke (harness/autotest/autotest_eventforce.cpp), host: the volume-gate
 // feature (coop/dev/event_force) on obelisk, the badge snapshot resolving (armed 0, shots 1),
 // ForceNow arming through HostFire and driving the box's own BeginOverlap with the local pawn, and
