@@ -224,6 +224,7 @@ set(VOTVCOOP_SOURCES
     src/coop/props/prop_fire_sync.cpp
     src/coop/world/ground_hose_sync.cpp
     src/coop/interactables/woodchipper_sync.cpp
+    src/coop/interactables/atv_host_sync.cpp
     src/coop/world/build_sync.cpp
     src/coop/world/spill_sync.cpp
     src/ue_wrap/actors/growing_plant.cpp
@@ -675,6 +676,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_disc_race.cpp
     src/harness/autotest/autotest_desk_view.cpp
     src/harness/autotest/autotest_woodchipper.cpp
+    src/harness/autotest/autotest_atv_host.cpp
     src/harness/autotest/autotest_saveui.cpp
     src/ui/input_focus.cpp
     src/harness/screenshot.cpp

@@ -23,6 +23,7 @@
 #include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
 #include "coop/interactables/woodchipper_sync.h"
+#include "coop/interactables/atv_host_sync.h"
 #include "coop/world/spill_sync.h"
 #include "coop/world/plant_sync.h"
 #include "coop/world/media_device_sync.h"            // a placed radio's track and play state
@@ -478,6 +479,30 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         if (intent) ::coop::woodchipper_sync::OnIntent(msg.senderPeerSlot, p);
         else ::coop::woodchipper_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::AtvHostState:
+    case net::ReliableKind::AtvRequest: {
+        // AtvHostState HOST->ALL, AtvRequest CLIENT->HOST.
+        const bool request = msg.kind == net::ReliableKind::AtvRequest;
+        if (request != (session.role() == net::Role::Host)) {
+            UE_LOGW("event_feed: an ATV host message the wrong way from slot %d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::AtvHostPayload)) {
+            UE_LOGW("event_feed: ATV host payload too short (%zu < %zu)",
+                    static_cast<size_t>(msg.payloadLen), sizeof(net::AtvHostPayload));
+            break;
+        }
+        net::AtvHostPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (!std::isfinite(p.fuel) || !std::isfinite(p.health) || !std::isfinite(p.amount) ||
+            p.moduleCount > sizeof(p.modules)) {
+            UE_LOGW("event_feed: ATV host message malformed -- dropping");
+            break;
+        }
+        if (request) ::coop::atv_host_sync::OnRequest(msg.senderPeerSlot, p);
+        else ::coop::atv_host_sync::OnState(p);
         break;
     }
     case net::ReliableKind::GroundHoseState:

@@ -31,7 +31,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 288;
+inline constexpr uint16_t kProtocolVersion = 289;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1325,6 +1325,15 @@ enum class ReliableKind : uint8_t {
     // (op 2, whether it is on after). Never relayed; the host fuels or switches its own, and its WoodchipperState
     // answers. WoodchipperPayload.
     WoodchipperIntent = 237,
+    // HOST->ALL: an ATV of the host's beyond its rig -- its fuel and health with the count of gains the host applied, its
+    // modules, lights, brake and turbo, and whether it is empty or broken -- when any changes, every 2 s, and every ATV
+    // again at the ready edge (op 0); or its horn pressed or released by a driver, to every peer but that driver (op 1,
+    // 2). A client's copy takes it. Not relayed, not pre-world. AtvHostPayload.
+    AtvHostState = 238,
+    // CLIENT->HOST: this client's player refuelled or repaired an ATV (op 1, 2, the gain), fitted or took off a module
+    // (op 3, 4), or, seated, changed its lights, brake or turbo (op 5) or pressed or released its horn (op 6, 7). Never
+    // relayed; the host does it on its own copy, and its AtvHostState answers. AtvHostPayload.
+    AtvRequest = 239,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
@@ -2151,6 +2160,28 @@ struct WoodchipperPayload {
     uint8_t _pad[2];   // 2 -- zero
 };
 static_assert(sizeof(WoodchipperPayload) == 40, "WoodchipperPayload must be 40 bytes");
+
+// An ATV's host state (AtvHostState), or a client's request (AtvRequest).
+namespace atv_host_op {
+inline constexpr uint8_t kState = 0, kStateHornPress = 1, kStateHornRelease = 2;   // AtvHostState
+inline constexpr uint8_t kFuelGain = 1, kHealthGain = 2, kModuleAdd = 3, kModuleRemove = 4, kControls = 5,
+                         kHornPress = 6, kHornRelease = 7;                         // AtvRequest
+}  // namespace atv_host_op
+inline constexpr uint8_t kAtvHostLights = 0x01, kAtvHostBrake = 0x02, kAtvHostTurbo = 0x04, kAtvHostEmpty = 0x08,
+                         kAtvHostBroken = 0x10;
+struct AtvHostPayload {
+    WireKey  key;          // 32 -- the ATV's Key
+    float    fuel;         // 4 -- the host's fuel (state)
+    float    health;       // 4 -- the host's health (state)
+    float    amount;       // 4 -- a refuel's or a repair's gain (request)
+    uint32_t gen;          // 4 -- the gains the host applied to this ATV (state)
+    uint8_t  op;           // 1 -- atv_host_op
+    uint8_t  flags;        // 1 -- kAtvHost*: the state's, or the controls a driver asks for
+    uint8_t  module;       // 1 -- a fitted or taken-off module (request)
+    uint8_t  moduleCount;  // 1 -- how many of `modules` are fitted (state)
+    uint8_t  modules[16];  // 16 -- the fitted modules, in the ATV's order (state)
+};
+static_assert(sizeof(AtvHostPayload) == 68, "AtvHostPayload must be 68 bytes");
 
 // A spilled liquid's decal (SpillState), or a client's (SpillIntent).
 struct SpillPayload {

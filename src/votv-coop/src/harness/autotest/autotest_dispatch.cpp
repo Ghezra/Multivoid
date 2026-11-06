@@ -219,6 +219,8 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIf("VOTVCOOP_RUN_DESK_VIEW", "desk signal view drill", &DeskViewThread, role);
     // The woodchipper: each peer pours a gas can, the client presses the button; fuel and on/off on both.
     SpawnIf("VOTVCOOP_RUN_WOODCHIPPER", "woodchipper drill", &WoodchipperThread, role);
+    // The ATV: what of it the host owns, from a client's refuel to its horn.
+    SpawnIf("VOTVCOOP_RUN_ATV_HOST", "ATV host-owned state drill", &AtvHostThread, role);
 
     // The bot-director halt probe, solo: measures the path query over the baked NavMesh and a
     // reflected AddMovementInput moving the possessed body.
