@@ -221,6 +221,8 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIf("VOTVCOOP_RUN_WOODCHIPPER", "woodchipper drill", &WoodchipperThread, role);
     // The ATV: what of it the host owns, from a client's refuel to its horn.
     SpawnIf("VOTVCOOP_RUN_ATV_HOST", "ATV host-owned state drill", &AtvHostThread, role);
+    // The ATV's riders: the driver's body and the kerfur, on both peers.
+    SpawnIf("VOTVCOOP_RUN_ATV_RIDERS", "ATV riders drill", &AtvRidersThread, role);
 
     // The bot-director halt probe, solo: measures the path query over the baked NavMesh and a
     // reflected AddMovementInput moving the possessed body.

@@ -95,6 +95,7 @@
 #include "coop/world/ground_hose_sync.h"
 #include "coop/interactables/woodchipper_sync.h"
 #include "coop/interactables/atv_host_sync.h"
+#include "coop/interactables/atv_riders.h"
 #include "coop/world/spill_sync.h"
 #include "coop/world/plant_sync.h"
 #include "coop/world/media_device_sync.h"
@@ -307,6 +308,7 @@ void Install(coop::net::Session& session) {
     coop::ground_hose_sync::Install(&session);  // the host's garden hoses
     coop::woodchipper_sync::Install(&session);  // the host's woodchippers
     coop::atv_host_sync::Install(&session);  // what of an ATV is the host's beyond its rig
+    coop::atv_riders::Install(&session);  // a remote driver's body in the seat, the kerfurs a client's seat calls
     coop::build_sync::Install(&session);  // the host's nails and walls
     coop::spill_sync::Install(&session);  // the host's spilled liquids
     coop::kitchen_sync::Install(&session);  // a microwave's and a mini oven's controls
@@ -507,6 +509,7 @@ DisconnectStats DisconnectAll() {
     coop::ground_hose_sync::OnDisconnect();
     coop::woodchipper_sync::OnDisconnect();
     coop::atv_host_sync::OnDisconnect();
+    coop::atv_riders::OnDisconnect();
     coop::build_sync::OnDisconnect();
     coop::spill_sync::OnDisconnect();
     coop::kitchen_sync::OnDisconnect();
@@ -684,6 +687,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     coop::ground_hose_sync::Tick();  // the hoses' poll
     coop::woodchipper_sync::Tick();  // the woodchippers' poll
     coop::atv_host_sync::Tick();  // the ATVs' fuel, health, modules, controls and horn
+    coop::atv_riders::Tick();  // the ATVs' riders: the remote drivers' bodies, a client seat's kerfurs
     coop::build_sync::Tick();  // the nails' and walls' poll
     coop::vent_crawler_sync::Tick();  // a client's crawl sounds as their times come
     coop::spill_sync::Tick();  // the spills the hook saw

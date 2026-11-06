@@ -72,6 +72,8 @@ private:
     bool             hasPose_        = false;  // first packet snaps
     bool             dirty_          = true;   // unapplied change to push to the engine
     bool             isWispMirror_   = false;  // wisp_C mirror: replay the landing edge (fade-in)
+    void*            atvRide_        = nullptr; // the ATV this kerfur mirror rides (its own sitOnCar), or null
+    int32_t          atvRideIdx_     = -1;      //   ... that ATV's object slot
     bool             wispLanded_     = false;  //   ... one-shot latch (drive succeeded)
 
     // What ApplyToEngine last wrote, and onto which actor, so a pose identical to it costs

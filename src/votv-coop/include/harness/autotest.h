@@ -316,6 +316,10 @@ DWORD WINAPI WoodchipperThread(LPVOID arg);
 // on both peers. Gated by VOTVCOOP_RUN_ATV_HOST; the peers' shared folder in VOTVCOOP_CAN_DIR. See autotest_atv_host.cpp.
 DWORD WINAPI AtvHostThread(LPVOID arg);
 
+// The ATV riders drill: a client's and the host's seat, the other peer's body in it and the kerfur that comes, read on
+// both peers. Gated by VOTVCOOP_RUN_ATV_RIDERS; the peers' shared folder in VOTVCOOP_CAN_DIR. See autotest_atv_riders.cpp.
+DWORD WINAPI AtvRidersThread(LPVOID arg);
+
 // The event force-now smoke (harness/autotest/autotest_eventforce.cpp), host: the volume-gate
 // feature (coop/dev/event_force) on obelisk, the badge snapshot resolving (armed 0, shots 1),
 // ForceNow arming through HostFire and driving the box's own BeginOverlap with the local pawn, and
