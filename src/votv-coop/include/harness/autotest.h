@@ -320,6 +320,11 @@ DWORD WINAPI AtvHostThread(LPVOID arg);
 // both peers. Gated by VOTVCOOP_RUN_ATV_RIDERS; the peers' shared folder in VOTVCOOP_CAN_DIR. See autotest_atv_riders.cpp.
 DWORD WINAPI AtvRidersThread(LPVOID arg);
 
+// The container gaps drill: a drive box's photos, a nested container, a garbage container's state and a container that
+// breaks, each read on both peers. Gated by VOTVCOOP_RUN_CONTAINER_GAPS; the peers' shared folder in VOTVCOOP_CAN_DIR.
+// See autotest_container_gaps.cpp.
+DWORD WINAPI ContainerGapsThread(LPVOID arg);
+
 // The event force-now smoke (harness/autotest/autotest_eventforce.cpp), host: the volume-gate
 // feature (coop/dev/event_force) on obelisk, the badge snapshot resolving (armed 0, shots 1),
 // ForceNow arming through HostFire and driving the box's own BeginOverlap with the local pawn, and

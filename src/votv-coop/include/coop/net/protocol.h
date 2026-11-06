@@ -31,7 +31,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 290;
+inline constexpr uint16_t kProtocolVersion = 292;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1334,6 +1334,15 @@ enum class ReliableKind : uint8_t {
     // (op 3, 4), or, seated, changed its lights, brake or turbo (op 5) or pressed or released its horn (op 6, 7). Never
     // relayed; the host does it on its own copy, and its AtvHostState answers. AtvHostPayload.
     AtvRequest = 239,
+    // HOST->ALL: a garbage container's contents (the keys of the props its itemsInside lists, the first
+    // kGarbageBinKeys of them) and whether it can be held and collected, when any changes, and every container again
+    // at the ready edge. A client's copy writes the flags and glues the props as the container's own glue does. Not
+    // relayed, not pre-world. GarbageBinPayload.
+    GarbageBinState = 240,
+    // CLIENT->HOST: a container this client authors (it holds it, threw it or syncs it) took a lethal impact or fire
+    // here, which the client cancelled. The host breaks its own copy by the same lethal call, so the spill is the
+    // host's. Never relayed. ContainerBreakPayload.
+    ContainerBreakRequest = 241,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
@@ -2183,6 +2192,27 @@ struct AtvHostPayload {
     uint8_t  modules[16];  // 16 -- the fitted modules, in the ATV's order (state)
 };
 static_assert(sizeof(AtvHostPayload) == 68, "AtvHostPayload must be 68 bytes");
+
+// A garbage container's state (GarbageBinState).
+inline constexpr size_t kGarbageBinKeys = 5;
+inline constexpr uint8_t kGarbageBinCanHold = 0x01, kGarbageBinCanCollect = 0x02;
+struct GarbageBinPayload {
+    WireKey key;                     // 32 -- the container's Key
+    uint8_t flags;                   // 1 -- kGarbageBin*: propData's canHold and canCollect
+    uint8_t count;                   // 1 -- how many props its itemsInside lists (more than `keys` past the cap)
+    uint8_t keys;                    // 1 -- how many of `items` are filled
+    uint8_t _pad;                    // 1 -- zero
+    WireKey items[kGarbageBinKeys];  // 160 -- the listed props' Keys, in the list's order
+};
+static_assert(sizeof(GarbageBinPayload) == 196, "GarbageBinPayload must be 196 bytes");
+
+// A client's break of a container it authors (ContainerBreakRequest).
+struct ContainerBreakPayload {
+    WireKey key;       // 32 -- the container's Key
+    uint8_t fire;      // 1 -- a fireDamage (1) or an impactDamage (0)
+    uint8_t _pad[3];   // 3 -- zero
+};
+static_assert(sizeof(ContainerBreakPayload) == 36, "ContainerBreakPayload must be 36 bytes");
 
 // A spilled liquid's decal (SpillState), or a client's (SpillIntent).
 struct SpillPayload {
