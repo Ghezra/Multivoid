@@ -10,10 +10,13 @@
 #include "harness/autotest/driveslot.h"
 #include "coop/session/join_seed.h"  // the inline seed selftest
 #include "coop/config/config.h"
+#include "coop/dev/cremator_drill.h"
 #include "coop/dev/director/director.h"
 #include "ue_wrap/core/log.h"
 
 #include <windows.h>
+
+#include <string>
 
 namespace harness::autotest {
 namespace {
@@ -40,6 +43,18 @@ void SpawnIfRow(const coop::config_registry::FlagRow& row, const char* label,
                 LPTHREAD_START_ROUTINE thread, coop::net::Role role) {
     if (!cfg::ResolveFlag(row)) return;
     UE_LOGI("harness: %s=1 (%s) -- spawning %s thread", row.row->key, RoleStr(role), label);
+    if (HANDLE h = ::CreateThread(nullptr, 0, thread, nullptr, 0, nullptr)) {
+        ::CloseHandle(h);
+    }
+}
+
+// The same for a drill whose row names its arms: any value but off spawns the thread, which reads the row again to
+// pick its arm.
+void SpawnIfEnum(const coop::config_registry::EnumRow& row, const char* label,
+                 LPTHREAD_START_ROUTINE thread, coop::net::Role role) {
+    const std::string arm = cfg::ResolveEnum(row);
+    if (arm == "off") return;
+    UE_LOGI("harness: %s=%s (%s) -- spawning %s thread", row.row->key, arm.c_str(), RoleStr(role), label);
     if (HANDLE h = ::CreateThread(nullptr, 0, thread, nullptr, 0, nullptr)) {
         ::CloseHandle(h);
     }
@@ -269,6 +284,9 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // The slip drill: a zero-damage ragdoll with `dead` already set must be shown to re-enter the
     // death chain, and our seam shown to refuse the menu travel it asks for.
     SpawnIf("VOTVCOOP_RUN_SLIP_DRILL", "slip / death re-entry drill", &SlipDrillThread, role);
+    // The cremator drill: the host pulls its lever and the client's copy must show the run, then show it again after a
+    // rejoin (1); a client sent into the running machine must die by it (g3).
+    SpawnIfEnum(coop::config_registry::rows::cremator_drill, "cremator drill", &coop::dev::cremator_drill::Thread, role);
 }
 
 }  // namespace harness::autotest

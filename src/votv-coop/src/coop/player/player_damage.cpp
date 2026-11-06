@@ -11,8 +11,10 @@
 #include "coop/creatures/creature_hit.h"
 #include "coop/element/element.h"
 #include "coop/element/registry.h"
+#include "coop/interactables/interactable_sync.h"  // the cremator lane's key
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
+#include "coop/player/cremator_hit.h"
 #include "coop/player/player_hit.h"
 #include "coop/player/players_registry.h"
 #include "coop/player/remote_player.h"
@@ -23,6 +25,7 @@
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/script_gate.h"
 #include "ue_wrap/core/ufunction_hook.h"
+#include "ue_wrap/devices/cremator.h"
 #include "ue_wrap/facts/function_row.h"
 
 #include <atomic>
@@ -51,6 +54,7 @@ UE_FACT_FN(kRowAddDamage, "player_damage", L"mainPlayer_C", L"addDamage", Declar
 UE_FACT_FN(kRowPunch, "player_damage", L"mainPlayer_C", L"punch", Declared);
 UE_FACT_FN(kRowRagdollMode, "player_damage", L"mainPlayer_C", L"ragdollMode", Declared);
 UE_FACT_FN(kRowPlaySound2D, "player_damage", L"GameplayStatics", L"PlaySound2D", Declared);
+UE_FACT_FN(kRowAchievement, "player_damage", L"lib_C", L"progressAchievement", Declared);
 const ue_wrap::facts::Function* const kImpactEntryRows[3] = {
     &kRowImpactDamage, &kRowImpactDamageCpp, &kRowImpactSquishCpp,
 };
@@ -136,11 +140,16 @@ constexpr int kIgniteTag = 0x49474E54;  // 'IGNT'
 bool g_igniteWatchDone = false;
 std::atomic<uint32_t> g_igniteCanceled{0};
 
+// HOST: a cancelled addDamage or ignite whose caller is a cremator is the machine's hit on a peer, delivered to that
+// peer's machine as a CrematorHit (defined with the hit verbs below). True when the caller is a cremator.
+bool DeliverFromCremator(const sg::Call& c, uint8_t verb);
+
 sg::Verdict OnIgnitePre(const sg::Call& c) {
     // IsPuppet alone: no session or local-pawn early-out in front of it, since the local pawn reads
     // null for a whole death or travel window, and one call let through then burns for the session.
     if (!c.object || !coop::players::Registry::Get().IsPuppet(c.object))
         return sg::Verdict::Run;
+    DeliverFromCremator(c, coop::net::kCrematorHitVerbIgnite);
     const uint32_t n = ++g_igniteCanceled;
     if (n <= 5 || (n % 100) == 0)
         UE_LOGI("player_damage: refused setting a peer's puppet %p alight (#%u) -- its fire is its owner's",
@@ -156,7 +165,8 @@ sg::Verdict OnIgnitePre(const sg::Call& c) {
 //   - HOST, a cancelled addDamage or punch whose caller is a creature of a parked family is delivered to the
 //     puppet's peer, rebuilt from the call's parameters. A parked family's mirror makes no hit of its own, so
 //     this is the only one; any other caller, and a call routed through ProcessEvent (no caller object), is
-//     only refused. Source's delivery with MTA's ownership: Source's NPC runs and hits on the server
+//     only refused. A cremator's addDamage and ignite are delivered the same way, as a CrematorHit
+//     (DeliverFromCremator). Source's delivery with MTA's ownership: Source's NPC runs and hits on the server
 //     (reference/source-sdk-2013/src/game/server/hl2/npc_BaseZombie.cpp:1267), MTA's player owns its health
 //     on its own client (reference/mtasa-blue/Client/mods/deathmatch/logic/CNetAPI.cpp:1189).
 //   - CLIENT, a call on this machine's own player whose caller is a parked creature's mirror, outside the
@@ -164,6 +174,7 @@ sg::Verdict OnIgnitePre(const sg::Call& c) {
 constexpr int kAddDamageTag = 0x50444144;  // 'PDAD'
 constexpr int kPunchTag     = 0x50445055;  // 'PDPU'
 constexpr int kRagdollTag   = 0x50445247;  // 'PDRG'
+constexpr int kAchievementTag = 0x50444143;  // 'PDAC'
 bool g_hitWatchesDone = false;
 std::atomic<uint32_t> g_delivered{0};
 std::atomic<uint32_t> g_mirrorHits{0};
@@ -251,10 +262,81 @@ bool WalkerSparesPuppet(void* caller, uint8_t slot) {
     return rp && rp->IsRagdollDisplayed();
 }
 
+// A cremator whose empty lane key was said: the machine hits again each second, so one line per cremator.
+void* g_unkeyedSeen[kSeenMax];
+size_t g_unkeyedSeenCount = 0;
+
+bool FirstUnkeyed(void* cremator) {
+    for (size_t i = 0; i < g_unkeyedSeenCount; ++i)
+        if (g_unkeyedSeen[i] == cremator) return false;
+    if (g_unkeyedSeenCount >= kSeenMax) return false;
+    g_unkeyedSeen[g_unkeyedSeenCount++] = cremator;
+    return true;
+}
+
+// HOST: the cremator's hit on a puppet. The machine's ubergraph calls addDamage and ignite on the player it burns
+// (its tick, once a second per collected actor), so the caller of the cancelled call is the cremator. Its owner's
+// machine applies the hit to its own player (coop/player/cremator_hit): the health is the owner's as in MTA
+// (reference/mtasa-blue/Client/mods/deathmatch/logic/CNetAPI.cpp:1189, applied at CClientGame.cpp:4543), the hit
+// is made where the machine runs as Source's NPC does (reference/source-sdk-2013/src/game/server/hl2/
+// npc_BaseZombie.cpp:1267). The amount is the owner's, where MTA's server computes it (SET_ELEMENT_HEALTH,
+// CStaticFunctionDefinitions.cpp:1771). Beside PlayerHit and not through it: that kind names its source by an Npc
+// element id and resolves it only through the Npc mirrors.
+// A call that carries no caller frame cannot be told from any other, so it delivers nothing; said once per verb.
+bool DeliverFromCremator(const sg::Call& c, uint8_t verb) {
+    auto* s = g_session.load(std::memory_order_acquire);
+    if (!s || !s->connected() || s->role() != coop::net::Role::Host) return false;
+    if (!c.callerObject) {
+        static bool sSaid[2] = {};
+        bool& said = sSaid[verb == coop::net::kCrematorHitVerbIgnite ? 1 : 0];
+        if (!said) {
+            said = true;
+            UE_LOGW("player_damage: a refused %s on a puppet carried no caller frame -- not delivered (said once per verb)",
+                    verb == coop::net::kCrematorHitVerbIgnite ? "ignite" : "addDamage");
+        }
+        return false;
+    }
+    if (!ue_wrap::cremator::IsCremator(c.callerObject)) return false;
+    const uint8_t slot = coop::players::Registry::Get().PeerIdOfActor(c.object);
+    if (slot == coop::players::kPeerIdHost || slot >= coop::players::kMaxPeers) return true;
+    static const bool sOff = coop::config::ResolveFlag(coop::config_registry::rows::cremator_hit_off);
+    if (sOff) {
+        static bool sOffSaid = false;
+        if (!sOffSaid) {
+            sOffSaid = true;
+            UE_LOGW("player_damage: DRILL -- a cremator's hit on a peer's puppet is NOT delivered "
+                    "(dev.cremator_hit_off); the peer takes none");
+        }
+        return true;
+    }
+    const std::wstring key = coop::interactable_sync::CrematorKey(c.callerObject);
+    if (key.empty()) {
+        if (FirstUnkeyed(c.callerObject))
+            UE_LOGW("player_damage: cremator %p has no lane key -- its hit on a peer's puppet is not delivered "
+                    "(said once per cremator)", c.callerObject);
+        return true;
+    }
+    float seconds = 0.f;
+    if (verb == coop::net::kCrematorHitVerbIgnite) {
+        static R::ParamOffset sFuel{L"fuel"};
+        seconds = ReadFloat(c, sFuel);
+    }
+    if (!coop::cremator_hit::Deliver(*s, slot, key, verb, seconds)) return true;   // Deliver says and counts it
+    void* const cls = R::ClassOf(c.callerObject);
+    if (FirstSent(cls, verb)) {
+        const std::wstring caller = c.callerFunction ? R::ToString(R::NameOf(c.callerFunction)) : L"none";
+        UE_LOGI("player_damage: a %ls's hit on a puppet is delivered to its owner (verb=%s slot=%u key='%ls' caller=%ls)",
+                R::ClassNameOf(c.callerObject).c_str(), verb == coop::net::kCrematorHitVerbIgnite ? "ignite" : "damage",
+                static_cast<unsigned>(slot), key.c_str(), caller.c_str());
+    }
+    return true;
+}
+
 // HOST: the cancelled hit's delivery. Game thread (a script-gate watch).
 void DeliverToOwner(const sg::Call& c, bool punch) {
     auto* s = g_session.load(std::memory_order_acquire);
     if (!s || !s->connected() || s->role() != coop::net::Role::Host) return;
+    if (!punch && DeliverFromCremator(c, coop::net::kCrematorHitVerbDamage)) return;
     if (!coop::creature_hit::IsDelivered(c.callerObject)) return;
     const uint8_t slot = coop::players::Registry::Get().PeerIdOfActor(c.object);
     if (slot == coop::players::kPeerIdHost || slot >= coop::players::kMaxPeers) return;
@@ -354,6 +436,27 @@ sg::Verdict OnHitVerbPre(const sg::Call& c) {
     return sg::Verdict::Cancel;
 }
 
+// The cremator's burn loop earns its machine's player the cremator achievement when the actor it burns is under 10
+// health, read from the machine's own save slot, before it calls addDamage on that actor. When the actor is a peer's
+// puppet that call is cancelled above and the hit is delivered to its owner, who earns the achievement on its own
+// profile; the host's own health says nothing about the burn. The call is refused when its caller is the cremator's
+// own ubergraph and the loop's current actor, read from the caller's frame, is a puppet. A frame variable that did
+// not resolve refuses nothing: the host then earns the achievement for a peer's burn when its own health is under 10.
+bool g_achievementWatchDone = false;
+std::atomic<uint32_t> g_achievementRefused{0};
+
+sg::Verdict OnAchievementPre(const sg::Call& c) {
+    if (!c.callerObject || !ue_wrap::cremator::IsCremator(c.callerObject)) return sg::Verdict::Run;
+    void* actor = nullptr;
+    if (!ue_wrap::cremator::LoopActor(c.callerFunction, c.callerLocals, actor)) return sg::Verdict::Run;
+    if (!coop::players::Registry::Get().IsPuppet(actor)) return sg::Verdict::Run;
+    const uint32_t n = ++g_achievementRefused;
+    if (n <= 3 || (n % 100) == 0)
+        UE_LOGI("player_damage: refused the cremator achievement for the burn of a peer's puppet %p (#%u) -- it is "
+                "the owner's", actor, n);
+    return sg::Verdict::Cancel;
+}
+
 }  // namespace
 
 void Install(coop::net::Session* session) {
@@ -362,6 +465,7 @@ void Install(coop::net::Session* session) {
 
 uint32_t RefusedDamage() { return g_verbCanceled.load(std::memory_order_relaxed); }
 uint32_t RefusedIgnites() { return g_igniteCanceled.load(std::memory_order_relaxed); }
+uint32_t RefusedAchievements() { return g_achievementRefused.load(std::memory_order_relaxed); }
 uint32_t DeliveredCount() { return g_delivered.load(std::memory_order_relaxed); }
 uint32_t MirrorHitCount() { return g_mirrorHits.load(std::memory_order_relaxed); }
 uint32_t HushedSounds() { return g_hushed; }
@@ -380,8 +484,8 @@ void Tick() {
     // nothing is delivered.
     static const bool s_noRefusal =
         coop::config::ResolveFlag(coop::config_registry::rows::player_damage_no_refusal);
-    if (s_noRefusal && (!g_damageWatchDone || !g_igniteWatchDone || !g_hitWatchesDone)) {
-        g_damageWatchDone = g_igniteWatchDone = g_hitWatchesDone = true;
+    if (s_noRefusal && (!g_damageWatchDone || !g_igniteWatchDone || !g_hitWatchesDone || !g_achievementWatchDone)) {
+        g_damageWatchDone = g_igniteWatchDone = g_hitWatchesDone = g_achievementWatchDone = true;
         UE_LOGW("player_damage: DRILL -- the damage, hit-verb and ignite refusals on a peer's puppet are OFF "
                 "(dev.player_damage_no_refusal); a puppet takes them here and no hit is delivered");
     }
@@ -404,6 +508,12 @@ void Tick() {
             UE_LOGE("player_damage: the punch watch did not register -- a creature's punch runs on a puppet here");
         if (!sg::WatchName(kRowRagdollMode, kRagdollTag, &OnHitVerbPre, nullptr))
             UE_LOGE("player_damage: the ragdollMode watch did not register -- a puppet can ragdoll here");
+    }
+    if (!g_achievementWatchDone) {
+        g_achievementWatchDone = true;
+        if (!sg::WatchName(kRowAchievement, kAchievementTag, &OnAchievementPre, nullptr))
+            UE_LOGE("player_damage: the achievement watch did not register -- the host earns the cremator achievement "
+                    "for a peer's burn when its own health is under 10");
     }
     if (g_impactInterceptorsDone) return;
     void* cls = ue_wrap::object_index::ClassByName(L"mainPlayer_C");

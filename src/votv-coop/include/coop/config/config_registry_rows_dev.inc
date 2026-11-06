@@ -424,34 +424,21 @@ CFG_FLAG(recycled_slot_drill, "recycled_slot_drill", "dev", false, "VOTVCOOP_REC
     "engine recycled on the pawn's root component -- a queued birth naming the slot's old class, and a "
     "stale listing -- then dispatch the actor location read on the component, whose read faults inside "
     "the engine. One verdict line per half, then DONE.")
-CFG_FLAG(kerfur_menu_drill, "kerfur_menu_drill", "dev", false, "VOTVCOOP_KERFUR_MENU_DRILL",
-    "Drill (HOST): once a client's join is over, spawn a kerfur, turn it off "
-    "by its verb, then turn the prop back on through the menu event a press dispatches, where the "
-    "verb runs nested inside a watched body. Prints the kerfur form assembler's order counters.")
-CFG_FLAG(kerfur_convert_drill, "kerfur_convert_drill", "dev", false, "VOTVCOOP_KERFUR_CONVERT_DRILL",
-    "Drill (BOTH peers): the host keeps every kerfur carrying a disc and spawns one more; the client "
-    "turns one off by its verb and back on by the prop's turn-on action while a disc of its own lies 2 m "
-    "away, then says whether both conversions applied, each form stood when its own call returned, the "
-    "carried disc arrived once and its own disc survived. '[KERFUR-DRILL] client DONE' ends it.")
-CFG_FLAG(kerfus_drill, "kerfus_drill", "dev", false, "VOTVCOOP_KERFUS_DRILL",
-    "Drill (BOTH peers): the host stays put; the client presses the plain kerfur (the Kerfus) on, walks to "
-    "a pile the director keeps 10 m from the host, and the Kerfus must settle by the client, not the host; "
-    "then the host possesses it, the client walks back once the haunting's energy pin shows, and the Kerfus "
-    "must go off away from where it settled. The rig client joins at the base. '[KERFUS-DRILL] client DONE "
-    "PASS|FAIL' ends it; '[KERFUS-DRILL] INVALID' is a step that could not run.")
-CFG_FLAG(kerfus_throw_drill, "kerfus_throw_drill", "dev", false, "VOTVCOOP_KERFUS_THROW_DRILL",
-    "Drill (BOTH peers): the host grabs the plain kerfur (the Kerfus) and lets it go or throws it, three times "
-    "off and three on, and grabs it once more; then the client grabs it twice. Each peer says whether its Kerfus "
-    "stayed one body: the copy where the host's hand has it, its centre of mass on the body, its welded "
-    "navigation pawn where the body carries it. The rig client joins at the base. '[KERFUS-THROW] host DONE "
-    "PASS|FAIL' ends it; '[KERFUS-THROW] INVALID' is a step that could not run.")
-CFG_FLAG(kerfur_serve_drill, "kerfur_serve_drill", "dev", false, "VOTVCOOP_KERFUR_SERVE_DRILL",
-    "Drill (BOTH peers): the host spawns a kerfur Omega, takes a red disc in hand and stays put; the client's "
-    "first command is get_reports, and the host's disc must stay in its hand with the Omega holding none, back "
-    "in the follow state; the client then walks to a pile the director keeps 10 m from the host and commands "
-    "follow, and the Omega must settle by it in the follow state (the client's 'leg A' line); then the client "
-    "commands idle, the host runs the kill verb, and the murderous Omega must go for the host. '[KERFUR-SERVE] "
-    "host DONE' ends it; '[KERFUR-SERVE] INVALID' is a step that could not run.")
+// The kerfur drills: their own file, one concept, included as _dev_key_index.inc is above.
+#include "coop/config/config_registry_rows_dev_kerfur.inc"
+CFG_ENUM(rig_verdict_selftest, "rig_verdict_selftest", "dev", "off", "off|pass|fail|invalid",
+    "VOTVCOOP_RIG_VERDICT_SELFTEST",
+    "Dev self-test (HOST): once a client's world is ready the host says 'rig: VERDICT rig-verdict-selftest "
+    "PASS|FAIL|INVALID' (the value), once per connection life (said again after the host's last client left), so "
+    "the rig's end-on-verdict watch can be shown all three endings with no drill: pass ends the run after the done "
+    "grace, fail at once as a failure, invalid at once as inconclusive.")
+CFG_FLAG(kerfur_serve_disc, "kerfur_serve_disc", "dev", false, "VOTVCOOP_KERFUR_SERVE_DISC",
+    "Measurement (BOTH peers, with kerfur_serve_drill=1): replaces the drill's legs A to C. The client walks to the "
+    "host, takes a red disc in hand, aims at the host's Omega and presses get_reports through the player's own "
+    "radial dispatch (useSelectedAction), which runs the Omega's verb on the client too. It then says what its "
+    "hand holds, and the host says whether the Omega took a disc and whether the client's disc still stands on "
+    "its side. It reports, it never fails on what it finds; '[KERFUR-SERVE] leg D:' is the result line. "
+    "It ends on 'rig: VERDICT kerfur-serve-disc PASS|INVALID' (INVALID is a step that could not run).")
 CFG_FLAG(door_drill, "door_drill", "dev", false, "VOTVCOOP_DOOR_DRILL",
     "Drill (BOTH peers): the client walks with the bot director to the nearest door its navmesh "
     "reaches and uses it as a player does -- three presses, each followed by a stay in its sensor until "
@@ -788,5 +775,5 @@ CFG_FLAG(class_lifetime_probe, "class_lifetime_probe", "dev", false, "VOTVCOOP_C
 #include "coop/config/config_registry_rows_dev_vulkan.inc"
 #include "coop/config/config_registry_rows_dev_ambient.inc"
 
-// The cremator probe's row: its own file, one concept, included as _dev_vulkan.inc is above.
+// The cremator probe's and lever lane's rows: their own file, one concept, included as _dev_vulkan.inc is above.
 #include "coop/config/config_registry_rows_dev_cremator.inc"

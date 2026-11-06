@@ -1,10 +1,13 @@
 #include "coop/session/teleport_client.h"
 
+#include "coop/config/config.h"
+#include "coop/config/config_registry.h"
 #include "coop/player/players_registry.h"
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/engine_player_verbs.h"
 #include "ue_wrap/core/game_thread.h"
 #include "ue_wrap/core/hot_path_guard.h"
 #include "ue_wrap/core/log.h"
@@ -107,6 +110,25 @@ bool ApplyLocally(const ApplyArgs& args) {
     return moved;
 }
 
+bool ApplyHostOrder(const ApplyArgs& args) {
+    // The /cremate drill's two client arms. They sit here and not in ApplyLocally, which a join's placement and the
+    // death revive also call: a knob there would drop or kill those too.
+    if (coop::config::ResolveFlag(coop::config_registry::rows::cremate_drop_order)) {
+        UE_LOGW("teleport_client: DRILL -- the host's order is NOT applied (dev.cremate_drop_order)");
+        return false;
+    }
+    if (coop::config::ResolveFlag(coop::config_registry::rows::cremate_transit_die)) {
+        // The game's own lethal hit, as the cremator's fire delivers it (cremator_hit.cpp): a raw write of Health 0 is
+        // not a death -- the game never ran its death and the pose stream never carried a zero health.
+        void* local = coop::players::Registry::Get().Local();
+        const bool hit = local && ue_wrap::engine::InvokeAddDamage(local, nullptr, 9999.f, ue_wrap::FVector{});
+        UE_LOGW("teleport_client: DRILL -- cremate_transit_die: the lethal hit %s, the move not applied",
+                hit ? "ran" : "did NOT run");
+        return false;
+    }
+    return ApplyLocally(args);
+}
+
 namespace {
 
 // Snapshot the host's own mainPlayer pose into a TeleportClientPayload. Game
@@ -155,6 +177,13 @@ void SendPoseToSlotIfStillHeld(coop::net::Session* s, int slot, uint32_t generat
 }
 
 }  // namespace
+
+bool OrderToPose(coop::net::Session& session, int slot, const ue_wrap::FVector& at, const ue_wrap::FRotator& rot) {
+    coop::net::TeleportClientPayload p{};
+    p.locX = at.X; p.locY = at.Y; p.locZ = at.Z;
+    p.rotPitch = rot.Pitch; p.rotYaw = rot.Yaw; p.rotRoll = rot.Roll;
+    return session.SendReliableToSlot(slot, coop::net::ReliableKind::TeleportClient, &p, sizeof(p));
+}
 
 void TeleportClientsToHost() {
     // Sender-gates to Role::Host only -- on a client this is a no-op (per scope:

@@ -8,7 +8,9 @@
 // four verbs a hit runs on a puppet -- `Add Player Damage`, `addDamage`, `punch` and `ragdollMode` --
 // on every machine, whoever the caller is. On the host, a cancelled `addDamage` or `punch` whose caller
 // is a creature of a parked family (coop/creatures/creature_hit.h) is delivered to the puppet's peer
-// (coop/player/player_hit.h), which runs the same verb on its own player.
+// (coop/player/player_hit.h), which runs the same verb on its own player; so is a cancelled `addDamage` or `ignite`
+// whose caller is a cremator, as a CrematorHit (coop/player/cremator_hit.h), and the host does not earn the cremator
+// achievement for a puppet's burn.
 
 #pragma once
 
@@ -31,6 +33,10 @@ void Tick();
 // count), and ignite. What the dmghazard probe judges by. Any thread.
 uint32_t RefusedDamage();
 uint32_t RefusedIgnites();
+
+// [dev], for the drill alone. The cremator achievement calls refused on the host because the burn loop's actor was a
+// peer's puppet. Any thread.
+uint32_t RefusedAchievements();
 
 // [dev], for the drill alone. The hits delivered to a peer: every call of player_hit::Deliver this
 // watch made. Any thread.

@@ -108,6 +108,49 @@ puppet counts in that list exactly when the client's own player counts in the cl
 it. A device with no auto-revert (the garage, an appliance, an oven's repair, a locker, a lid) is
 symmetric: any peer's edge is the state.
 
+### The cremator's lever run
+
+The cremator is the host's machine. The host sends its `isActive` once, when the handle's travel
+finishes (`handleLimeline__FinishedFunc`), and a client's copy keeps that as the state it wants and
+drives its own handle to it with `useLever`, which it refuses for any call that is not the lane's own.
+A start is driven only with the copy's door shut, and the lane never closes the door: the host shuts
+its lid before it starts and the lid lane brings that to the copy. A copy that finds its door open
+waits, says so once, and looks again at the door's own close. A client's press of the handle is
+cancelled where it is made and sent as a `CrematorIntent` carrying the state it wants (the opposite of
+what its copy shows); the host refuses a press that is out of reach, mid-travel, already so, or, for
+a start, with its own door open, and otherwise pulls its lever.
+
+The host sends the committed `isActive` at the finish and not a start at the press, unlike MTA, which
+broadcasts the start of an act and confirms its end (`CGame.cpp:3196`, `:3373`): a start sent at the
+press could show a client a run that the host's door check still turns back at the forward finish. The
+price is a client display that trails the host's by about one handle travel plus the trip, on every
+run `[?]`. Two windows follow from it for a joiner, and both converge `[?]`: a joiner that arrives
+while the handle is reversing is told `isActive` true, drives forward, and reverses when the host's
+finish arrives, so its display is wrong for about two travels; and in the cool-down after a run, with
+`isActive` false and the fire still fading, it shows idle for up to ten seconds.
+
+A client's copy of the machine acts on nothing. Its `addObject` is refused, so the copy collects no one and
+holds no prop to burn or destroy: the burn a client's player takes is the host's machine's, delivered below,
+and a burnt prop's destruction is the host's, which reaches the client like any destroy. The copy's door is
+not opened by a player's use while the copy runs or the lane holds an on want for it (the host's door is
+locked for the run; a client's is unlocked until the host's state arrives, so the window is the state's trip).
+A press of the fuel valve is refused and not sent: the pour runs from the fuel the machine makes, which does
+not cross, so the copy holds none to show, and the host pours until the gasoline package carries it. A
+client's fuel gauge therefore reads zero `[?]`. The blow-out's fireballs (`spitFireballs_timer`, every 0.2 s while
+the lid is open on an active machine) are refused on the copy too: a client sees none, and the host's are not
+synced either, a host-only effect. A refused valve press shows the player the game's own hint, once a burst.
+Until the host's forward finish its lid is still unlocked, so a client's own open of the cremator's lid in that
+window passes the guard and reaches the host's lid, and the host turns the start back at the finish with its
+open-door hint, as it would for its own player; the client sees nothing `[?]`.
+
+A player burning in the host's cremator is hit on the host's machine, where the hit lands on the peer's
+puppet and is refused like any hit on a puppet. The cremator's own call is delivered to the peer instead,
+as a `CrematorHit` naming the cremator by its key (damage, or an ignite with the machine's fuel), and the
+peer's machine applies it to its own player by the Blueprint's own split on its own health: ten damage a
+hit, and the lethal one with the cremator achievement once that health is under ten. A hit whose
+cremator the peer's machine cannot resolve costs the hit nothing: the damage lands with no source, counted, and
+the counts are said once when the session ends `[?]`.
+
 ### Security cameras
 
 A camera has two saved bits, each its own lane keyed by the lane's key for the camera (its portable
@@ -482,6 +525,7 @@ removed from its author's hand -- and a joiner gets every box's count at its wor
 |---|---|---|
 | a door, a light group | the host | each is sent at its own verbs; a client's own door verb is an intent the host runs, and its own group writes are refused |
 | a security camera's `active` and `isLight` | the host | each is sent after the camera's use, `upd` and `updState` and the cursed camera's tick; a client's use and light button are intents the host runs |
+| a cremator's lever run (`isActive`) | the host | sent when its handle finishes; a client's copy keeps the host's want and drives its own handle to it, its own `useLever` is refused, and its handle press is an intent, carrying the state it wants, that the host judges and runs |
 | a light switch, a lid, the garage, an appliance, an oven's repair, a locker | any peer | symmetric state edges, relayed |
 | the power panel, the generators | the host | a client's press, repair, service, upgrade install and hit are ops the host takes from a player within reach; the host sends the breakers after its panel's apply and every generator's row after its verbs |
 | a keypad | the host | its verbs replayed on every client and its settled state after each chain; a client's own entries are an intent the host runs |
@@ -501,6 +545,9 @@ removed from its author's hand -- and a joiner gets every box's count at its wor
 | `DoorVerbIntent` | a client to the host | a door's key, the verb, a hit's damage |
 | `CameraActiveState`, `CameraLightState` | the host to all | a camera's key and one bit |
 | `CameraToggleIntent` | a client to the host | a camera's key, which bit, the value wanted |
+| `CrematorState` | the host to all | a cremator's key and its lever run: on or off |
+| `CrematorIntent` | a client to the host | a cremator's key and the state the press wants: the handle was pressed |
+| `CrematorHit` | the host to the victim | a cremator's key and a hit on that peer's player: damage, or an ignite with its seconds |
 | `KeypadState` | the host to all | a verb the host's keypad ran, or the state a chain settled on: the buffer, the verdict, the set-new-code mode, the password, and whether the chain handed the verdict on |
 | `KeypadIntent` | a client to the host | a keypad's key and the entry: a digit, a submit, a cancel, a keycard's verdict, a reset |
 | `PowerControlState` | a client to the host; the host to all | the breakers a press flipped; the breakers, the lockout, a lever's click and each slot's last press taken |

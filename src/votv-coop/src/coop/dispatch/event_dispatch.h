@@ -1,6 +1,6 @@
 // coop/dispatch/event_dispatch.h -- INTERNAL per-domain reliable-message handlers for
 // coop::event_feed::Update's dispatch switch. event_feed.cpp handles the session and handshake
-// kinds inline and chains these eight families from its default case; each family's own switch is
+// kinds inline and chains these nine families from its default case; each family's own switch is
 // where its kinds are declared.
 //
 // Sibling-internal header, the coop/net/session_lanes.h shape: not part of the public coop/ include
@@ -63,6 +63,17 @@ bool HandleIntentEvent(net::Session& session,
 // HOST->CLIENT answer, dropped on the host and from any sender but slot 0.
 bool HandleContainerActEvent(net::Session& session,
                              const net::Session::ReliableMessage& msg);
+
+// Cremator family: the machine's lever run and its hits. CrematorState is the HOST->CLIENT state and CrematorHit the
+// HOST->OWNER hit on a player, each dropped on the host and from any sender but slot 0; CrematorIntent is a client's
+// handle press, checked for role()==Host AND a client sender slot.
+bool HandleCrematorEvent(net::Session& session,
+                         const net::Session::ReliableMessage& msg);
+// Requester-feedback family: what a verb the host ran for a client showed on the host (a hint, a glossary entry, a
+// 2D sound), sent to that client for its own machine to show. RequesterFeedback is the HOST->CLIENT kind, dropped
+// on the host and from any sender but slot 0.
+bool HandleRequesterFeedbackEvent(net::Session& session,
+                                  const net::Session::ReliableMessage& msg);
 
 // Economy family: the delivery order with its queue, the coin gun's sale and collect, the laptop
 // upgrade purchase and the point sack. OrderRequest, CoinGunSell and CoinCollect check the slot here

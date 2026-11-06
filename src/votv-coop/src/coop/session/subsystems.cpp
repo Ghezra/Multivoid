@@ -130,6 +130,7 @@
 #include "coop/items/inventory_pickup_sync.h"
 #include "coop/comms/chat_sync.h"
 #include "coop/commands/command_sync.h"
+#include "coop/moderation/cremate.h"  // the /cremate trips: listeners, the pump, a leaver, the session end
 #include "coop/interactables/upgrade_sync.h"
 #include "coop/interactables/turbine_sync.h"
 #include "coop/interactables/keypad_sync.h"
@@ -143,6 +144,7 @@
 #include "coop/interactables/window_sync.h"
 #include "coop/session/join_progress.h"
 #include "coop/session/world_load_episode.h"
+#include "coop/session/rig_verdict.h"  // Rearm: after DisconnectAll the connection says its own verdicts
 #include "coop/interactables/garbage_sync.h"
 #include "coop/props/pile_look.h"
 #include "coop/props/trash_channel.h"
@@ -169,6 +171,7 @@
 #include "coop/save/save_notice.h"
 #include "coop/props/grab_observer.h"
 #include "coop/player/item_activate.h"
+#include "coop/player/cremator_hit.h"
 #include "coop/player/player_damage.h"
 #include "coop/player/puppet_cremation.h"
 #include "coop/player/player_hit.h"
@@ -290,6 +293,7 @@ void Install(coop::net::Session& session) {
     coop::inventory_pickup_sync::Install(&session);  // inventory-collect blip (PlaySound2D observer)
     coop::chat_sync::Install(&session);  // T-chat (the ui/chat_input send path)
     coop::command_sync::Install(&session);  // the chat input's `/` route: the host's own line, a client's request
+    coop::moderation::cremate::Install(&session);  // /cremate: the session its order goes through, the pose, burn-volume and lever listeners
     coop::stat_orders::Install(&session);  // an admin's orders and queries of a player's stats: the session they are sent through
     coop::local_body::Install(&session);  // skins: local first-person body + SkinChange announce
     coop::local_body::Tick();  // applies the persisted skin to the local pawn + 1 Hz convergence
@@ -434,6 +438,7 @@ void DisconnectSlot(coop::net::Session& session, int slot) {
     // it must get its seed before it hears a live line.
     coop::chat_sync::OnSlotDisconnected(slot);
     coop::command_sync::OnSlotDisconnected(slot);  // the leaver's command rate bucket and notice clocks
+    coop::moderation::cremate::OnDisconnectSlot(slot);  // the leaver's trip to the crematorium ends
     coop::stat_orders::OnSlotDisconnected(static_cast<uint8_t>(slot));  // every order and query still waiting on the leaver is answered Left
     // Per-slot cleanup: only subsystems with per-slot state are called here; the global-state ones
     // are handled by DisconnectAll.
@@ -491,6 +496,7 @@ DisconnectStats DisconnectAll() {
     coop::npc_adoption::OnSessionEnd();  // drop pending deferred adoptions + reset latches
     coop::kerfur_prop_adoption::OnSessionEnd();  // drop pending prop-form kerfur adoptions
     coop::dev::dev_lanes::EndSession();  // [dev] the probes' verdicts, before the prop seams reset below, then each drill back to its first step
+    coop::rig_verdict::Rearm();  // a drill that restarts after this says its own verdict, after the probes said theirs
     coop::prop_drop_intent::Reset();  // clear the client park set + pending places
     coop::prop_spawn_authoring::Reset();  // drop the menu bracket + the resolved spawn verbs
     coop::host_spawn_watcher::OnDisconnect();  // drop the ambient-prop death-watch list
@@ -504,6 +510,7 @@ DisconnectStats DisconnectAll() {
     coop::kerfur_command::OnDisconnect();  // drop pending menu commands
     coop::remover_request::OnDisconnect();  // drop the remover queues and the shown notices
     coop::hit_intent::OnDisconnect();  // forget the once-per-session log latches
+    coop::cremator_hit::OnDisconnect();  // say the cremator hits sent and applied, forget the once-per-session latches
     coop::props::prop_damage_gate::OnDisconnect();  // say the cancelled counts, forget the once-per-class latches
     coop::props::container_act_host::OnDisconnect();  // restore the records held in escrow, drop the tallies and refusals
     coop::prop_act_host::OnDisconnect();  // drop the take-or-use tallies, refusals and reservations
@@ -574,6 +581,7 @@ DisconnectStats DisconnectAll() {
     coop::inventory_pickup_sync::OnDisconnect();
     coop::chat_sync::OnDisconnect();
     coop::command_sync::OnDisconnect();  // every command rate bucket and notice clock
+    coop::moderation::cremate::OnDisconnect();  // every trip to the crematorium, with no line
     coop::stat_orders::OnDisconnect();  // every order and query still waiting is answered Left, the kept session stays
     coop::turbine_sync::OnDisconnect();
     coop::upgrade_sync::OnDisconnect();  // and its own upgrade panel buys locally again
@@ -717,6 +725,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     coop::props::prop_food_sync::Tick();  // the host's poll, the client's parking
     coop::prop_tool_flags::Tick();  // the init watch's names resolve until it is live (one flag test after)
     coop::props::prop_can_state::Tick();  // the same, for the can lane's watch
+    coop::moderation::cremate::Tick();  // HOST: the begin-overlap watch until registered, then the trips' recorded events
     coop::dev::dev_lanes::TickDrills(session);  // [dev] the drills' and censuses' legs (a single read each when off)
     coop::player_damage::Tick();  // impact-entry PRE cancels lazy install (non-local bodies)
     coop::save_notice::Tick();  // the save watch's name resolves until it is live

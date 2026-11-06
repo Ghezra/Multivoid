@@ -4,7 +4,8 @@
 
 #include "coop/config/config.h"
 #include "coop/dev/director/director.h"
-#include "coop/dev/drill_chat.h"
+#include "coop/dev/kerfur_serve_drill_disc.h"
+#include "coop/dev/kerfur_serve_drill_internal.h"
 #include "coop/dev/spawn_npc.h"
 #include "coop/element/element.h"
 #include "coop/element/registry.h"
@@ -14,6 +15,7 @@
 #include "coop/player/remote_player.h"
 #include "coop/props/join_membership_sweep.h"
 #include "coop/props/prop_snapshot.h"
+#include "coop/session/rig_verdict.h"
 
 #include "ue_wrap/actors/kerfur.h"
 #include "ue_wrap/core/log.h"
@@ -44,7 +46,8 @@ namespace P  = ue_wrap::profile;
 namespace R  = ue_wrap::reflection;
 namespace sg = ue_wrap::script_gate;
 
-constexpr const wchar_t* kDisc = L"prop_floppyDisc_R_C";  // a proper disc: the insert refuses the white one
+using detail::kDisc;
+
 UE_FACT_FN(kRowActionName, "dev.kerfur_serve_drill", L"kerfurOmega_C", L"actionName", Declared);
 constexpr int      kTagVerb        = 0x4B535201;  // 'KSR' 1
 constexpr float    kAwayMinCm      = 1000.f;      // the client's pile, 10 to 30 m out
@@ -62,11 +65,9 @@ constexpr uint64_t kSampleMs       = 100;
 constexpr uint64_t kReportMs       = 5000;
 constexpr uint8_t  kStateFollow    = 0;           // enum_kerfurCommand
 constexpr int      kWalkDeadlineS  = 60;
-// The client's word that its leg cannot run, the reason after the prefix: a lobby-chat line, since a verb names
-// only a command and none of the six can say "invalid".
-const std::string  kClientInvalidLine = "kerfur-serve client invalid: ";
+constexpr const char* kVerdictTag = "kerfur-serve";  // the drill's name on its `rig: VERDICT` line
 
-namespace DC = coop::dev::drill_chat;
+using coop::rig_verdict::Outcome;
 
 std::atomic<coop::net::Session*> g_session{nullptr};
 bool g_saidArm = false;
@@ -92,13 +93,6 @@ bool BodyAt(int slot, ue_wrap::FVector& at) {
     return rp && rp->valid() && rp->HasPose() && E::TryGetActorLocation(rp->GetActor(), at);
 }
 
-// An FString parameter's storage: the TArray<wchar_t> {Data, Num, Max}, Num counting the terminator.
-struct FStringView {
-    const wchar_t* data;
-    int32_t num;
-    int32_t max;
-};
-
 void* HoldingActor(void* player) {
     E::MainPlayerGrabState gs{};
     return (player && E::ReadMainPlayerGrabState(player, gs)) ? gs.holdingActor : nullptr;
@@ -117,9 +111,9 @@ int32_t g_handIdx = -1;
 bool g_legB = false;
 uint64_t g_hostStepMs = 0;
 
-void HostInvalid(const char* why) {
+void HostInvalid(const char* why, const char* tag = kVerdictTag) {
     g_host = HostStep::Done;
-    UE_LOGW("[KERFUR-SERVE] INVALID (host) -- %s", why);
+    coop::rig_verdict::Say(tag, Outcome::Invalid, "host: %s", why);
 }
 
 // The host's own pickup of a red disc it spawns beside itself; its hand item is what the insert must leave.
@@ -182,24 +176,18 @@ void RunKill() {
             : "FAIL", killed ? "murderous" : "NOT MURDEROUS", target == me ? L"me" : target == client ? L"THE CLIENT"
             : target ? L"ANOTHER ACTOR" : L"NOBODY");
     g_host = HostStep::Done;
-    UE_LOGI("[KERFUR-SERVE] host DONE -- leg B (the disc insert) %s, leg C (murder mode) %s; leg A is the "
-            "client's line", g_legB ? "PASS" : "FAIL", legC ? "PASS" : "FAIL");
+    // Leg A is the client's: its FAIL or INVALID ends the run before the idle that brings the host here.
+    coop::rig_verdict::Say(kVerdictTag, g_legB && legC ? Outcome::Pass : Outcome::Fail,
+                           "leg B (the disc insert) %s, leg C (murder mode) %s", g_legB ? "PASS" : "FAIL",
+                           legC ? "PASS" : "FAIL");
 }
 
 // The client's get_reports and its closing idle, seen as each returns on the host: the idle is the client's
 // word that leg A is judged, sent through the one channel every build runs, the verb.
 void OnVerbPost(const sg::Call& c) {
     if (g_host != HostStep::WaitReports && g_host != HostStep::WaitIdle) return;
-    static void*   sFn = nullptr;
-    static int32_t sNameOff = -1;
-    if (c.function != sFn) {
-        sFn = c.function;
-        sNameOff = R::FindParamOffset(c.function, L"name");
-    }
-    if (sNameOff < 0 || !c.locals) return;
-    const auto* fs = reinterpret_cast<const FStringView*>(c.locals + sNameOff);
-    if (!fs->data || fs->num <= 1) return;
-    const std::wstring name(fs->data, static_cast<size_t>(fs->num - 1));
+    std::wstring name;
+    if (!detail::VerbNameOf(c, name)) return;
     if (g_host == HostStep::WaitReports && name == L"get_reports") {
         g_omega = c.object;
         g_omegaIdx = R::InternalIndexOf(c.object);
@@ -228,11 +216,6 @@ void TickHost(coop::net::Session* s, uint64_t ms) {
         return;
     }
     if (g_host == HostStep::WaitReports || g_host == HostStep::WaitIdle) {
-        std::string why;
-        if (DC::SeenRestOf(kClientInvalidLine, &why)) {
-            HostInvalid(("the client could not run its leg: " + why).c_str());
-            return;
-        }
         if (ms - g_hostStepMs >= kVerbWindowMs)
             HostInvalid(g_host == HostStep::WaitReports ? "the client's get_reports never ran here"
                                                         : "the client's idle never ran here");
@@ -250,10 +233,9 @@ int32_t g_mirrorIdx = -1;
 std::shared_ptr<coop::director::BackgroundWalk> g_walk;
 uint64_t g_stepMs = 0, g_sampleMs = 0, g_reportMs = 0, g_byMeSince = 0, g_byHostSince = 0;
 
-void ClientInvalid(const char* why) {
+void ClientInvalid(const char* why, const char* tag = kVerdictTag) {
     g_client = ClientStep::Done;
-    UE_LOGW("[KERFUR-SERVE] INVALID (client) -- %s", why);
-    DC::Say(kClientInvalidLine + why);  // the host ends at once rather than at its verb window
+    coop::rig_verdict::Say(tag, Outcome::Invalid, "client: %s", why);
 }
 
 // The Omega mirror nearest the host's body, within the spawn's reach of it.
@@ -322,18 +304,23 @@ void JudgeFollow(uint64_t ms) {
         UE_LOGI("[KERFUR-SERVE] client: leg A %s -- the Omega settled %.0f cm from me, %.1f s after my follow (%.0f cm "
                 "from the host), in state %u%s", pass ? "PASS" : "FAIL", toMe, after, toHost,
                 static_cast<unsigned>(state), pass ? "" : ", not follow");
+        if (!pass) coop::rig_verdict::Say(kVerdictTag, Outcome::Fail, "leg A: the Omega settled by me in state %u, "
+                                          "not follow", static_cast<unsigned>(state));
         LegAOver();
         return;
     }
     if (g_byHostSince && ms - g_byHostSince >= kSettleMs) {
         UE_LOGI("[KERFUR-SERVE] client: leg A FAIL -- the Omega I commanded settled %.0f cm from the host, %.1f s "
                 "after my follow (%.0f cm from me)", toHost, after, toMe);
+        coop::rig_verdict::Say(kVerdictTag, Outcome::Fail, "leg A: the Omega settled %.0f cm from the host", toHost);
         LegAOver();
         return;
     }
     if (ms - g_stepMs >= kFollowWindowMs) {
         UE_LOGW("[KERFUR-SERVE] client: leg A UNDECIDED -- %llu s after my follow the Omega is %.0f cm from me, "
                 "%.0f cm from the host", static_cast<unsigned long long>(kFollowWindowMs / 1000), toMe, toHost);
+        coop::rig_verdict::Say(kVerdictTag, Outcome::Invalid, "leg A: undecided, the Omega is %.0f cm from me and "
+                               "%.0f cm from the host", toMe, toHost);
         LegAOver();
         return;
     }
@@ -399,6 +386,35 @@ void TickClient() {
 
 }  // namespace
 
+namespace detail {
+
+void ClientInvalid(const char* why, const char* tag) { ::coop::dev::kerfur_serve_drill::ClientInvalid(why, tag); }
+void HostInvalid(const char* why, const char* tag) { ::coop::dev::kerfur_serve_drill::HostInvalid(why, tag); }
+void* HoldingActor(void* player) { return ::coop::dev::kerfur_serve_drill::HoldingActor(player); }
+void* FindMirrorByHost() { return ::coop::dev::kerfur_serve_drill::FindMirrorByHost(); }
+
+bool VerbNameOf(const sg::Call& c, std::wstring& out) {
+    // An FString parameter's storage: the TArray<wchar_t> {Data, Num, Max}, Num counting the terminator.
+    struct FStringView {
+        const wchar_t* data;
+        int32_t num;
+        int32_t max;
+    };
+    static void*   sFn = nullptr;
+    static int32_t sNameOff = -1;
+    if (c.function != sFn) {
+        sFn = c.function;
+        sNameOff = R::FindParamOffset(c.function, L"name");
+    }
+    if (sNameOff < 0 || !c.locals) return false;
+    const auto* fs = reinterpret_cast<const FStringView*>(c.locals + sNameOff);
+    if (!fs->data || fs->num <= 1) return false;
+    out.assign(fs->data, static_cast<size_t>(fs->num - 1));
+    return true;
+}
+
+}  // namespace detail
+
 void Install(coop::net::Session* session) {
     if (!IsEnabled_()) return;
     g_session.store(session, std::memory_order_release);
@@ -411,13 +427,17 @@ void Tick() {
     if (!g_saidArm) {
         g_saidArm = true;
         UE_LOGI("[KERFUR-SERVE] %s armed", s->role() == coop::net::Role::Host ? "host" : "client");
-        if (s->role() == coop::net::Role::Host) DC::SeenHas(kClientInvalidLine);  // starts the chat history's recording
+    }
+    if (disc::Enabled()) {  // leg D replaces legs A to C
+        disc::Tick(s);
+        return;
     }
     if (s->role() == coop::net::Role::Host) TickHost(s, ::GetTickCount64());
     else if (s->connected()) TickClient();
 }
 
 void OnDisconnect() {
+    disc::OnDisconnect();
     g_saidArm = false;
     g_host = HostStep::WaitJoin;
     g_joined = -1;

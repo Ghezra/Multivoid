@@ -35,6 +35,7 @@ set(VOTVCOOP_SOURCES
     src/coop/player/skin_effects.cpp
     src/coop/player/skin_registry.cpp
     src/coop/player/local_body.cpp
+    src/coop/requester_feedback/requester_feedback.cpp
     src/coop/props/prop_act_host.cpp
     src/coop/props/prop_act_request.cpp
     src/coop/props/prop_act_selftest.cpp
@@ -68,10 +69,12 @@ set(VOTVCOOP_SOURCES
     src/coop/comms/peer_action_feed.cpp
     src/coop/dispatch/event_feed.cpp
     src/coop/dispatch/event_dispatch_container_act.cpp
+    src/coop/dispatch/event_dispatch_cremator.cpp
     src/coop/dispatch/event_dispatch_economy.cpp
     src/coop/dispatch/event_dispatch_entity.cpp
     src/coop/dispatch/event_dispatch_intent.cpp
     src/coop/dispatch/event_dispatch_prop_drive.cpp
+    src/coop/dispatch/event_dispatch_requester_feedback.cpp
     src/coop/dispatch/event_dispatch_signal.cpp
     src/coop/dispatch/event_dispatch_state.cpp
     src/coop/dispatch/event_dispatch_world.cpp
@@ -168,7 +171,9 @@ set(VOTVCOOP_SOURCES
     src/coop/player/item_activate.cpp
     src/coop/player/player_damage.cpp
     src/coop/player/puppet_cremation.cpp
+    src/coop/player/puppet_events.cpp
     src/coop/player/player_hit.cpp
+    src/coop/player/cremator_hit.cpp
     src/coop/player/hit_intent.cpp
     src/coop/player/hit_judge.cpp
     src/coop/player/ragdoll_gate.cpp
@@ -415,7 +420,6 @@ set(VOTVCOOP_SOURCES
     src/coop/interactables/lightgroup_verbs.cpp
     src/coop/interactables/verb_lanes.cpp
     src/coop/interactables/desk_verb_intent.cpp
-    src/coop/interactables/desk_verb_effects.cpp
     src/coop/interactables/toggle_verbs.cpp
     src/coop/interactables/drive_rack_sync.cpp
     src/coop/interactables/desk_snd_fx.cpp
@@ -428,6 +432,10 @@ set(VOTVCOOP_SOURCES
     src/coop/interactables/tape_caddy_sync.cpp
     src/coop/interactables/coffee_intent.cpp
     src/coop/interactables/coffee_state.cpp
+    src/coop/interactables/cremator_state.cpp
+    src/coop/interactables/cremator_occupancy.cpp
+    src/coop/interactables/cremator_intent.cpp
+    src/coop/interactables/cremator_client_guard.cpp
     src/coop/interactables/laptop_sync.cpp
     src/coop/interactables/laptop_tab.cpp
     src/coop/interactables/portable_pc_lid.cpp
@@ -561,6 +569,7 @@ set(VOTVCOOP_SOURCES
     src/coop/player/roster_ledger.cpp
     src/coop/moderation/ban_list.cpp
     src/coop/moderation/ban_list_selftest.cpp
+    src/coop/moderation/cremate.cpp
     src/coop/moderation/moderation.cpp
     src/coop/moderation/seen_players.cpp
     src/coop/server_profile/server_profile.cpp
