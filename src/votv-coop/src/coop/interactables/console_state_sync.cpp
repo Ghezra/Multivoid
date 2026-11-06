@@ -223,8 +223,8 @@ CD::Scalars PayloadToScalars(const coop::net::DeskStatePayload& p) {
     sc.playSelectIndex = p.playSelectIndex;
     sc.dlActiveFrFilter = p.dlActiveFrFilter != 0;
     sc.dlActivePoFilter = p.dlActivePoFilter != 0;
-    sc.remapMin = p.remapMin;
-    sc.remapMax = p.remapMax;
+    sc.remapMin = CD::ClampRemap(p.remapMin);
+    sc.remapMax = CD::ClampRemap(p.remapMax);
     sc.visualizerMode = p.visualizerMode != 0;
     // coordIsPing is never adopted: it is the ping machine's run flag, and adopting true would wake
     // a phantom simulation on the joiner. The wire field stays as diagnostic truth; a joiner's own
@@ -475,8 +475,12 @@ void OnDeskState(const coop::net::DeskStatePayload& p) {
     const CD::Scalars sc = PayloadToScalars(p);
     // A join adopt replaces the WHOLE scalar set, so every painter is owed. This is the one caller
     // entitled to the full chain, and it runs once per adopt.
-    if (CD::WriteScalars(sc, CD::kPaintAll)) {
-        CD::ApplyVisualizerMode(sc.visualizerMode);
+    // updRemap is the one painter that is held back: it writes the screen widget, which can be absent here, so
+    // it runs through the deferral below.
+    if (CD::WriteScalars(sc, CD::kPaintAll & ~CD::kPaintRemap)) {
+        // A desk whose screen widget is not live yet keeps the repaint and the mode until it is (desk_input_sync's tick).
+        coop::desk_input_sync::RepaintRemapOrDefer();
+        coop::desk_input_sync::ApplyVisualizerModeOrDefer(sc.visualizerMode);
         // Prime the input lane's poll baselines, so the seeded values never read as local edges.
         coop::desk_input_sync::PrimeBaselines();
     }

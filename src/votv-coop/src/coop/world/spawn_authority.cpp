@@ -16,6 +16,8 @@
 
 #include "coop/world/spawn_authority.h"
 
+#include "coop/config/config.h"
+#include "coop/config/config_registry.h"
 #include "coop/net/session.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/script_gate.h"
@@ -23,6 +25,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
 
 namespace coop::spawn_authority {
@@ -89,6 +92,16 @@ UE_FACT_FN(kRowReceiveTickTentacleBallsFollower, "spawn_authority", L"tentacleBa
 UE_FACT_FN(kRowReceiveBeginPlaySuperEgger, "spawn_authority", L"superEgger_C", L"ReceiveBeginPlay", Declared);
 UE_FACT_FN(kRowSpwnSuperEgger, "spawn_authority", L"superEgger_C", L"spwn", Declared);
 UE_FACT_FN(kRowCustomEvent5Gamemode, "spawn_authority", L"mainGamemode_C", L"CustomEvent_5", Declared);
+UE_FACT_FN(kRowReceiveTickTickerDeerSpawner, "spawn_authority", L"ticker_deerSpawner_C", L"ReceiveTick", Declared);
+UE_FACT_FN(kRowReceiveTickTickerTreeSpawner, "spawn_authority", L"ticker_treeSpawner_C", L"ReceiveTick", Declared);
+UE_FACT_FN(kRowReceiveTickTickerHexahiveSpawner, "spawn_authority", L"ticker_hexahiveSpawner_C", L"ReceiveTick",
+           Declared);
+UE_FACT_FN(kRowSpawnTickerBeehiveSpawner, "spawn_authority", L"ticker_beehiveSpawner_C", L"spawn", Declared);
+UE_FACT_FN(kRowSpawnBushTickerBushSpawning, "spawn_authority", L"ticker_bushSpawning_C", L"spawnBush", Declared);
+UE_FACT_FN(kRowSphereHitMushroomSpore, "spawn_authority", L"mushroomSpore_C",
+           L"BndEvt__mushroomSpore_Sphere_K2Node_ComponentBoundEvent_0_ComponentHitSignature__DelegateSignature",
+           Declared);
+UE_FACT_FN(kRowTrySpawnHerbOutsideChurch, "spawn_authority", L"outsideChurch_C", L"trySpawnHerb", Declared);
 
 // One row: the facts row a client must not run, and the tag its refusal log carries.
 struct Row {
@@ -190,6 +203,24 @@ constexpr Row kRows[] = {
     // 120-300 s timer), so a client's timer simply ends here. The host rolls and the source-gated catch mirrors the
     // Octa and the egg; the level-placed egg roller is already a row above.
     {&kRowCustomEvent5Gamemode,           "gamemode.CustomEvent_5"},
+
+    // The ambient creatures and fixtures, the host's: the deer and walking tree roll absolute map points and the npc lane
+    // mirrors what the host rolled; the hexahive's field of dirt holes and the beehive's branches cross on the fixture lane.
+    // The three tickers roll in their tick; the beehive ticker's spawn is its looping timer's handler, refused as the
+    // cockroach master's timer rows are.
+    {&kRowReceiveTickTickerDeerSpawner,     "deerSpawner.ReceiveTick"},
+    {&kRowReceiveTickTickerTreeSpawner,     "treeSpawner.ReceiveTick"},
+    {&kRowReceiveTickTickerHexahiveSpawner, "hexahiveSpawner.ReceiveTick"},
+    {&kRowSpawnTickerBeehiveSpawner,        "beehiveSpawner.spawn"},
+    // The plant spawners: each product is a growingPlant_C, which the host's plant_sync sends as PlantState, so a
+    // client's own would stand apart from the host's under another key. The winter bush ticker's timer entry plants
+    // one bush on a random trace (ticker_bushSpawning UG @206, spawnBush). A spore's hit plants a shroom_7 at the hit
+    // point on grass, dirt or gravel (mushroomSpore UG @29); the client's spores are the host's mirrors, and its own
+    // hit would plant beside them. The church's trySpawnHerb rolls the stolas herb while it rains, from its begin play
+    // and its tick (outsideChurch UG @2116).
+    {&kRowSpawnBushTickerBushSpawning,    "bushSpawning.spawnBush"},
+    {&kRowSphereHitMushroomSpore,         "mushroomSpore.SphereHit"},
+    {&kRowTrySpawnHerbOutsideChurch,      "outsideChurch.trySpawnHerb"},
 };
 constexpr int kRowCount = static_cast<int>(std::size(kRows));
 constexpr int kTagBase = 0x53410000;   // 'SA', then the row
@@ -211,7 +242,23 @@ SG::Verdict OnRowPre(const SG::Call& call) {
 
 std::atomic<bool> g_watched{false};
 
+// The drills' red arms leave rows out of the table, so a drill that reads the refusal counters must fail. The creature drill's
+// arm leaves all four ambient rows out, the field drill's the hexahive's and the beehive's. Read once, at the install.
+bool LeftOutByRedArm(const char* tag) {
+    const bool fixtureRow = std::strcmp(tag, "hexahiveSpawner.ReceiveTick") == 0 || std::strcmp(tag, "beehiveSpawner.spawn") == 0;
+    const bool creatureRow = std::strcmp(tag, "deerSpawner.ReceiveTick") == 0 || std::strcmp(tag, "treeSpawner.ReceiveTick") == 0;
+    static const bool creatureArm = coop::config::ResolveEnum(::coop::config_registry::rows::ambient_creature_red) == "no_rows";
+    static const bool fieldArm = coop::config::ResolveEnum(::coop::config_registry::rows::ambient_field_red) == "no_rows";
+    return (creatureArm && (creatureRow || fixtureRow)) || (fieldArm && fixtureRow);
+}
+
 }  // namespace
+
+uint64_t RefusalCount(const char* tag) {
+    for (int i = 0; i < kRowCount; ++i)
+        if (std::strcmp(kRows[i].tag, tag) == 0) return g_refused[i];
+    return 0;
+}
 
 // Refuse only while an active client session exists: the running flag flips true in the session
 // start and false in the stop, which every disconnect path reaches; a bare role gate would bleed the
@@ -226,6 +273,10 @@ void Install(coop::net::Session* session) {
     if (g_watched.exchange(true, std::memory_order_acq_rel)) return;
     int watched = 0;
     for (int i = 0; i < kRowCount; ++i) {
+        if (LeftOutByRedArm(kRows[i].tag)) {
+            UE_LOGI("spawn_authority: red arm -- the row %s is left out", kRows[i].tag);
+            continue;
+        }
         if (SG::WatchName(*kRows[i].row, kTagBase + i, &OnRowPre, nullptr)) {
             ++watched;
         } else {

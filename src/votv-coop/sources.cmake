@@ -132,6 +132,7 @@ set(VOTVCOOP_SOURCES
     src/coop/items/order_queue_sync.cpp
     src/coop/world/firefly_sync.cpp
     src/coop/world/spawn_authority.cpp
+    src/coop/world/plant_gate.cpp
     src/coop/world/explosion_sync.cpp
     src/coop/world/explosion_request.cpp
     src/coop/world/explosion_request_atv.cpp
@@ -166,11 +167,13 @@ set(VOTVCOOP_SOURCES
     src/coop/props/grab_observer.cpp
     src/coop/player/item_activate.cpp
     src/coop/player/player_damage.cpp
+    src/coop/player/puppet_cremation.cpp
     src/coop/player/player_hit.cpp
     src/coop/player/hit_intent.cpp
     src/coop/player/hit_judge.cpp
     src/coop/player/ragdoll_gate.cpp
     src/coop/player/death_revive.cpp
+    src/coop/player/shelter_spot.cpp
     src/coop/player/revive_protection.cpp
     src/coop/player/run_end_travel.cpp
     src/coop/player/skin_preview.cpp
@@ -198,6 +201,10 @@ set(VOTVCOOP_SOURCES
     src/coop/creatures/geom_octa_sync.cpp
     src/coop/creatures/geom_octa_relay.cpp
     src/coop/creatures/roach_sync.cpp
+    src/coop/creatures/ambient_creature_sync.cpp
+    src/coop/creatures/walker_sync.cpp
+    src/coop/world/ambient_births.cpp
+    src/coop/world/ambient_fixture_sync.cpp
     src/coop/creatures/owner_entity_sync.cpp
     src/coop/world/world_actor_sync.cpp
     src/coop/world/world_actor_mirror.cpp
@@ -218,8 +225,6 @@ set(VOTVCOOP_SOURCES
     src/ue_wrap/actors/food.cpp
     src/coop/interactables/kitchen_sync.cpp
     src/coop/world/media_device_sync.cpp
-    src/coop/creatures/ambient_creature_sync.cpp
-    src/coop/creatures/ambient_fixture_sync.cpp
     src/coop/player/backrooms_guard.cpp
     src/coop/world/plant_sync.cpp
     src/coop/props/prop_fire_sync.cpp
@@ -237,6 +242,8 @@ set(VOTVCOOP_SOURCES
     src/coop/world/world_sound_sync.cpp
     src/ue_wrap/world/media_device.cpp
     src/ue_wrap/devices/kitchen.cpp
+    src/coop/props/food_tick_gate.cpp
+    src/coop/world/plant_edit_gate.cpp
     src/coop/props/prop_record_refresh.cpp
     src/coop/props/prop_can_state.cpp
     src/coop/props/pack_trash_intent.cpp
@@ -279,6 +286,7 @@ set(VOTVCOOP_SOURCES
     src/coop/props/prop_park.cpp
     src/coop/props/rider_hold.cpp
     src/coop/world/weather_sync.cpp
+    src/coop/world/sus_hole_intent.cpp
     src/coop/world/weather_fog.cpp
     src/coop/world/weather_lightning.cpp
     src/coop/world/weather_rain.cpp
@@ -626,6 +634,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_playerdmg.cpp
     src/harness/autotest/death_state_probe.cpp
     src/harness/autotest/autotest_death.cpp
+    src/harness/autotest/death_badsun_arm.cpp
     src/harness/autotest/autotest_puppetframe.cpp
     src/harness/autotest/autotest_ragdoll.cpp
     src/harness/autotest/autotest_ragdoll_spawn_probe.cpp
@@ -683,6 +692,9 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_atv_host.cpp
     src/harness/autotest/autotest_atv_riders.cpp
     src/harness/autotest/autotest_container_gaps.cpp
+    src/harness/autotest/peer_signal.cpp
+    src/harness/autotest/meet.cpp
+    src/harness/autotest/autotest_plant_gate.cpp
     src/harness/autotest/autotest_saveui.cpp
     src/ui/input_focus.cpp
     src/harness/screenshot.cpp

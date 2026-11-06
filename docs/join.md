@@ -113,9 +113,15 @@ identity and pushes it right after the Join, before the world exists, so it is s
 the save object in the one window before the game materialises the world from it
 (`coop/items/player_inventory_sync`). The join boot arms that substitution for the load it is
 about to make, and the placement at the world appearance uses the profile's position once, or
-the start point on a first join. The same position is written to the save object's
-`playerTransform`, which on a client still held the host's: the game's own check for a player
-behind geometry sends them there.
+the start point on a first join: the KPP gate while the world is a fresh game (day 0 to 2, where a
+new game's host starts), and from day 3 on the floor beside the base's bed (`coop/player/shelter_spot`,
+the spot a revive wakes on too; the KPP gate when no bed is found). The day is read when the
+start point is placed, so the rule follows the world the joiner stands in. The bed is one of the
+save's props, so the start point is placed on the tick the client announces its world ready,
+before its pose streams. The profile's position is
+written to the save object's `playerTransform`, which on a client still held the host's: the
+game's own check for a player behind geometry sends them there. For the start point the save gets
+the KPP, since the bed can only be found once the world exists.
 
 ### 4. World load and quiescence
 
@@ -244,9 +250,9 @@ host's: `mainGamemode.saveAnim` called on a client's gamemode showed nothing, wh
 `[V]` (a two-peer run, the host saving). While the game counts an event as running, `mainGamemode.save`
 shows the host the game's error and returns without a write, and with `bypassEvent` it writes the slot
 without gathering the world. The notice watches `save` for the first and hears the write for the second, and
-both lines say the host tried to save but the game cannot save during an event. `[V]`
+both lines say the host tried to save but the game cannot save during an event. `[V]` A save that an earlier test of `save` refuses (a dream, the Custom mode, mid air), pressed or the game's own autosave, sends nothing `[?]`.
 `harness/autotest/autotest_save_notice.cpp`: the game's own `save` on the host with no event, with one set by
-`lib_C.setEvent`, with `bypassEvent` during it, and after it; each read on both peers.
+`lib_C.setEvent`, with `bypassEvent` during it, and after it; each read on both peers. A write made while the event state cannot be read says the save may not have taken `[?]` (no drill makes the state unreadable).
 
 On the P2P route a rejoin also depends on something the host does not think about: its own
 registration with the signaling relay, which is one long-lived TCP connection that carries no
@@ -451,7 +457,7 @@ and it is the reason the relay's own silence stays.
 | `SnapshotBegin`, `PropSpawn`, `PropSnapPos`, `PropDestroy`, `SnapshotComplete` | host to one client | the bracket; a `PropSnapPos` carries the host's drive context for its prop, and the client drops one older than a drive END still on its copy `[?]` |
 | `EventSnapshot` | host to one client | one per in-flight event |
 | `ChatLine` | host to one client | the retained chat record, one line each |
-| `WorldSaved` | host to all | the host saved its world or tried to: saved, or an event was running; the host's count of its attempts this session |
+| `WorldSaved` | host to all | the host saved its world or tried to: saved, an event was running, or written with the event state unreadable ("may not have taken"); the host's count of its attempts this session |
 
 Every state lane adds its own kind for step 5.4; the family routers in `coop/dispatch/` own them.
 
@@ -475,7 +481,7 @@ not raise the game's own active-event counter, whose save and pause blocks the m
 
 | Limit | Evidence |
 |---|---|
-| A save the game refuses for another reason (mid-air, a bad mode, a dream) reaches no player as a line, and during an event reads as the event's refusal: those tests run first in `save` and the notice reads only the event | `[RD]` the script of `mainGamemode_C.save` |
+| A save the game refuses for another reason (a dream, the Custom mode, mid air) reaches no player as a line: those tests run before the event test in `save`, the notice reads them in the game's order (and logs which one refused), and the event is blamed only when it is the test that refuses | `[RD]` the script of `mainGamemode_C.save`, the gate order; the live firing `[?]` |
 | The transfer runs at a rate the mod measures per connection, climbing from about 145 KB/s to whatever the link acknowledges carrying; the transport itself contributes no bandwidth estimation, so a link that genuinely is slow is still a long download | `[V]` `coop/net/send_rate_control`, `coop/net/connection_tuning` |
 | The world load is capped by one absolute deadline on the probe; a load past it announces into a world that may still be churning, logged as degraded. The wait for the world's save replay has the loading phase's budget on a join, and 120 s on a world change | `[V]` `coop/session/world_load_episode` |
 | Keyless save-loaded objects are matched by position; the index-to-id sidecar is built and transferred, and its bind is off by default, behind the `save_identity_bind` developer flag | `[V]` `coop/config/config_registry_rows.inc`, `coop/props/save_identity_bind` |

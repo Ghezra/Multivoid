@@ -24,8 +24,6 @@ void* HoseClass();
 // Every live hose of this world.
 void ListHoses(std::vector<void*>& out);
 
-bool IsHose(void* actor);
-
 // Laying: its tick still runs, adding points as this peer's player walks. A finished hose's tick is off.
 bool IsLaying(void* hose);
 

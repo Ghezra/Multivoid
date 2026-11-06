@@ -161,6 +161,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::PropActCommit:
     case ReliableKind::ContainerActRequest:
     case ReliableKind::ContainerActCommit:
+    case ReliableKind::SusHoleIntent:
     case ReliableKind::CameraToggleIntent:
     case ReliableKind::LaptopTabReport:
     case ReliableKind::PropDriveEnd:
@@ -265,6 +266,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::SwingerRestPose:
     case ReliableKind::GeomOctaEvent:
     case ReliableKind::DevLoadFiller:
+    case ReliableKind::VentCrawlState:
         return ClientAuthorship::Host;
     }
     return ClientAuthorship::NotAKind;  // a byte value that names no kind: refused like Host

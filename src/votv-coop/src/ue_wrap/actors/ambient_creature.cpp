@@ -2,6 +2,7 @@
 
 #include "ue_wrap/actors/ambient_creature.h"
 
+#include "ue_wrap/actors/save_record.h"
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/core/component_calls.h"
 #include "ue_wrap/core/kismet_timer.h"
@@ -34,8 +35,20 @@ void Collect(const wchar_t* className, std::vector<void*>& out) {
     }, &out);
 }
 
+// Property offsets on the instance's class, kept per class object.
+R::InstanceOffset g_staticMesh{L"StaticMesh"};
+R::InstanceOffset g_rend{L"rend"};
+R::InstanceOffset g_hiveKey{L"hiveKey"};
+R::InstanceOffset g_hive{L"hive"};
+
 void* ComponentNamed(void* actor, const wchar_t* field) {
     const int32_t off = R::FindPropertyOffset(R::ClassOf(actor), field);
+    if (off < 0) return nullptr;
+    return *reinterpret_cast<void**>(static_cast<uint8_t*>(actor) + off);
+}
+
+void* ComponentAt(void* actor, R::InstanceOffset& field) {
+    const int32_t off = field.Of(actor);
     if (off < 0) return nullptr;
     return *reinterpret_cast<void**>(static_cast<uint8_t*>(actor) + off);
 }
@@ -131,21 +144,14 @@ ViewCalls g_view;
 
 }  // namespace
 
-void ListSpawners(std::vector<void*>& out) {
-    Collect(L"ticker_deerSpawner_C", out);
-    Collect(L"ticker_treeSpawner_C", out);
-    Collect(L"ticker_hexahiveSpawner_C", out);
-    Collect(L"ticker_susHoleSpawner_C", out);
-    Collect(L"ticker_mannequinSpawner_C", out);
-    Collect(L"ticker_bushSpawning_C", out);
-}
+void ListSpawners(std::vector<void*>& out) { Collect(L"ticker_mannequinSpawner_C", out); }
 
 void ListDeer(std::vector<void*>& out) { Collect(P::name::NpcClass_Deer, out); }
 
 void ListTrees(std::vector<void*>& out) { Collect(P::name::NpcClass_WalkingTree, out); }
 
 bool ReadTree(void* tree, float& scale, bool& landed) {
-    void* mesh = ComponentNamed(tree, L"StaticMesh");
+    void* mesh = ComponentAt(tree, g_staticMesh);
     if (!mesh) return false;
     void* scaleFn = R::FindDispatchFunctionCached(R::ClassOf(mesh), L"K2_GetComponentScale");
     void* visibleFn = R::FindDispatchFunctionCached(R::ClassOf(mesh), L"IsVisible");
@@ -159,7 +165,7 @@ bool ReadTree(void* tree, float& scale, bool& landed) {
 }
 
 void WriteTree(void* tree, float scale, bool landed) {
-    void* mesh = ComponentNamed(tree, L"StaticMesh");
+    void* mesh = ComponentAt(tree, g_staticMesh);
     if (!mesh) return;
     if (void* fn = R::FindDispatchFunctionCached(R::ClassOf(mesh), L"SetWorldScale3D")) {
         ParamFrame f(fn);
@@ -169,7 +175,7 @@ void WriteTree(void* tree, float scale, bool landed) {
         }
     }
     SetVisible(mesh, landed);
-    SetVisible(ComponentNamed(tree, L"rend"), false);
+    SetVisible(ComponentAt(tree, g_rend), false);
 }
 
 bool Destroy(void* creature) {
@@ -191,14 +197,6 @@ void ParkWalker(void* walker) {
 }
 
 void UnparkWalker(void* walker) { engine::SetActorTickEnabled(walker, true); }
-
-bool ReadWalkerStanding(void* walker, bool& standing) {
-    void* anim = WalkerAnim(walker);
-    const uint8_t* b = anim ? g_stand.At(anim) : nullptr;
-    if (!b) return false;
-    standing = (*b & g_stand.mask) != 0;
-    return true;
-}
 
 void WriteWalkerStanding(void* walker, bool standing) {
     void* anim = WalkerAnim(walker);
@@ -316,18 +314,28 @@ void* SpawnFixture(bool branch, const FVector& at, const FRotator& rot) {
     return a;
 }
 
-bool HolesRoll() {
-    void* gi = engine::GetWorldContext();
-    if (!gi || !R::IsLive(gi) || R::ClassNameOf(gi) != P::name::GameInstanceClass) return false;
-    static void* sCls = nullptr;
-    static int32_t sOff = -1;
-    if (R::ClassOf(gi) != sCls) {
-        sCls = R::ClassOf(gi);
-        sOff = R::FindPropertyOffset(sCls, L"gamemode");
-    }
-    if (sOff < 0) return false;
-    const uint8_t mode = static_cast<uint8_t*>(gi)[sOff];
-    return mode == 0 || mode == 1;
+bool ReadBranch(void* branch, std::wstring& hiveKey, void*& hive) {
+    const int32_t keyOff = g_hiveKey.Of(branch);
+    const int32_t hiveOff = g_hive.Of(branch);
+    if (keyOff < 0 || hiveOff < 0) return false;
+    hiveKey = save_record::ReadFNameAt(branch, keyOff);
+    void* nest = *reinterpret_cast<void**>(static_cast<uint8_t*>(branch) + hiveOff);
+    hive = nest && R::IsLive(nest) ? nest : nullptr;
+    return true;
+}
+
+bool BindBranchNest(void* branch, void* nest) {
+    const int32_t hiveOff = g_hive.Of(branch);
+    if (hiveOff < 0 || !nest) return false;
+    engine::WriteObjectField(branch, static_cast<size_t>(hiveOff), nest);
+    return component_calls::CallParamlessNamed(branch, L"getBee");
+}
+
+bool ReleaseBranchNest(void* branch) { return component_calls::CallParamlessNamed(branch, L"touched"); }
+
+void DropBranchNest(void* branch) {
+    const int32_t hiveOff = g_hive.Of(branch);
+    if (hiveOff >= 0) engine::WriteObjectField(branch, static_cast<size_t>(hiveOff), nullptr);
 }
 
 bool HoleSpot(const FVector& point, FVector& at, FRotator& rot) {
@@ -345,24 +353,6 @@ bool HoleSpot(const FVector& point, FVector& at, FRotator& rot) {
     const FVector& n = hit.normal;
     rot = FRotator{std::atan2(n.Z, std::sqrt(n.X * n.X + n.Y * n.Y)) * 57.29578f, std::atan2(n.Y, n.X) * 57.29578f, 0.f};
     return true;
-}
-
-bool PauseBeehiveTimers(bool paused) {
-    std::vector<void*> tickers;
-    Collect(L"ticker_beehiveSpawner_C", tickers);
-    bool settled = !tickers.empty();
-    for (void* t : tickers) {
-        if (paused) kismet_timer::Pause(t, L"Spawn");
-        else kismet_timer::UnPause(t, L"Spawn");
-        settled = settled && kismet_timer::IsPaused(t, L"Spawn") == paused;
-    }
-    return settled;
-}
-
-bool BeehiveTimerPaused() {
-    std::vector<void*> tickers;
-    Collect(L"ticker_beehiveSpawner_C", tickers);
-    return !tickers.empty() && kismet_timer::IsPaused(tickers[0], L"Spawn");
 }
 
 }  // namespace ue_wrap::ambient_creature

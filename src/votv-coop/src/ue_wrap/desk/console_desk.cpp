@@ -92,8 +92,8 @@ FieldSlot g_fields[] = {
 // paints, and never from a periodic caller. That is why callers name PAINTERS rather than taking
 // the whole chain: a cooldown charge, which ships every 250 ms while a peer holds the scan, paints
 // nothing, since no verb below reads coord_cooldown. Each verb's scalar dependencies, read off its
-// bytecode, are on its row in the array; none of the nine reads a SIM output, which is why
-// WriteSimOutputs runs none of them.
+// bytecode, are on its row in the array; none of them reads a SIM output (updRemap reads only
+// remapValue), which is why WriteSimOutputs runs none of them.
 struct RefreshSlot { const wchar_t* name; void* fn; };
 // ORDER IS THE CONTRACT: slot i is Painter bit i (console_desk.h). A caller selects verbs by those
 // bits, so re-ordering this array silently re-points every selection.
@@ -113,6 +113,8 @@ constexpr size_t kRefreshCount = sizeof(g_refresh) / sizeof(g_refresh[0]);
 static_assert(kPaintAll == (1u << kRefreshCount) - 1u,
               "a painter verb was added or removed without its Painter bit");
 constexpr size_t kRefreshCoordCoords = 8;  // kPaintCoordCoords' slot, dispatched alone below
+constexpr size_t kRefreshRemap = 9;        // kPaintRemap's slot, dispatched alone by RepaintRemap
+static_assert(kPaintRemap == (1u << kRefreshRemap), "kRefreshRemap is not kPaintRemap's slot");
 void* g_writeToCoordLogFn = nullptr;  // writeToCoordLog_2 (the LIVE log writer)
 
 // The signal-catch consume surface. The signal-spawn struct's member offsets come from the
@@ -245,11 +247,12 @@ void ResolvePass() {
         UE_LOGI("console_desk: offsets[2/2] -- %s", dump);
         int fns = 0;
         for (auto& r : g_refresh) if (r.fn) ++fns;
-        UE_LOGI("console_desk: resolved -- 19/19 fields, %d/9 refresh verbs, "
+        constexpr size_t kFieldCount = sizeof(g_fields) / sizeof(g_fields[0]);
+        UE_LOGI("console_desk: resolved -- %zu/%zu fields, %d/%zu refresh verbs, "
                 "writeToCoordLog_2=%s, widget=%s, "
                 "catch sig/row/dld=0x%X/0x%X/0x%X rowName/mesh=0x%X/0x%X "
                 "form/ping=%s/%s",
-                fns,
+                kFieldCount, kFieldCount, fns, kRefreshCount,
                 g_writeToCoordLogFn ? "yes" : "NO",
                 g_offWidget >= 0 ? "yes" : "NO",
                 g_offCoordSignalData, g_offDLRow, g_offDLData,
@@ -706,9 +709,21 @@ bool ApplyPlayVolumeEffects(int32_t value) {
 bool ApplyVisualizerMode(bool spectrogram) {
     void* d = Instance();
     if (!d || !g_setCanvasFn || !g_endCanvasFn) return false;
+    // setCanvas dereferences the desk's screen widget (its visualizer images); with the widget not
+    // live the verb would write the flag and skip the picture, so the caller is told to try later.
+    if (!AtlasWidget()) return false;
     ue_wrap::ParamFrame f(g_setCanvasFn);
     if (!f.valid() || !f.Set<bool>(L"visualizerMode", spectrogram) || !ue_wrap::Call(d, f)) return false;
     return ue_wrap::component_calls::CallParamless(d, g_endCanvasFn);
+}
+
+bool RepaintRemap() {
+    void* d = Instance();
+    void* fn = g_refresh[kRefreshRemap].fn;
+    // updRemap writes the screen widget's SARV text and the visualizer materials: refused while that
+    // widget is not live (the Blueprint would log a None access and paint nothing).
+    if (!d || !fn || !AtlasWidget()) return false;
+    return ue_wrap::component_calls::CallParamless(d, fn);
 }
 
 bool PlayScanEffects() {

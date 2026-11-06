@@ -6,9 +6,11 @@
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
 #include "coop/net/wire_key_util.h"
+#include "coop/player/hand_item.h"
 #include "coop/player/players_registry.h"
 #include "coop/player/remote_player.h"
 #include "coop/props/prop_sound.h"
+#include "coop/props/remote_prop.h"
 #include "coop/session/net_pump.h"
 
 #include "ue_wrap/actors/grime_spill.h"
@@ -26,6 +28,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace coop::spill_sync {
@@ -57,6 +60,14 @@ struct Flight {
     bool held = false;   // CLIENT: the liquid that spilled it was in this player's hand
 };
 std::vector<Flight> g_flights;
+// HOST: a projectile born of a prop another player's hold drives here. That player's own copy spills it and sends its
+// intent, so the host's copy of the same spill is not the host's to send.
+struct ForeignFlight {
+    ue_wrap::CachedObjRef projectile;
+    int slot = 0;
+    std::wstring cls;   // the held prop's class, for the removal's line
+};
+std::vector<ForeignFlight> g_foreign;
 // A bottle's pour, seen as its projectile is born: the bottle, and the projectile for where it was if the bottle ended.
 struct Pour {
     ue_wrap::CachedObjRef bottle, projectile;
@@ -68,6 +79,8 @@ float g_pourSize = -1.f;    // grimeProjectile_C's default size: a break leaves 
 struct Landed {
     ue_wrap::CachedObjRef decal;
     bool held = false;
+    int foreignSlot = 0;     // HOST: > 0 when the projectile was a foreign flight: the slot whose hold drove its prop
+    std::wstring foreignCls;
 };
 std::vector<Landed> g_landed;
 
@@ -89,9 +102,13 @@ std::vector<Payload> g_inbox, g_outbox;
 uint32_t g_sent = 0, g_made = 0, g_refused = 0, g_removed = 0;
 std::atomic<uint32_t> g_splashes{0}, g_poursHeard{0}, g_poursSent{0};
 
+// A host is live while its session runs, with or without a client: the spills it records are its world's, and a
+// client that joins later is sent them (measured: a spill made while the only client was away never reached it).
 coop::net::Session* Live() {
     coop::net::Session* s = g_session.load(std::memory_order_acquire);
-    return s && s->connected() ? s : nullptr;
+    if (!s) return nullptr;
+    if (s->role() == coop::net::Role::Host) return s->running() ? s : nullptr;
+    return s->connected() ? s : nullptr;
 }
 
 bool Finite3(const float* v, float bound) {
@@ -141,6 +158,18 @@ bool HeldHere(void* actor) {
     return actor && me && E::ReadMainPlayerGrabState(me, gs) && (gs.holdingActor == actor || gs.grabbingActor == actor);
 }
 
+// The slot of another player whose hold this copy is: a prop its hold drives through the pose stream, or the
+// mirror of the item in its hand (measured: a client's cup in hand spilled on the host through the hand mirror, which
+// no pose drive names). 0 when no other player holds it. Game thread, reads only.
+int RemoteHolderOf(void* source) {
+    if (!source) return 0;
+    const int driving = coop::remote_prop::DrivingSlotOf(source);
+    if (driving > 0) return driving;
+    for (uint8_t s = 1; s < coop::net::kMaxPeers; ++s)
+        if (coop::hand_item::MirrorActorForSlot(s) == source) return s;
+    return 0;
+}
+
 // Inside FinishSpawningActor: reads and stamps only, no engine call.
 void OnFinishSpawnPost(void* /*context*/, void* source, void* spawned) {
     if (!g_live.load(std::memory_order_relaxed) || !spawned) return;
@@ -155,7 +184,19 @@ void OnFinishSpawnPost(void* /*context*/, void* source, void* spawned) {
             p.held = HeldHere(source);
             g_pours.push_back(p);
         }
-        if (g_host.load(std::memory_order_relaxed) || g_flights.size() >= kCap) return;
+        if (g_host.load(std::memory_order_relaxed)) {
+            // The holder authors this spill through its intent; the host's copy only flew because the hold turned it over.
+            const int slot = RemoteHolderOf(source);
+            if (slot > 0 && g_foreign.size() < kCap) {
+                ForeignFlight ff;
+                ff.projectile.Set(spawned);
+                ff.slot = slot;
+                ff.cls = R::ClassNameOf(source);
+                g_foreign.push_back(std::move(ff));
+            }
+            return;
+        }
+        if (g_flights.size() >= kCap) return;
         Flight f;
         f.projectile.Set(spawned);
         f.held = HeldHere(source);
@@ -167,7 +208,19 @@ void OnFinishSpawnPost(void* /*context*/, void* source, void* spawned) {
     l.decal.Set(spawned);
     for (const Flight& f : g_flights)
         if (f.projectile.Is(source)) l.held = f.held;
+    for (const ForeignFlight& f : g_foreign)
+        if (f.projectile.Is(source)) {
+            l.foreignSlot = f.slot;
+            l.foreignCls = f.cls;
+        }
     g_landed.push_back(l);
+}
+
+// A decal that was never this world's own: gone, and its going is no wipe of this peer's.
+void RemoveOwn(void* decal) {
+    coop::grime_sync::ForgetDecal(decal);
+    E::DestroyActor(decal);
+    ++g_removed;
 }
 
 void* Body(int slot) {
@@ -177,13 +230,14 @@ void* Body(int slot) {
 }
 
 void Broadcast(coop::net::Session& s, void* decal, const Payload& p) {
-    if (!s.SendReliable(coop::net::ReliableKind::SpillState, &p, sizeof(p))) return;
-    ++g_sent;
+    // The record first: it is the host's world, replayed to every joiner; the send is only its delivery to the
+    // clients connected now, and with none connected it fails.
     if (g_spills.size() >= kMaxSpills) g_spills.erase(g_spills.begin());
     Sent row;
     row.decal.Set(decal);
     row.p = p;
     g_spills.push_back(row);
+    if (s.SendReliable(coop::net::ReliableKind::SpillState, &p, sizeof(p))) ++g_sent;
     UE_LOGI("spill: a %ls landed at (%.0f %.0f %.0f)", coop::net::StringFromWireKey(p.cls).c_str(), p.loc[0], p.loc[1],
             p.loc[2]);
 }
@@ -225,6 +279,14 @@ void HostTick(coop::net::Session& s) {
     std::vector<Landed> landed;
     landed.swap(g_landed);
     for (const Landed& l : landed) {
+        if (l.foreignSlot > 0) {   // the host's copy of a prop another player holds: that player's intent makes the spill
+            if (void* d = l.decal.Get()) {
+                RemoveOwn(d);
+                UE_LOGI("spill: the host's copy of slot %d's held %ls spilled -- removed, the holder's intent makes it",
+                        l.foreignSlot, l.foreignCls.c_str());
+            }
+            continue;
+        }
         GS::Spill sp;
         if (void* d = l.decal.Get(); d && GS::ReadSpill(d, sp)) {
             Payload p = ToWire(sp);
@@ -267,6 +329,7 @@ void HostTick(coop::net::Session& s) {
         Broadcast(s, d, out);
     }
     g_flights.clear();   // the host flies its own: nothing to remember of them
+    for (auto it = g_foreign.begin(); it != g_foreign.end();) it = it->projectile.Get() ? std::next(it) : g_foreign.erase(it);
     for (auto it = g_spills.begin(); it != g_spills.end();) {
         if (it->decal.Get()) {
             ++it;
@@ -292,9 +355,7 @@ void ClientTick(coop::net::Session& s) {
             g_outbox.push_back(ToWire(sp));
             UE_LOGI("spill: this player spilled a %ls -- the host makes it", sp.className.c_str());
         }
-        coop::grime_sync::ForgetDecal(d);   // not a wipe: the decal was never this world's
-        E::DestroyActor(d);
-        ++g_removed;
+        RemoveOwn(d);
     }
     for (auto it = g_flights.begin(); it != g_flights.end();) it = it->projectile.Get() ? std::next(it) : g_flights.erase(it);
     if (!coop::net_pump::HasAnnouncedWorldReady()) return;
@@ -357,6 +418,7 @@ void Reset() {
     g_pours.clear();
     g_pourIntents.clear();
     g_flights.clear();
+    g_foreign.clear();
     g_landed.clear();
     g_spills.clear();
     g_copies.clear();

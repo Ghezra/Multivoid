@@ -88,7 +88,11 @@ which flickers as the body animates. The game leaves a real player's two body me
 and drew that silhouette on every other peer's screen, so its spawn switches both off
 (`ue_wrap/actors/puppet_spawn`) `[V]` (`harness/autotest/autotest_beam_look.cpp`: the flags of both
 bodies logged side by side, and the host's captures of a client's beam on the floor, the silhouette
-there before and gone after). A carried trash clump is driven to the puppet's hand on
+there before and gone after). An empty battery switches the light off in the game's `ReceiveTick` with no
+function call to observe, so each tick the sender compares the game's flashlight bool with what it last
+sent, and the other peer's puppet goes dark too `[V]` (`harness/autotest/autotest_flash_battery.cpp`,
+each peer's battery drained in turn).
+A carried trash clump is driven to the puppet's hand on
 the host each tick (`coop/player/puppet_carry_drive`); a held physics prop is on the props lane.
 
 ### Name, colour and nameplate
@@ -179,7 +183,7 @@ this machine, so a false death of the copy reaches the same travel: that one is 
 the revive can do, and this machine's player is not revived for it; only the black screen the
 copy's chain put up is cleared.
 
-A refused run-ending is answered with a revive in its place: the position at the base gate,
+A refused run-ending is answered with a revive in its place: a floor point beside the base's bed (the base gate when no bed or NavMesh point is found, which is open sky `[?]`),
 health, the dead flag, the ragdoll, the pause an ending set, and the screen artifacts the travel
 used to dispose of -- the damage quadrants, the red overlay and the blood-loss effect
 (`coop/player/death_revive`). A host that dies is revived the same way, so a host death does not
@@ -212,7 +216,8 @@ starter items as copies under fresh keys, because the game's key index holds one
 key and a copy under its source's key aliases the original the moment either is dropped. The
 same profile carries the player's vitals (health, food, sleep, the flashlight charge, the food
 tolerances and the buffs), which the game keeps in place on that same save object, and where
-the player stood: a first join starts from the game's own defaults at the start point, a
+the player stood: a first join starts from the game's own defaults at the start point (the KPP gate in a fresh game, day 0 to 2; beside the
+base's bed from day 3), a
 returning player gets their numbers back and appears at the last spot they were standing on
 (on the ground, not ragdolled, not seated: a position read while driving the ATV is not a place
 a body can be put back), and one who left dead starts a fresh life. The vitals and the position ride a change of the items at once and otherwise go every
@@ -328,7 +333,7 @@ dead peer through the ragdoll bit of its next pose.
 |---|---|
 | A remote player casts no shadow from any light, as a real player's own body casts none on its own screen: the game turns that off for a player, and a puppet follows it so its flashlight is not shadowed by its own body | `[V]` `ue_wrap/actors/puppet_spawn` sets `SetCastShadow(false)` on both body meshes; `harness/autotest/autotest_beam_look.cpp` |
 | No chat line announces a death | `[V]` `coop/comms/chat_sync` carries no such kind |
-| After a revive the player can drift horizontally from the base gate, metres over seconds; the cause is unmeasured | `[V]` `harness/autotest/death_state_probe.cpp` reads the position back |
+| After a revive the player can drift horizontally from where it woke, metres over seconds; the cause is unmeasured | `[V]` `harness/autotest/death_state_probe.cpp` reads the position back |
 | Damage a puppet takes on another machine is dropped by design; only the victim's own contacts count | `[V]` `coop/player/player_damage` |
 | A third-party bundle pak cannot be discovered: bundle membership is a fixed table | `[V]` `coop/player/skin_registry` |
 | A ban is by player id and, on a direct link, by address: a banned player with a new identity key who comes from a new address or through a relay is a new player, and an address ban refuses whoever shares that address | `[V]` `coop/moderation/ban_list` |

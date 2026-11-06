@@ -40,6 +40,8 @@
 #include "coop/interactables/atv_sync.h"
 #include "coop/interactables/drone_sync.h"
 #include "coop/world/event_cue_sync.h"
+#include "coop/creatures/ambient_creature_sync.h"
+#include "coop/world/ambient_fixture_sync.h"
 #include "coop/comms/chat_sync.h"
 #include "coop/interactables/upgrade_sync.h"
 #include "coop/interactables/turbine_sync.h"
@@ -49,8 +51,7 @@
 #include "coop/world/power_panel.h"
 #include "coop/world/sky_sync.h"
 #include "coop/interactables/window_sync.h"
-#include "coop/creatures/ambient_creature_sync.h"
-#include "coop/creatures/ambient_fixture_sync.h"
+#include "coop/creatures/walker_sync.h"
 #include "coop/props/prop_fire_sync.h"
 #include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
@@ -62,6 +63,7 @@
 #include "coop/world/media_device_sync.h"  // every radio again
 #include "coop/interactables/kitchen_sync.h"  // the machines not at their defaults
 #include "coop/props/prop_food_sync.h"  // every world food's condition again
+#include "coop/world/plant_sync.h"
 #include "coop/props/prop_drive_host.h"    // HOST: the props a hook drags, streamed while they move
 #include "coop/interactables/verb_lanes.h"  // the interactable lanes on a device's own verbs, at the script gate
 #include "coop/creatures/kerfus_lanes.h"  // the plain kerfur: its brain on the host, its state and drive, its verbs
@@ -81,6 +83,8 @@
 #include "coop/items/hook_anchor.h"
 #include "coop/world/event_active_sync.h"  // the native activeEvents registry probe
 #include "coop/world/creature_event_relay.h"  // the host's creature events, carried to every client's count
+#include "coop/world/spill_sync.h"
+#include "coop/world/vent_crawler_sync.h"
 #include "coop/world/weather_sync.h"
 #include "ue_wrap/core/log.h"
 
@@ -137,18 +141,16 @@ void ConnectReplayForSlot(int slot) {
     coop::desk_snd_fx::QueueConnectBroadcastForSlot(slot);  // desk loop-sound ground truth (a mid-loop joiner gets the ON)
     coop::physmods_sync::QueueConnectBroadcastForSlot(slot);  // canonical module array (ground truth over save drift)
     coop::media_device_sync::QueueConnectBroadcastForSlot(slot);  // every radio again
-    coop::ambient_creature_sync::QueueConnectBroadcastForSlot(slot);  // every tree again
-    coop::ambient_fixture_sync::QueueConnectBroadcastForSlot(slot);  // every hole and branch again
-    coop::plant_sync::QueueConnectBroadcastForSlot(slot);  // every plant again
+    coop::walker_sync::QueueConnectBroadcastForSlot(slot);  // every angry walker again
     coop::prop_fire_sync::QueueConnectBroadcastForSlot(slot);  // every burning prop again
     coop::ground_hose_sync::QueueConnectBroadcastForSlot(slot);  // every hose again
     coop::woodchipper_sync::QueueConnectBroadcastForSlot(slot);  // every woodchipper again
     coop::garbage_bin_sync::QueueConnectBroadcastForSlot(slot);  // every garbage container again
     coop::atv_host_sync::QueueConnectBroadcastForSlot(slot);  // every ATV's host state again
     coop::build_sync::QueueConnectBroadcastForSlot(slot);  // every nail and wall again
-    coop::spill_sync::QueueConnectBroadcastForSlot(slot);  // every live spill again
     coop::kitchen_sync::QueueConnectBroadcastForSlot(slot);  // the machines not at their defaults
     coop::props::prop_food_sync::QueueConnectBroadcastForSlot(slot);  // every world food's condition again
+    coop::plant_sync::QueueConnectBroadcastForSlot(slot);  // every plant again
     coop::drive_sync::QueueConnectBroadcastForSlot(slot);  // slot lines
     coop::drive_payload_sync::QueueConnectBroadcastForSlot(slot);  // every drive row that differs from its class default
     coop::drive_rack_sync::QueueConnectBroadcastForSlot(slot);  // rack canonicals (AFTER the payloads -- the shipped seed order, all on the Default lane)
@@ -207,10 +209,14 @@ void ConnectReplayForSlot(int slot) {
     // The cue lane's late-join answer: re-send the live cosmetic cue emitters, so a mid-shower
     // joiner replays the emitter.
     coop::event_cue_sync::QueueConnectBroadcastForSlot(slot);
+    coop::ambient_creature_sync::QueueConnectBroadcastForSlot(slot);  // every tree again
+    coop::ambient_fixture_sync::QueueConnectBroadcastForSlot(slot);  // every hole and branch again
     // The chat lane's late-join answer: the lobby's chat record, oldest first, one message per
     // line. It lands retained on the joiner: arriving in a lobby must not replay a conversation
     // you were not in across your screen; it is there when you open the chat.
     coop::chat_sync::QueueConnectBroadcastForSlot(slot);
+    coop::spill_sync::QueueConnectBroadcastForSlot(slot);  // every live spill again
+    coop::vent_crawler_sync::QueueConnectBroadcastForSlot(slot);  // the vent crawl's state, when one began in this world
 }
 
 }  // namespace coop::subsystems

@@ -50,6 +50,11 @@ struct Scalars {
   bool  visualizerMode = false;  // visualizerMode, graph or spectrogram (ApplyVisualizerMode draws it)
 };
 
+// The range the game's own updRemap clamps both remap bounds to. A wire value is clamped to it at the
+// receive edge, so a poll baseline never holds a number the desk will not.
+constexpr float kRemapLimit = 10.0f;
+constexpr float ClampRemap(float v) { return v < -kRemapLimit ? -kRemapLimit : (v > kRemapLimit ? kRemapLimit : v); }
+
 // Resolve the desk class, the singleton instance, every field offset and the refresh
 // UFunctions. A throttled (2 s) lazy retry; idempotent. Game thread.
 bool EnsureResolved();
@@ -213,7 +218,7 @@ struct SimOutputs {
 };
 bool ReadSimOutputs(SimOutputs& out);
 // Raw-write the sim outputs. Every field above is painted by the desk widget's own tick, and not
-// one of them is read by any verb in the WriteScalars refresh chain -- measured over all nine (see
+// one of them is read by any verb in the WriteScalars refresh chain -- measured over every verb in it, updRemap included (see
 // the chain's comment in console_desk.cpp). This function used to pulse that chain at about 3 Hz
 // "for the refresh-only display fields"; there were none, and the pulse cost a visible defect, so
 // it is gone rather than conditioned. The write is not a crossing's apply: the needle's crossing
@@ -242,8 +247,14 @@ bool ReadPrecMult(float& out);
 bool ApplyPlayVolumeEffects(int32_t value);
 
 // Draw the signal view in `spectrogram` mode, as the desk's red button does: setCanvas, which writes
-// visualizerMode, then endCanvas. False if unresolved. Game thread.
+// visualizerMode, then endCanvas. False if unresolved or the desk's screen widget is not live yet
+// (nothing is written then; the caller retries). Game thread.
 bool ApplyVisualizerMode(bool spectrogram);
+
+// Run the desk's updRemap alone (the SARV text and the visualizer materials from remapValue). False if
+// unresolved or the desk's screen widget is not live yet (nothing runs then; the caller retries).
+// Game thread.
+bool RepaintRemap();
 
 // The deck-playback replay surface (deck_play_sync): the reflected desk playSignal and
 // stopSound, parameterless. playSignal reads the selected index and gates on active play, a

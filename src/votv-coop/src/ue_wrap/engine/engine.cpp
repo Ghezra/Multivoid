@@ -233,22 +233,15 @@ void* SpawnActor(void* actorClass, const FVector& location, bool inertPawn, Befo
     // Read while the actor is known live, so the failed-finish branch below can tell it from a recycled address.
     const int32_t actorIdx = R::InternalIndexOf(actor);
 
-    // Before FinishSpawningActor runs BeginPlay, zero the fields that make a pawn behave as a
-    // local player: BeginPlay's native auto-possess reads AutoPossessPlayer, and clearing it
-    // keeps the orphan from grabbing a second player controller (which stole the local player's
-    // input and view). Plain data fields, so direct writes.
+    // Before FinishSpawningActor runs BeginPlay the pawn is made inert: BeginPlay's native auto-possess reads the
+    // fields MakePawnInert clears.
     if (inertPawn) {
-        auto* a = reinterpret_cast<uint8_t*>(actor);
-        a[P::off::APawn_AutoPossessPlayer] = 0;   // no PLAYER controller (no input/view hijack)
-        a[P::off::APawn_AutoPossessAI] = 0;        // we possess explicitly post-spawn
-        a[P::off::AActor_AutoReceiveInput] = 0;    // EAutoReceiveInput::Disabled
-        a[P::off::AActor_bBlockInput] = 1;         // swallow any stray input
-        // Also null the AI controller class: AutoPossessAI blocks the automatic spawn of an AI
-        // controller but not later code (other blueprint systems iterating pawns and calling
-        // SpawnDefaultController) acquiring one from the class default. Nulling the class closes
-        // that path.
-        *reinterpret_cast<void**>(a + P::off::APawn_AIControllerClass) = nullptr;
-        UE_LOGI("engine: SpawnActor inertPawn -> no player possess, AIControllerClass=null, bBlockInput=1");
+        const PawnInertResult inert = MakePawnInert(actor);
+        if (inert != PawnInertResult::Made)
+            UE_LOGE("engine: SpawnActor inertPawn requested for '%ls', which %s -- it is left as spawned",
+                    R::ClassNameOf(actor).c_str(),
+                    inert == PawnInertResult::Unresolved ? "could not be judged (the Pawn class did not resolve)"
+                                                         : "is not a pawn");
     }
     // The caller's last word on the deferred actor: what must hold from its BeginPlay on is set here.
     if (beforeFinish) beforeFinish(ctx, actor);
@@ -444,6 +437,15 @@ float GetActorCharacterHalfHeight(void* mainPlayerPawn) {
     if (!capsule) return 0.f;
     return *reinterpret_cast<float*>(
         reinterpret_cast<uint8_t*>(capsule) + P::off::UCapsuleComponent_CapsuleHalfHeight);
+}
+
+float GetActorCharacterRadius(void* mainPlayerPawn) {
+    if (!mainPlayerPawn) return 0.f;
+    void* capsule = *reinterpret_cast<void**>(
+        reinterpret_cast<uint8_t*>(mainPlayerPawn) + P::off::ACharacter_CapsuleComponent);
+    if (!capsule) return 0.f;
+    return *reinterpret_cast<float*>(
+        reinterpret_cast<uint8_t*>(capsule) + P::off::UCapsuleComponent_CapsuleRadius);
 }
 
 

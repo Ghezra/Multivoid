@@ -21,6 +21,7 @@
 #include "coop/world/fuse_tower_ops.h"
 #include "coop/world/fuse_tower_rows.h"
 #include "coop/world/firefly_sync.h"
+#include "coop/world/vent_crawler_sync.h"
 #include "coop/world/power_grid.h"
 #include "coop/items/inventory_pickup_sync.h"
 #include "coop/world/sky_sync.h"
@@ -99,6 +100,19 @@ bool HandleWorldEvent(const net::Session::ReliableMessage& msg) {
         net::EventCuePayload ep{};
         std::memcpy(&ep, msg.payload, sizeof(ep));
         coop::event_cue_sync::OnReliable(ep);
+        break;
+    }
+    case net::ReliableKind::VentCrawlState: {
+        // The host's vent crawl as a joiner finds it, host to client. The host's receive edge refuses a client's
+        // copy (client_authorship.h); OnState drops it on a host.
+        if (msg.payloadLen < sizeof(net::VentCrawlStatePayload)) {
+            UE_LOGW("event_feed: VentCrawlState payload too short (%zu < %zu)", static_cast<size_t>(msg.payloadLen),
+                    sizeof(net::VentCrawlStatePayload));
+            break;
+        }
+        net::VentCrawlStatePayload vp{};
+        std::memcpy(&vp, msg.payload, sizeof(vp));
+        coop::vent_crawler_sync::OnState(vp);
         break;
     }
     case net::ReliableKind::EventFire: {
@@ -307,7 +321,7 @@ bool HandleWorldEvent(const net::Session::ReliableMessage& msg) {
         net::WorldSavedPayload sp{};
         std::memcpy(&sp, msg.payload, sizeof(sp));
         if (sp.outcome < static_cast<uint8_t>(net::WorldSaveOutcome::Saved) ||
-            sp.outcome > static_cast<uint8_t>(net::WorldSaveOutcome::EventRunning)) {
+            sp.outcome > static_cast<uint8_t>(net::WorldSaveOutcome::Unknown)) {
             UE_LOGW("event_feed: WorldSaved outcome=%u unknown -- dropping", static_cast<unsigned>(sp.outcome));
             break;
         }

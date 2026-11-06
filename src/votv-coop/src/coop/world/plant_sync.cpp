@@ -8,9 +8,12 @@
 #include "coop/session/poll_timer.h"
 #include "coop/session/join_progress.h"
 #include "coop/session/net_pump.h"
+#include "coop/world/plant_edit_gate.h"
 
 #include "ue_wrap/actors/growing_plant.h"
+#include "ue_wrap/core/asset_load.h"
 #include "ue_wrap/core/log.h"
+#include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
@@ -20,8 +23,10 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cwchar>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -33,6 +38,7 @@ namespace {
 namespace GP = ue_wrap::growing_plant;
 namespace E = ue_wrap::engine;
 namespace R = ue_wrap::reflection;
+namespace OI = ue_wrap::object_index;
 using Clock = std::chrono::steady_clock;
 using Payload = coop::net::PlantStatePayload;
 
@@ -74,31 +80,11 @@ uint8_t EditMask(const GP::Values& was, const GP::Values& now, bool rowChanged) 
     return m;
 }
 
-// A client's copy can be a poll behind the host, so only what its player changed may replace the host's value.
-void MergeEdit(const Payload& p, GP::Values& v) {
-    namespace PE = coop::net::plant_edit;
-    if (p.editMask & PE::kGrow) v.grow = p.grow;
-    if (p.editMask & PE::kFertilizer) v.fertilizer = p.fertilizer;
-    if (p.editMask & PE::kWater) v.water = p.water;
-    if (p.editMask & PE::kFruitGrow) v.fruitGrow = p.fruitGrow;
-    if (p.editMask & PE::kDryness) v.dryness = p.dryness;
-    if (p.editMask & PE::kAmount) v.amount = p.amount;
-}
-
-GP::Values ValuesOf(const Payload& p) { return GP::Values{p.grow, p.fertilizer, p.water, p.fruitGrow, p.dryness, p.amount}; }
-
 void ClassNameFromString(const std::wstring& s, coop::net::WireClassName& out) {
     std::memset(&out, 0, sizeof(out));
     const size_t n = (std::min)(s.size(), sizeof(out.data));
     for (size_t i = 0; i < n; ++i) out.data[i] = static_cast<char>(s[i] & 0xFF);
     out.len = static_cast<uint8_t>(n);
-}
-
-std::wstring StringFromClassName(const coop::net::WireClassName& c) {
-    const size_t n = (std::min)(static_cast<size_t>(c.len), sizeof(c.data));
-    std::wstring out;
-    for (size_t i = 0; i < n; ++i) out.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c.data[i])));
-    return out;
 }
 
 // False when the plant cannot be read yet.
@@ -128,9 +114,30 @@ bool Describe(void* plant, const std::wstring& key, const GP::Values& v, Payload
     return true;
 }
 
-void* Materialize(const Payload& p) {
-    return GP::Spawn(StringFromClassName(p.cls), coop::net::StringFromWireKey(p.key), coop::net::StringFromWireKey(p.row),
-                     coop::net::StringFromWireKey(p.attachParent), p.hideDirt != 0, {p.x, p.y, p.z}, {p.pitch, p.yaw, p.roll});
+// The class a host's state names, on a client: the object index's, or loaded from its asset when this peer has none yet
+// (a plant class loads with the first plant of it, and the host's may be the first here). Plant classes live under
+// /Game/objects/, one asset to a class. The name is the host's, so loading it is a load the host asked
+// for; the class is checked against the family all the same. A client's planting on the host loads nothing: its class
+// is its row's (GP::FarmRowPlantClass).
+//
+// A name tried once is not tried again in a world unless it was found: a state for a class that cannot load comes with every
+// plant of it, and the object index lists a class just loaded only after its drain.
+std::unordered_map<std::wstring, bool> g_classLoads;   // name -> the load found it; cleared with the world
+void* HostStateClass(const std::wstring& name) {
+    void* cls = OI::ClassByName(name.c_str());
+    if (!cls && name.size() > 2 && name.compare(name.size() - 2, 2, L"_C") == 0) {
+        const auto tried = g_classLoads.find(name);
+        if (tried == g_classLoads.end() || tried->second) {
+            const std::wstring path = L"/Game/objects/" + name.substr(0, name.size() - 2) + L"." + name;
+            cls = ue_wrap::asset_load::LoadObjectByPath(path.c_str());
+            if (tried == g_classLoads.end()) {
+                g_classLoads[name] = cls != nullptr;
+                UE_LOGI("plant_sync: plant class '%ls' was not loaded here; loading %ls %hs", name.c_str(), path.c_str(),
+                        cls ? "found it" : "found nothing");
+            }
+        }
+    }
+    return (cls && GP::IsPlantClass(cls)) ? cls : nullptr;
 }
 
 // HOST: what each plant last sent.
@@ -143,47 +150,6 @@ struct Sent {
     bool everSent = false;
 };
 std::unordered_map<std::wstring, Sent> g_sent;
-std::vector<Payload> g_edits;
-
-void HostApplyEdits(std::unordered_map<std::wstring, void*>& index) {
-    std::vector<Payload> edits;
-    edits.swap(g_edits);
-    for (const Payload& p : edits) {
-        const std::wstring key = coop::net::StringFromWireKey(p.key);
-        auto it = index.find(key);
-        if (!p.alive) {
-            if (it != index.end()) {
-                if (GP::HarvestTakesPlant(it->second)) PlayHarvest(it->second, key);
-                GP::Destroy(it->second);
-            }
-            index.erase(key);
-            UE_LOGI("plant_sync: a client's player removed plant '%ls'", key.c_str());
-            continue;
-        }
-        void* plant = it == index.end() ? nullptr : it->second;
-        const bool known = plant != nullptr;
-        if (!plant) {
-            plant = Materialize(p);
-            if (!plant) {
-                UE_LOGW("plant_sync: a client's plant '%ls' of '%ls' did not spawn", key.c_str(), StringFromClassName(p.cls).c_str());
-                continue;
-            }
-            index[key] = plant;
-            UE_LOGI("plant_sync: a client's player planted '%ls', row '%ls'", key.c_str(), coop::net::StringFromWireKey(p.row).c_str());
-        }
-        GP::Values v = ValuesOf(p);
-        int32_t had = 0;
-        if (known && GP::Read(plant, v)) {
-            had = v.amount;
-            MergeEdit(p, v);
-        }
-        const bool takeRow = !known || (p.editMask & coop::net::plant_edit::kRow) != 0;
-        GP::Apply(plant, takeRow ? coop::net::StringFromWireKey(p.row) : GP::Row(plant), v);
-        // Only a harvest empties a bush.
-        if (had > 0 && v.amount == 0) PlayHarvest(plant, key);
-        g_sent[key].pending = true;
-    }
-}
 
 void HostPoll(coop::net::Session& s, Clock::time_point now) {
     std::vector<void*> plants;
@@ -193,7 +159,9 @@ void HostPoll(coop::net::Session& s, Clock::time_point now) {
         std::wstring key = GP::Key(a);
         if (!key.empty()) index[key] = a;
     }
-    HostApplyEdits(index);
+    std::vector<std::wstring> changed;
+    coop::plant_edit_gate::ApplyEdits(s, index, changed);
+    for (const std::wstring& key : changed) g_sent[key].pending = true;
 
     int sends = 0;
     for (const auto& entry : index) {
@@ -239,19 +207,21 @@ struct Copy {
     void* actor = nullptr;
     GP::Values applied{};
     std::wstring row;
+    GP::Values host{};   // the host's last values the inbox applied here, whatever this player did since
+    bool hostSeen = false;
 };
 std::unordered_map<std::wstring, Copy> g_copies;
 std::unordered_set<std::wstring> g_gone;      // removed here; ignored until the host's end arrives
+// Harvested here, by key, and when: this player's game played that sound, and a host state from before the harvest can refill
+// the copy for a moment, so the next one that empties it is not another player's.
+std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> g_ownHarvest;
+constexpr auto kOwnHarvestFor = std::chrono::seconds(5);
 std::unordered_set<void*> g_loaded;           // what the load brought and the host has not named yet
 bool g_loadedRead = false;
 std::vector<Payload> g_inbox;
-bool g_parkedAny = false;
-
-void Park(void* plant) {
-    if (!E::IsActorTickEnabled(plant)) return;
-    E::SetActorTickEnabled(plant, false);
-    g_parkedAny = true;
-}
+// A plant state is 212 bytes; the cap is a few times the plants of a late save, and the host sends a changing plant again.
+constexpr size_t kInboxCap = 2048;
+bool g_inboxFullSaid = false;
 
 void ApplyInbox(std::unordered_map<std::wstring, void*>& index) {
     std::vector<Payload> inbox;
@@ -274,7 +244,7 @@ void ApplyInbox(std::unordered_map<std::wstring, void*>& index) {
         if (g_gone.count(key)) continue;
         void* plant = it == index.end() ? nullptr : it->second;
         if (!plant) {
-            plant = Materialize(p);
+            plant = Materialize(p, HostStateClass(StringFromClassName(p.cls)));
             if (!plant) {
                 UE_LOGW("plant_sync: plant '%ls' of '%ls' did not spawn", key.c_str(), StringFromClassName(p.cls).c_str());
                 continue;
@@ -286,23 +256,24 @@ void ApplyInbox(std::unordered_map<std::wstring, void*>& index) {
         GP::Values before;
         const bool picked = g_copies.count(key) && GP::Read(plant, before) && before.amount > 0 && p.amount == 0;
         GP::Apply(plant, row, ValuesOf(p));
-        if (picked) PlayHarvest(plant, key);
+        auto own = g_ownHarvest.find(key);
+        const bool mine = own != g_ownHarvest.end() && std::chrono::steady_clock::now() - own->second < kOwnHarvestFor;
+        if (picked && !mine) PlayHarvest(plant, key);
         g_loaded.erase(plant);
         Copy& c = g_copies[key];
         c.actor = plant;
         c.row = row;
+        c.host = ValuesOf(p);
+        c.hostSeen = true;
         GP::Read(plant, c.applied);
     }
 }
 
 void ClientPoll(coop::net::Session& s) {
+    // A join's load makes and unmakes plants for its own reasons; none of that was this player.
+    if (!coop::net_pump::HasAnnouncedWorldReady() || coop::join_progress::CurrentPhase() != coop::join_progress::Phase::Idle) return;
     std::vector<void*> plants;
     GP::List(plants);
-    // A join's load makes and unmakes plants for its own reasons; none of that was this player.
-    if (!coop::net_pump::HasAnnouncedWorldReady() || coop::join_progress::CurrentPhase() != coop::join_progress::Phase::Idle) {
-        for (void* a : plants) Park(a);
-        return;
-    }
     if (!g_loadedRead) {
         g_loadedRead = true;
         g_loaded.insert(plants.begin(), plants.end());
@@ -313,7 +284,8 @@ void ClientPoll(coop::net::Session& s) {
         std::wstring key = GP::Key(a);
         if (!key.empty()) index[key] = a;
     }
-    ApplyInbox(index);
+    // What this player did is read before the host's states are applied: a state applied first writes its values over the
+    // copy, and a change the player made since the last poll would then read as no change and never be sent.
 
     for (auto it = g_copies.begin(); it != g_copies.end();) {
         auto live = index.find(it->first);
@@ -338,6 +310,7 @@ void ClientPoll(coop::net::Session& s) {
             const bool described = Describe(live->second, it->first, now, p);
             p.editMask = EditMask(it->second.applied, now, row != it->second.row);
             if (described && s.SendReliable(coop::net::ReliableKind::PlantEdit, &p, sizeof(p))) {
+                if (it->second.applied.amount > 0 && now.amount == 0) g_ownHarvest[it->first] = std::chrono::steady_clock::now();
                 it->second.applied = now;
                 it->second.row = row;
                 UE_LOGI("plant_sync: this player changed plant '%ls' water=%.0f grow=%.2f amount=%d", it->first.c_str(), now.water, now.grow, now.amount);
@@ -359,18 +332,39 @@ void ClientPoll(coop::net::Session& s) {
         c.row = GP::Row(entry.second);
         UE_LOGI("plant_sync: this player planted '%ls'", entry.first.c_str());
     }
-    for (const auto& entry : index) Park(entry.second);
+    ApplyInbox(index);
 }
 
 void ResetClient() {
+    g_classLoads.clear();
     g_copies.clear();
     g_gone.clear();
+    g_ownHarvest.clear();
     g_loaded.clear();
     g_loadedRead = false;
     g_inbox.clear();
+    g_inboxFullSaid = false;
 }
 
 }  // namespace
+
+void PlayHarvestSound(void* plant, const std::wstring& key) { PlayHarvest(plant, key); }
+
+std::wstring StringFromClassName(const coop::net::WireClassName& c) {
+    const size_t n = (std::min)(static_cast<size_t>(c.len), sizeof(c.data));
+    std::wstring out;
+    for (size_t i = 0; i < n; ++i) out.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c.data[i])));
+    return out;
+}
+
+GP::Values ValuesOf(const coop::net::PlantStatePayload& p) {
+    return GP::Values{p.grow, p.fertilizer, p.water, p.fruitGrow, p.dryness, p.amount};
+}
+
+void* Materialize(const coop::net::PlantStatePayload& p, void* cls) {
+    return GP::Spawn(cls, coop::net::StringFromWireKey(p.key), coop::net::StringFromWireKey(p.row),
+                     coop::net::StringFromWireKey(p.attachParent), p.hideDirt != 0, {p.x, p.y, p.z}, {p.pitch, p.yaw, p.roll});
+}
 
 void Install(coop::net::Session* session) { g_session.store(session); }
 
@@ -384,31 +378,39 @@ void Tick() {
         g_world = world;
         ResetClient();
         g_sent.clear();
+        coop::plant_edit_gate::OnWorldChange();
     }
     if (s->role() == coop::net::Role::Host) HostPoll(*s, now);
     else if (s->role() == coop::net::Role::Client) ClientPoll(*s);
 }
 
-void OnState(const coop::net::PlantStatePayload& p) { g_inbox.push_back(p); }
+void OnState(const coop::net::PlantStatePayload& p) {
+    if (g_inbox.size() >= kInboxCap) {
+        if (!g_inboxFullSaid) {
+            g_inboxFullSaid = true;
+            UE_LOGW("plant_sync: %zu plant states wait to be applied; later ones are dropped until the inbox drains (the host "
+                    "sends each changing plant again)", g_inbox.size());
+        }
+        return;
+    }
+    g_inbox.push_back(p);
+}
 
-void OnEdit(const coop::net::PlantStatePayload& p) { g_edits.push_back(p); }
-
-uint32_t HarvestSoundsPlayed() { return g_harvestSounds; }
+bool LastHostValues(const std::wstring& key, GP::Values& out) {
+    const auto it = g_copies.find(key);
+    if (it == g_copies.end() || !it->second.hostSeen) return false;
+    out = it->second.host;
+    return true;
+}
 
 void QueueConnectBroadcastForSlot(int /*slot*/) {
     for (auto& entry : g_sent) entry.second.pending = true;
 }
 
 void OnDisconnect() {
-    if (g_parkedAny) {
-        std::vector<void*> plants;
-        GP::List(plants);
-        for (void* a : plants) E::SetActorTickEnabled(a, true);
-    }
-    g_parkedAny = false;
     ResetClient();
     g_sent.clear();
-    g_edits.clear();
+    coop::plant_edit_gate::OnDisconnect();
     g_session.store(nullptr);
 }
 

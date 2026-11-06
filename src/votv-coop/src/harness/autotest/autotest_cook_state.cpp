@@ -12,6 +12,7 @@
 #include "coop/config/config.h"
 #include "coop/player/hand_item.h"
 #include "coop/player/players_registry.h"
+#include "coop/props/food_tick_gate.h"
 #include "coop/props/prop_key_index.h"
 #include "coop/session/net_pump.h"
 #include "ue_wrap/actors/food.h"
@@ -616,19 +617,22 @@ void RunClient() {
     OnGameThread([&] { before = CountInstances("prop_food_C"); });
     Mark("client_counted");
     float progress = -1.f;
-    bool ticking = true, rawGone = false;
+    bool rawGone = false;
+    coop::food_tick_gate::Counts gateBefore{}, gateAfter{};
+    OnGameThread([&] { gateBefore = coop::food_tick_gate::GetCounts(); });
     for (int i = 0; i < 160 && progress < 1.f; ++i) {
         F::Condition c;
         bool ok = false;
-        OnGameThread([&] {
-            ok = F::Read(Find(cooking), c);
-            if (ok) ticking = E::IsActorTickEnabled(Find(cooking));
-        });
+        OnGameThread([&] { ok = F::Read(Find(cooking), c); });
         if (ok && c.cookProgress > progress) progress = c.cookProgress;
         if (progress < 1.f) ::Sleep(125);
     }
+    OnGameThread([&] { gateAfter = coop::food_tick_gate::GetCounts(); });
     Verdict("10-client-reads-progress", progress > 0.f, std::to_string(progress));
-    Verdict("10-cooking-copy-parked", !ticking, "ticking=" + std::to_string(ticking));
+    // The client's cooking copy runs no tick of its own: the food tick gate refuses it (coop/props/food_tick_gate).
+    const auto refused = gateAfter.refused - gateBefore.refused, ran = gateAfter.ran - gateBefore.ran;
+    Verdict("10-cooking-copy-refused-its-tick", refused > 0 && ran == 0,
+            "refused=" + std::to_string(refused) + " ran=" + std::to_string(ran));
     Mark("client_read_progress");
     for (int i = 0; i < 80 && !rawGone; ++i) {
         OnGameThread([&] { rawGone = Find(cooking) == nullptr; });

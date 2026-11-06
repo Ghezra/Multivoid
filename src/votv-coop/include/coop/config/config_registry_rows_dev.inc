@@ -359,7 +359,8 @@ CFG_ENUM(sleep_drill, "sleep_drill", "dev", "off", "off|host_asleep|client_rest|
     "([SLEEP-DRILL] <arm> <role> PASS|FAIL), and a phase that does not come is a FAIL after a bound.")
 CFG_ENUM(badsun_drill, "badsun_drill", "dev", "off", "off|clock|midnight|spawn|cheat|join|end|absent_stale", "VOTVCOOP_BADSUN_DRILL",
     "Drill (BOTH peers), the Bad Sun: does a peer's own loaded copy go "
-    "active by its own clock. clock, join and end need the save that holds one saved Bad Sun; the others a fresh host world. clock: the host parks the clock at 05:00 at hosting and sets 06:30 once a "
+    "active by its own clock. clock, join and end need the save that holds one saved Bad Sun, the slot s_rig_badsun "
+    "(VOTVCOOP_RIG_SLOT=s_rig_badsun: the everyday rig slot had it removed by tools/rig_strip_class.py); the others a fresh host world. clock: the host parks the clock at 05:00 at hosting and sets 06:30 once a "
     "client's join is over; each peer reads its count of live copies (it must be 1), its copy's widget "
     "and its place in the active events' senders, and its own clock every second, from before 07:00; "
     "the copy must stay inactive until the clock reads 07:00 and be active by both tests within 15 s "
@@ -756,24 +757,12 @@ CFG_FLAG(class_lifetime_probe, "class_lifetime_probe", "dev", false, "VOTVCOOP_C
     "native class judged against the identity it had when last seen (the same object, the same address "
     "holding a new one, a new address, or gone), with the functions its watched rows name judged the "
     "same way. Read-only but for the slot serials it assigns.")
-CFG_FLAG(init_seam_probe, "init_seam_probe", "dev", false, "VOTVCOOP_INIT_SEAM_PROBE",
-    "Probe: a script-gate watch on every Init body of a keyed prop, counted by the body's owning "
-    "class, its caller, whether it runs inside another Init of the same object and whether the key "
-    "is still unset; logged every 30 s and at each world change. Holds the gate; read-only.")
-CFG_FLAG(key_parity_probe, "key_parity_probe", "dev", false, "VOTVCOOP_KEY_PARITY_PROBE",
-    "Probe: a shadow prop key index fed only by script-gate POST watches on init, setKey, getKey and "
-    "loadData, and the key index the mod keeps, each compared every 2 s against a walk of the live keyed "
-    "props; logs the props each lacks or holds under another key, with examples per world. Holds the "
-    "gate; read-only but for the slot serials it assigns.")
-CFG_FLAG(key_index_forget_one, "key_index_forget_one", "dev", false, "VOTVCOOP_KEY_INDEX_FORGET_ONE",
-    "Red arm of the prop key index's parity pass: once a session, after the seed, one filed prop of the "
-    "current world is dropped from the index. The pass must name it as a filing the feeds missed and file "
-    "it again within a full pass (about 20 s).")
+// The prop key index's probes: their own file, one concept, included as _dev_probes.inc is above.
+#include "coop/config/config_registry_rows_dev_key_index.inc"
 // The permissions and action-log selftests' red arms: their own file, one concept, included as
 // _dev_port.inc is above.
 #include "coop/config/config_registry_rows_dev_selftest.inc"
-// The explosion lane's drill, birth line and selftest red arms: their own file, one concept, included as
-// _dev_port.inc is above.
+// The explosion lane's drill, birth line and selftest red arms: their own file, as _dev_port.inc is above.
 #include "coop/config/config_registry_rows_dev_explosion.inc"
 // The Geom Octa lane's drill and red arm: their own file, one concept, included as _dev_port.inc is above.
 #include "coop/config/config_registry_rows_dev_octa.inc"
@@ -795,5 +784,9 @@ CFG_FLAG(key_index_forget_one, "key_index_forget_one", "dev", false, "VOTVCOOP_K
 #include "coop/config/config_registry_rows_dev_pi.inc"
 // The NPC-spawner arc's native-spawn probe (NB): the same shape, the last rows of the list.
 #include "coop/config/config_registry_rows_dev_nb.inc"
-// The Vulkan overlay arc's probes: their own file, one concept, included as _dev_nb.inc is above.
+// The Vulkan overlay arc's probes and the ambient drills' red arms: a file each, one concept each, as _dev_nb.inc is above.
 #include "coop/config/config_registry_rows_dev_vulkan.inc"
+#include "coop/config/config_registry_rows_dev_ambient.inc"
+
+// The cremator probe's row: its own file, one concept, included as _dev_vulkan.inc is above.
+#include "coop/config/config_registry_rows_dev_cremator.inc"

@@ -135,7 +135,9 @@ registration in the event count (`coop/world/creature_event_relay`) [?]; the cre
 is computed from the local camera, render state or player 0 (the killer wisp, the fossilhound, the antibreather, the egg) keep their own per viewer. Events whose only trace is a one-shot particle emitter
 (the meteor shower) are mirrored as cues: the host sees the row's `runEvent` return and broadcasts
 the emitter's identity and position, a joiner's snapshot reads the live emitters from the object
-index, and a client spawns the same emitter (`coop/world/event_cue_sync`).
+index, and a client spawns the same emitter (`coop/world/event_cue_sync`). A cue no row announces is taken
+at its emitter's birth: the host sees the particle component born, reads its template at the next tick and
+sends the component's own place (the growth area's glow at the plant it fertilizes) `[?]`.
 
 ### The actors an event flies in
 
@@ -200,12 +202,16 @@ task's state and pay no reward. The rewards land in the shared balance, on
 
 A `growingPlant_C`, a player's planted seed or a winter bush alike, is a saved actor that a tick grows on its water, sun and rain. The
 host runs every plant and sends `PlantState` with its row, place and values: at once on an edge a viewer sees, such as ripening or
-death, and about every 5 s while it only changes slowly (`coop/world/plant_sync`). A client's copy has its tick off, so any change on
-it was that client's player, and it goes to the host as `PlantEdit`, naming only the values that changed. A plant is found by its
-save key, so what a join's load brought is already the host's, and a client's edits wait until its join has settled. A client's
-harvest leaves the host's plant empty and the item with the harvester. A harvest's sound is the harvester's own game's, and every other
-peer plays the plant's own `harvestSound` when its copy shows one: a bush's berries going to none, or a grown plant whose harvest
-takes it whole ending. Tests: `harness/autotest/autotest_plant_state.cpp`.
+death, and about every 5 s while it only changes slowly (`coop/world/plant_sync`). A client's copy does not tick: its tick, the herb's
+`grown` and a sprinkler's watering are refused at the script gate (`coop/world/plant_gate`), and so are the spawners that plant
+(`coop/world/spawn_authority`: the winter bush, the mushroom spore, the church's herb), so any change on it was that client's
+player, and it goes to the host as `PlantEdit`, naming only the values that changed. The host judges each edit before it
+applies it (`coop/world/plant_edit_gate`): the key, the row and class, the sender's reach, the pot a planting names and the
+bounds of the values, at a bounded rate per client; it answers a refused edit of a plant it holds with that plant's state. A
+plant is found by its save key, so what a join's load brought is already the host's, and a client's edits wait until its join has settled. A client's
+harvest leaves the host's plant empty and the item with the harvester. A harvest's sound is the harvester's own game's, and every
+other peer plays the plant's own `harvestSound`: a bush's berries going to none, or a grown plant whose harvest takes it whole
+ending. Tests: `harness/autotest/autotest_plant_state.cpp`.
 
 ## Who owns what
 
@@ -261,7 +267,8 @@ edge. A one-shot cue a joiner was not present for is missed, by definition.
 | The flesh rain is rolled by every peer's own hour pulse and is not mirrored (the sky eye and the jellyfish are not: `SkyState` carries the eye, the world-actor lane the host's fish, and a client's own `setEye` and path spawn are refused) | `[RD]` the clock's hour roll; the jellyfish is on the world-actor mirror's list, but its spawn happens inside a Blueprint where the mirror's catch does not see it |
 | A decorated Christmas tree spawns its gifts on each peer whose player sleeps through midnight, and a client's gifts are its own | `[RD]` the tree's own check of the local player's sleep at hour 0 |
 | Several rolls are still per peer: the rare gamemode rolls (the one-percent forced quit), the server break-minigame variant, the underground loot mounds, the signal scramble and the radio-tower shuffle | `[V]` no lane under `coop/world` carries them; `coop/interactables/garbage_sync` names the mounds |
-| A plant runs on the host's sun, rain and view of the world alone. A fruit a client's toolgun forces on a plant that bears fruit as props stays on that client, as the prop it spawns does not cross; the host grows its own at its next ripening. What a client's copy shows between two gradual sends can be up to 5 s old | `[V]` `coop/world/plant_sync`; `tool_plantFruit_C` |
+| The bp7 and tick spawners are neither mirrored nor refused on a client, so each peer rolls its own (the deer, walking trees, dirt holes, beehives and bushes are the host's, `coop/creatures/ambient_creature_sync`, `coop/world/ambient_fixture_sync` and `coop/world/spawn_authority`); a client's mannequin spawner is parked and the host's walker is the one walker (`coop/creatures/walker_sync`) | `[V]` no row of `coop/world/spawn_authority` names bp7 or the tick; the table in `docs/npcs-and-kerfur.md`, "Which spawners a client refuses" |
+| A plant runs on the host's sun, rain and view of the world alone: a client refuses the bodies that change a plant on their own (`coop/world/plant_gate`). A fruit a client's toolgun forces on a plant that bears fruit as props stays on that client, as the prop it spawns does not cross; the host grows its own at its next ripening. What a client's copy shows between two gradual sends can be up to 5 s old | `[V]` `coop/world/plant_sync`; `tool_plantFruit_C`; `[?]` `coop/world/plant_gate` |
 | Rain falls inside the base for a player standing indoors, the host included: the game's own effect, the same in single player. The rain emitter follows the player's camera and spawns its drops around it, below the roof's rain-collision mesh, which stops only drops falling onto it from above | `[V]` `coop/world/weather_rain` never moves the emitter or the camera; `[RD]` the decompiled day-night cycle's emitter move |
 | A client that joins during a vent crawl gets the crawler from the join census but not the crawl's sounds, the vent's swing or the door's power, which start from the crawl's one cue; the crawl was forced through the eventer's own verb, not reached by the day 5 schedule | `[?]` `coop/world/vent_crawler_sync` |
 | Trigger-volume fires (a bed event, a scare a player walks into) run per peer, as the single-player design intends | `[V]` by design, not a gap |

@@ -47,11 +47,11 @@ bool SetGamePaused(bool paused);
 bool TryGetWorldTimeSeconds(float& seconds);
 
 // Spawn `actorClass` at `location` through the deferred GameplayStatics pair (AlwaysSpawn); the
-// AActor* or nullptr. `inertPawn` zeroes AutoPossessPlayer, AutoPossessAI and AutoReceiveInput and
-// sets bBlockInput in the deferred window, so the pawn never takes a PlayerController or the local
-// input. `beforeFinish`, when set, runs once on the deferred actor after those writes and before
-// FinishSpawning, so its BeginPlay and the overlaps its colliders report as they register already see
-// what the callback set; it is not called on a path that returns null before the actor exists. `ctx` is
+// AActor* or nullptr. `inertPawn` runs MakePawnInert (engine_pawn.h) on the deferred actor, so the pawn
+// never takes a PlayerController or the local input. `beforeFinish`, when set, runs once on the deferred
+// actor after those writes and before FinishSpawning, so its BeginPlay and the overlaps its colliders
+// report as they register already see what the callback set; it is not called on a path that returns
+// null before the actor exists. `ctx` is
 // the caller's and need live only for the call; the callback runs on the game thread inside
 // SpawnActor and must not re-enter it. A failed FinishSpawning call destroys the begun actor and
 // returns nullptr (the callback has run by then). Game thread.
@@ -193,6 +193,8 @@ void LogClassProperties(const wchar_t* className);
 // ACharacter's capsule half-height (UCapsuleComponent::CapsuleHalfHeight); 0.f if none. Game
 // thread.
 float GetActorCharacterHalfHeight(void* mainPlayerPawn);
+// ACharacter's capsule radius (UCapsuleComponent::CapsuleRadius); 0.f if none. Game thread.
+float GetActorCharacterRadius(void* mainPlayerPawn);
 
 // A long-lived WorldContextObject for the deferred-spawn pair: the GameInstance, else the World.
 // One lookup when cached; the objects are the world singleton's. Game thread.

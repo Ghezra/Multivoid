@@ -152,6 +152,7 @@ set(VOTVCOOP_SOURCES_UE_WRAP_2
     src/ue_wrap/desk/meadow_store.cpp
     src/ue_wrap/desk/saved_signals.cpp
     src/ue_wrap/actors/puppet.cpp
+    src/ue_wrap/actors/character_floor.cpp
     src/ue_wrap/actors/puppet_spawn.cpp
     src/ue_wrap/actors/kerfur.cpp
     src/ue_wrap/actors/kerfus.cpp
@@ -167,6 +168,7 @@ set(VOTVCOOP_SOURCES_UE_WRAP_2
     src/ue_wrap/world/store_catalog.cpp
     src/ue_wrap/world/weapon_catalog.cpp
     src/ue_wrap/actors/prop.cpp
+    src/ue_wrap/actors/ambient_creature.cpp
     src/ue_wrap/actors/prop_keys.cpp
     src/ue_wrap/actors/prop_flags.cpp
     src/ue_wrap/actors/prop_gather.cpp
@@ -184,4 +186,5 @@ set(VOTVCOOP_SOURCES_UE_WRAP_2
     src/ue_wrap/world/upgrades.cpp
     src/ue_wrap/world/game_rules_pane.cpp
     src/ue_wrap/engine/spawn_menu.cpp
+    src/ue_wrap/actors/grime_spill.cpp
 )

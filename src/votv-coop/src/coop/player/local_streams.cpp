@@ -22,6 +22,7 @@
 #include "coop/props/prop_hold_claim.h"    // AdmitLocalGrab, IsOwnHoldRefused: one hold per keyed prop
 #include "coop/props/prop_settle.h"        // Watch: where a released prop rests
 #include "coop/props/prop_drive_host.h"    // Coast: the host's own throw streams to rest
+#include "coop/props/prop_hold_claim.h"    // AdmitLocalGrab, IsOwnHoldRefused: one hold per keyed prop
 #include "coop/props/prop_syncer.h"        // Claim: a dragged swinger's parent prop
 #include "coop/props/prop_throw.h"        // ThrowSeqFor: a release of a prop the game's throw launched
 #include "coop/props/prop_wire_parity.h"  // PhysFlagsOf, the flags a release carries

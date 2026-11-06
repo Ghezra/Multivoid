@@ -1,22 +1,28 @@
 // coop/dev/director/grab_race_probe.cpp -- the two-peer GRAB race, the measure of the one-holder rule
 // (coop/props/prop_hold_claim). DEV-ONLY, env-gated; see coop/dev/director/director.h.
 //
-// The host picks a loose keyed prop near itself and names it in a shared file; both peers walk to it, aim until
-// their own trace takes it, log ARRIVED and wait on the driver's GO instant, then run the use key's grab chain at
-// it. Each peer then watches the prop for a few seconds -- does its own player hold it, which slot's drive moves
-// its copy, and how many ticks both were true -- and logs a RESULT the driver compares across the two peers:
-// one holder, and the other peer's copy driven by that holder's slot. "control" mode fires the host alone, and
-// VOTVCOOP_RACE_FIRE_DELAY_MS holds a peer's fire past GO.
+// The host picks a loose keyed prop near itself and names it in a peer_signal signal (VOTVCOOP_CAN_DIR); both peers
+// walk to it, aim until their own trace takes it and log ARRIVED. The host, once the client arrived, names a GO
+// instant in a signal and both run the use key's grab chain at it. Each peer then watches the prop for a few
+// seconds -- does its own player hold it, which slot's drive moves its copy, and how many ticks both were true --
+// and logs a RESULT. The client hands its numbers to the host, which judges the two and logs VERDICT PASS or FAIL:
+// one holder, and the other peer's copy driven by that holder's slot. "control" mode fires the host alone.
+// VOTVCOOP_RACE_FIRE_DELAY_MS holds the grab of the peer VOTVCOOP_RACE_DELAY_ROLE names (host|client) back.
 
 #include "coop/dev/director/aimed_grab.h"
 #include "coop/dev/director/director.h"
 
+#include "harness/autotest.h"   // IsClientRole
+#include "harness/autotest/peer_signal.h"
+
 #include "coop/config/config.h"
+#include "coop/props/join_membership_sweep.h"  // HasLoadTailQuiesced: the join's corrections have ended
 #include "coop/player/players_registry.h"
+#include "coop/player/remote_player.h"
 #include "coop/props/prop_hold_claim.h"
 #include "coop/props/prop_key_index.h"
 #include "coop/props/remote_prop.h"
-#include "coop/session/net_pump.h"   // HasAnnouncedWorldReady: a client's join has settled
+#include "coop/session/net_pump.h"   // IsWorldSettled: a client's join has settled
 
 #include "ue_wrap/actors/prop.h"
 #include "ue_wrap/actors/prop_gather.h"
@@ -30,8 +36,6 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
-#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,11 +46,17 @@ namespace {
 namespace R  = ue_wrap::reflection;
 namespace E  = ue_wrap::engine;
 namespace GT = ue_wrap::game_thread;
+namespace PS = harness::autotest::peer_signal;
 
 constexpr float kReachCm   = 140.f;
 constexpr float kPickMinCm = 250.f;    // far enough that both players walk to it
 constexpr float kPickMaxCm = 1500.f;
 constexpr int   kWatchMs   = 4000;
+constexpr int   kGoLeadMs  = 3000;     // the GO instant is this far ahead of the host's word; both re-aim until it
+// How long the refused peer's own grab may hold: the one round trip to the host's word plus a margin.
+constexpr int   kRefusedHoldMaxMs = 250;
+// The share of a watch a result must hold for: the watch starts at fire time, so the first ticks race the grab.
+constexpr double kMajority = 0.8;
 
 const char* g_faultedStep = nullptr;
 
@@ -62,26 +72,6 @@ uint64_t NowUnixMs() {   // the wall clock, shared by both peers on one machine
     ::GetSystemTimeAsFileTime(&ft);
     const uint64_t t = (static_cast<uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
     return (t - 116444736000000000ULL) / 10000ULL;
-}
-
-// The driver's GO sentinel: a future Unix time in ms, written once both peers logged ARRIVED.
-bool WaitForGo(const std::string& goFile, uint64_t timeoutMs) {
-    const uint64_t start = NowUnixMs();
-    uint64_t targetMs = 0;
-    while (NowUnixMs() - start < timeoutMs) {
-        if (targetMs == 0) {
-            std::ifstream f(goFile, std::ios::binary);
-            unsigned long long v = 0;
-            if (f && (f >> v) && v > 0) targetMs = v;
-        }
-        if (targetMs != 0) {
-            if (NowUnixMs() >= targetMs) return true;
-            ::Sleep(1);
-        } else {
-            ::Sleep(20);
-        }
-    }
-    return false;
 }
 
 // No other keyed prop this close to a target: a trace aimed at it would take a neighbour at the slightest shift.
@@ -124,33 +114,90 @@ void* PickTarget(void* player, std::wstring& outKey) {
     return best;
 }
 
+// What one peer measured over its watch: the client sends it as text, the host reads its own and the client's.
+struct Result {
+    int held = 0, samples = 0, slot = -1, slotCount = 0, both = 0;
+};
+
+std::string Format(const Result& r) {
+    return std::to_string(r.held) + " " + std::to_string(r.samples) + " " + std::to_string(r.slot) + " " +
+           std::to_string(r.slotCount) + " " + std::to_string(r.both);
+}
+
+bool Parse(const std::string& text, Result& r) {
+    int* const fields[] = {&r.held, &r.samples, &r.slot, &r.slotCount, &r.both};
+    const char* at = text.c_str();
+    for (int* f : fields) {
+        char* next = nullptr;
+        *f = static_cast<int>(std::strtol(at, &next, 10));
+        if (next == at) return false;
+        at = next;
+    }
+    return true;
+}
+
+bool Most(int n, int of) { return of > 0 && n >= kMajority * of; }
+
+// The failed clause of the one-holder rule over the two watches, or nullptr on a PASS; `winner` is the holder.
+const char* Judge(bool control, const Result& host, const Result& client, const char*& winner) {
+    winner = "host";
+    if (host.both != 0 || client.both != 0) return "both_ticks above 0";
+    if (control) {
+        if (!Most(host.held, host.samples)) return "the host did not hold";
+        if (client.held != 0) return "the client held";
+        if (client.slot != 0 || !Most(client.slotCount, client.samples))
+            return "the client's copy was not driven by slot 0";
+        return nullptr;
+    }
+    const bool hostHolds = Most(host.held, host.samples);
+    const bool clientHolds = Most(client.held, client.samples);
+    if (hostHolds == clientHolds) return hostHolds ? "both peers held" : "no peer held";
+    const Result& other = hostHolds ? client : host;
+    winner = hostHolds ? "host" : "client";
+    // The refused grab is the game's own and holds until the host's word arrives, one round trip (docs/props.md's
+    // known limit; measured 1 sample of 157 on loopback): a hold past kRefusedHoldMaxMs of the watch is the defect.
+    // The watch runs kWatchMs, so its samples convert to time at samples / kWatchMs.
+    const double allowedSamples = std::ceil(kRefusedHoldMaxMs * static_cast<double>(other.samples) / kWatchMs);
+    if (other.held > allowedSamples) return "the other peer also held";
+    if (other.slot != (hostHolds ? 0 : 1) || !Most(other.slotCount, other.samples))
+        return "the other peer's copy was not driven by the holder's slot";
+    return nullptr;
+}
+
 }  // namespace
 
 void RunGrabRace() {
     const std::string mode = coop::config::ReadEnv("VOTVCOOP_RACE_MODE");      // "race" | "control"
-    const std::string role = coop::config::ReadEnv("VOTVCOOP_RACE_ROLE");      // "host" | "client"
-    const std::string goFile = coop::config::ReadEnv("VOTVCOOP_RACE_GO_FILE");
-    const std::string targetFile = coop::config::ReadEnv("VOTVCOOP_RACE_TARGET_FILE");
+    // The peer's own role, from the session it launched as: one env shared by both peers cannot name two roles.
+    const std::string role = harness::autotest::IsClientRole() ? "client" : "host";
     const bool isHost = role == "host";
-    const bool shouldFire = mode != "control" || isHost;
+    const bool control = mode == "control";
+    const bool shouldFire = !control || isHost;
     UE_LOGI("grab-race: START mode=%s role=%s fire=%d", mode.c_str(), role.c_str(), shouldFire ? 1 : 0);
-    if (targetFile.empty() || goFile.empty()) {
-        UE_LOGW("grab-race: VERDICT ABORT -- VOTVCOOP_RACE_GO_FILE and VOTVCOOP_RACE_TARGET_FILE must be set");
-        return;
-    }
-    ::Sleep(15000);   // the world, and on a client the join, settle
+    if (!PS::Begin("grab-race")) return;
     g_faultedStep = nullptr;
 
+    // The world is up and the player possessed; a client also has the host's puppet (its join settled).
     auto player = std::make_shared<void*>(nullptr);
-    for (int i = 0; i < 90 && !*player && !g_faultedStep; ++i) {
+    PS::WaitFor("a possessed local player", 120, [&] {
         Step("the player", [player](std::atomic<int>& d) {
             void* p = coop::players::Registry::Get().Local();
             if (p && R::IsLive(p) && E::GetController(p)) *player = p;
             d.store(1);
         });
-        if (!*player) ::Sleep(1000);
-    }
+        return *player || g_faultedStep;
+    }, false);
     if (!*player) { UE_LOGW("grab-race: VERDICT ABORT -- no possessed local player (role=%s)", role.c_str()); return; }
+    if (!isHost && !PS::WaitFor("the host's puppet", 60, [&] {
+            auto have = std::make_shared<bool>(false);
+            Step("the puppet", [have](std::atomic<int>& d) {
+                coop::RemotePlayer* pp = coop::players::Registry::Get().Puppet(0);
+                *have = pp && pp->valid();
+                d.store(1);
+            });
+            return *have;
+        }))
+        return;
 
     // The shared target: the host picks and names it; the client reads the name and finds its copy.
     auto prop = std::make_shared<void*>(nullptr);
@@ -158,23 +205,31 @@ void RunGrabRace() {
     if (isHost) {
         Step("the pick", [player, prop, key](std::atomic<int>& d) { *prop = PickTarget(*player, *key); d.store(1); });
         if (!*prop) { UE_LOGW("grab-race: VERDICT ABORT -- no holdable keyed prop within reach of a walk"); return; }
-        std::ofstream(targetFile, std::ios::binary | std::ios::trunc) << std::string(key->begin(), key->end());
+        // Named once the client is in: a signal counts only if written after the reader's drill began, and the
+        // host picks before the client has even launched (measured: the client never saw a target written early).
+        if (!PS::Await("client_ready")) return;
+        PS::Mark("target", std::string(key->begin(), key->end()));
     } else {
-        // The join's corrections replace and move props for a while after the world is up: the target is read once
-        // this client announced its world ready, and some seconds after.
-        auto ready = std::make_shared<bool>(false);
-        for (int i = 0; i < 240 && !*ready && !g_faultedStep; ++i) {
-            Step("the join", [ready](std::atomic<int>& d) { *ready = coop::net_pump::HasAnnouncedWorldReady(); d.store(1); });
-            if (!*ready) ::Sleep(500);
-        }
-        ::Sleep(10000);
+        // The join's corrections replace and move props for a while after the world is up. The target is read once
+        // the join's load tail has quiesced (join_membership_sweep::HasLoadTailQuiesced, the signal that announces the
+        // corrections' end: the sweep runs and the deferred mirrors are revealed there), with the world announced and
+        // no world change waiting (net_pump::IsWorldSettled).
+        auto settled = std::make_shared<bool>(false);
+        const bool joined = PS::WaitFor("this client's join to settle", 120, [&] {
+            Step("the join", [settled](std::atomic<int>& d) {
+                *settled = coop::net_pump::IsWorldSettled() && coop::join_membership_sweep::HasLoadTailQuiesced();
+                d.store(1);
+            });
+            return *settled || g_faultedStep;
+        });
+        if (!joined) return;
+        if (!*settled) { UE_LOGW("grab-race: VERDICT ABORT -- a game-thread step faulted (%s) before the join settled", g_faultedStep); return; }
+        PS::Mark("client_ready");
+        std::string k;
+        if (!PS::AwaitText("target", k)) return;
+        *key = std::wstring(k.begin(), k.end());
         for (int i = 0; i < 240 && !*prop && !g_faultedStep; ++i) {
-            std::string k;
-            { std::ifstream f(targetFile, std::ios::binary); if (f) std::getline(f, k); }
-            if (!k.empty()) {
-                *key = std::wstring(k.begin(), k.end());
-                Step("the find", [prop, key](std::atomic<int>& d) { *prop = coop::prop_key_index::Find(*key); d.store(1); });
-            }
+            Step("the find", [prop, key](std::atomic<int>& d) { *prop = coop::prop_key_index::Find(*key); d.store(1); });
             if (!*prop) ::Sleep(500);
         }
         if (!*prop) { UE_LOGW("grab-race: VERDICT ABORT -- the host's target never resolved here"); return; }
@@ -227,18 +282,22 @@ void RunGrabRace() {
         return;
     }
     UE_LOGI("grab-race: ARRIVED role=%s -- aimed, waiting for GO", role.c_str());
-    // The aim is held through the wait: a trace that drifts off the target (the other player walking up, a
-    // neighbour settling) aims again, so the chain at GO acts on the target. The GO instant itself is spun to.
-    const uint64_t waitStart = NowUnixMs();
+    PS::Mark((role + "_arrived").c_str());
     uint64_t goMs = 0;
+    if (isHost) {
+        // The shared instant is the race's definition, not a readiness wait: both peers fire at it.
+        if (!control && !PS::Await("client_arrived")) return;
+        goMs = NowUnixMs() + kGoLeadMs;
+        PS::Mark("go", std::to_string(goMs));
+    } else {
+        std::string goText;
+        if (!PS::AwaitText("go", goText)) return;
+        goMs = std::strtoull(goText.c_str(), nullptr, 10);
+    }
+    // The aim is held through the lead: a trace that drifts off the target (the other player walking up, a
+    // neighbour settling) aims again, so the chain at GO acts on the target. The GO instant itself is spun to.
     auto reaims = std::make_shared<int>(0);
-    while (!g_faultedStep && NowUnixMs() - waitStart < 120000) {
-        if (goMs == 0) {
-            std::ifstream f(goFile, std::ios::binary);
-            unsigned long long v = 0;
-            if (f && (f >> v) && v > 0) goMs = v;
-        }
-        if (goMs != 0 && NowUnixMs() + 100 >= goMs) break;   // the last 100 ms are spun below, unaimed
+    while (!g_faultedStep && goMs != 0 && NowUnixMs() + 100 < goMs) {   // the last 100 ms are spun below, unaimed
         Step("the held aim", [player, prop, grab, state, reaims](std::atomic<int>& d) {
             if (grab->Aimed() && E::ReadMainPlayerHitActor(*player) != *prop) { grab->Reaim(); ++*reaims; }
             if (!grab->Aimed()) *state = grab->Tick();
@@ -246,10 +305,11 @@ void RunGrabRace() {
         });
         ::Sleep(16);
     }
-    if (goMs == 0 || !WaitForGo(goFile, 5000)) {
+    if (goMs == 0) {
         UE_LOGW("grab-race: VERDICT ABORT -- no GO (role=%s)", role.c_str());
         return;
     }
+    while (NowUnixMs() < goMs) ::Sleep(1);
     UE_LOGI("grab-race: GO role=%s -- %d re-aim(s) while waiting", role.c_str(), *reaims);
 
     // What this player's own trace takes at the GO instant: the grab chain acts on it, not on the prop.
@@ -260,13 +320,11 @@ void RunGrabRace() {
         d.store(1);
     });
     if (shouldFire) {
-        // A held-back fire, so a client's hold can reach the host before the host's own grab: at GO the host's grab
-        // runs on its own machine at once while a client's waits a round trip.
-        const int delayMs = std::atoi(coop::config::ReadEnv("VOTVCOOP_RACE_FIRE_DELAY_MS").c_str());
-        if (delayMs > 0) {
-            UE_LOGI("grab-race: role=%s holds its fire %d ms past GO", role.c_str(), delayMs);
-            ::Sleep(static_cast<DWORD>(delayMs));
-        }
+        // VOTVCOOP_RACE_FIRE_DELAY_MS holds this peer's grab back, so the other peer's hold arrives first.
+        // VOTVCOOP_RACE_DELAY_ROLE names the one peer it applies to (both peers share one environment).
+        const int fireDelayMs = coop::config::ReadEnv("VOTVCOOP_RACE_DELAY_ROLE") == role
+                                    ? std::atoi(coop::config::ReadEnv("VOTVCOOP_RACE_FIRE_DELAY_MS").c_str()) : 0;
+        if (fireDelayMs > 0) ::Sleep(static_cast<DWORD>(fireDelayMs));
         grab->Fire();
         for (int i = 0; i < 60 && *state == GrabState::Working && !g_faultedStep; ++i) {
             Step("the grab", [grab, state](std::atomic<int>& d) { *state = grab->Tick(); d.store(1); });
@@ -307,11 +365,46 @@ void RunGrabRace() {
     UE_LOGI("grab-race: RESULT role=%s mode=%s held=%d/%d driven_by_slot=%d (%d) both_ticks=%d | at the end: "
             "holds=%d driver_slot=%d", role.c_str(), mode.c_str(), *heldSamples, *samples, topSlot, topCount, *both,
             *holds, *driver);
-    ::Sleep(2000);   // the other peer's watch may still be running: the hold outlasts it
-    Step("the let go", [player, prop](std::atomic<int>& d) {
-        if (*prop && R::IsLive(*prop)) E::ReleaseMainPlayerGrabIfHolding(*player, *prop);
-        d.store(1);
-    });
+    Result mine;
+    mine.held = *heldSamples;
+    mine.samples = *samples;
+    mine.slot = topSlot;
+    mine.slotCount = topCount;
+    mine.both = *both;
+    auto letGo = [&] {
+        Step("the let go", [player, prop](std::atomic<int>& d) {
+            if (*prop && R::IsLive(*prop)) E::ReleaseMainPlayerGrabIfHolding(*player, *prop);
+            d.store(1);
+        });
+    };
+    if (!isHost) {
+        PS::Mark("client_result", Format(mine));
+        // The host's watch may still be running and the hold outlasts it: the host marks its own result when
+        // that watch is over.
+        const bool hostDone = PS::Await("host_result");
+        letGo();
+        if (!hostDone) return;
+        UE_LOGI("grab-race: DONE");
+        return;
+    }
+    PS::Mark("host_result");
+    // The host's hold outlasts the client's watch: the client's result is written when that watch is over.
+    std::string clientText;
+    Result theirs;
+    const bool got = PS::AwaitText("client_result", clientText);
+    letGo();
+    if (!got) return;
+    if (!Parse(clientText, theirs)) {
+        UE_LOGW("grab-race: VERDICT ABORT -- the client's result is unreadable ('%s')", clientText.c_str());
+        return;
+    }
+    const char* winner = "host";
+    if (const char* failed = Judge(control, mine, theirs, winner)) {
+        UE_LOGW("grab-race: VERDICT FAIL %s host=%s client=%s", failed, Format(mine).c_str(), Format(theirs).c_str());
+    } else {
+        UE_LOGI("grab-race: VERDICT PASS winner=%s", winner);
+    }
+    UE_LOGI("grab-race: DONE");   // after the verdict: a run ends on DONE
 }
 
 DWORD WINAPI GrabRaceThread(LPVOID /*arg*/) {

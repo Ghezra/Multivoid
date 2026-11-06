@@ -3,12 +3,16 @@
 // The bounds (remapValue, moved by the desk's own scrollRemap verbs) and the mode (visualizerMode, graph or spectrogram).
 // The host changes both before the client joins, so the join carries them; then the host moves a bound, and the client
 // moves a bound and flips the mode. Each peer logs `desk-view: STATE <step> min= max= mode=` after each step for the
-// driver to compare; a file per step orders the two peers. Gated by VOTVCOOP_RUN_DESK_VIEW; the folder is
-// VOTVCOOP_CAN_DIR.
+// driver to compare; a file per step orders the two peers (host_prepared carries the host's state as text, and the
+// joiner reads its own only once it equals that). Gated by VOTVCOOP_RUN_DESK_VIEW; the folder is
+// VOTVCOOP_CAN_DIR. Signals count only when written after this drill began, and every wait is on a game state with
+// a bound, never on a clock.
 
 #include "harness/autotest.h"
+#include "harness/autotest/peer_signal.h"
 
-#include "coop/config/config.h"
+#include "coop/player/players_registry.h"
+#include "coop/player/remote_player.h"
 #include "coop/session/net_pump.h"
 #include "ue_wrap/core/component_calls.h"
 #include "ue_wrap/core/game_thread.h"
@@ -19,7 +23,9 @@
 #include <windows.h>
 
 #include <atomic>
-#include <fstream>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
 #include <string>
 
 namespace harness::autotest {
@@ -27,27 +33,54 @@ namespace {
 
 namespace R  = ue_wrap::reflection;
 namespace CD = ue_wrap::console_desk;
-
-std::string g_dir;
+namespace PS = harness::autotest::peer_signal;
+using PS::Await;
+using PS::AwaitText;
+using PS::Mark;
+using PS::WaitFor;
 
 template <class Fn>
 void OnGameThread(Fn&& fn) {
     ue_wrap::game_thread::RunAndWait([&fn](std::atomic<int>& d) { fn(); d.store(1); });
 }
 
-void Mark(const char* name) {
-    std::ofstream(g_dir + "\\" + name, std::ios::binary | std::ios::trunc) << "x";
+// The three view settings as this peer reads them now; ok is false while the desk does not resolve.
+struct View {
+    bool ok = false;
+    float mn = 0, mx = 0;
+    bool mode = false;
+};
+
+View ReadView() {
+    View v;
+    OnGameThread([&] {
+        CD::Scalars sc;
+        if (!CD::EnsureResolved() || !CD::ReadScalars(sc)) return;
+        v.ok = true;
+        v.mn = sc.remapMin;
+        v.mx = sc.remapMax;
+        v.mode = sc.visualizerMode;
+    });
+    return v;
 }
 
-bool Await(const char* name, int seconds = 240) {
-    for (int i = 0; i < seconds * 10; ++i) {
-        std::ifstream f(g_dir + "\\" + name, std::ios::binary);
-        std::string s;
-        if (f && std::getline(f, s) && !s.empty()) return true;
-        ::Sleep(100);
-    }
-    UE_LOGW("desk-view: VERDICT ABORT -- no '%hs' from the other peer", name);
-    return false;
+// `min max mode`, formatted as the STATE line formats them: the host sends this text and the joiner compares its own.
+std::string FormatView(const View& v) {
+    char buf[64];
+    std::snprintf(buf, sizeof buf, "%.2f %.2f %d", v.mn, v.mx, v.mode ? 1 : 0);
+    return buf;
+}
+
+bool Differs(float a, float b) { return std::fabs(a - b) > 1e-4f; }
+
+// Waits for the view to show the expected change from `was`: the named bound moved, the mode flipped. A timeout logs
+// nothing here: the step's STATE line right after carries the mismatch to the driver, which is the FAIL.
+void WaitViewChanged(const View& was, bool minMoved, bool maxMoved, bool modeFlipped) {
+    WaitFor("the desk view changed", 30, [&] {
+        const View v = ReadView();
+        return v.ok && (!minMoved || Differs(v.mn, was.mn)) && (!maxMoved || Differs(v.mx, was.mx)) &&
+               (!modeFlipped || v.mode != was.mode);
+    }, false);
 }
 
 void LogState(const char* step) {
@@ -82,23 +115,26 @@ void FlipMode() {
     });
 }
 
-void Settle() { ::Sleep(1500); }
-
 void RunHost() {
-    ::Sleep(20000);   // the world up, before any client: these changes reach it only through the join
+    // The world up, before any client: these changes reach it only through the join. The client's first signal is
+    // awaited after, so no client is in before the desk is readable.
+    if (!WaitFor("the desk readable", 120, [&] { return ReadView().ok; })) return;
+    const View base = ReadView();
     Verb(L"scrollRemapMaxUp");
     Verb(L"scrollRemapMaxUp");
     FlipMode();
-    Settle();
+    WaitViewChanged(base, false, true, true);
     LogState("0-before-join");
-    Mark("host_prepared");
+    Mark("host_prepared", FormatView(ReadView()));
     if (!Await("client_ready")) return;
+    const View beforeMin = ReadView();
     Verb(L"scrollRemapMinUp");
-    Settle();
+    WaitViewChanged(beforeMin, true, false, false);
     LogState("2-host-moved-min");
     Mark("host_moved");
+    const View moved = ReadView();
     if (!Await("client_changed")) return;
-    Settle();
+    WaitViewChanged(moved, false, true, true);
     LogState("3-client-changed");
     Mark("host_done");
     UE_LOGI("desk-view: DONE");
@@ -110,15 +146,33 @@ void RunClient() {
         OnGameThread([&] { ready = coop::net_pump::HasAnnouncedWorldReady(); });
         if (!ready) ::Sleep(500);
     }
-    ::Sleep(8000);
+    if (!WaitFor("the host's puppet", 60, [&] {
+            bool have = false;
+            OnGameThread([&] {
+                coop::RemotePlayer* p = coop::players::Registry::Get().Puppet(0);
+                have = p && p->valid();
+            });
+            return have;
+        }))
+        return;
+    // The join snapshot applies after the puppet shows: read the state only once it equals what the host prepared.
+    // host_prepared is marked before the host awaits client_ready, so this wait cannot deadlock.
+    std::string hostState;
+    if (!AwaitText("host_prepared", hostState)) return;
+    WaitFor("the host's desk state arrived", 30, [&] {
+        const View v = ReadView();
+        return v.ok && FormatView(v) == hostState;
+    }, false);
     LogState("1-after-join");
+    const View joined = ReadView();
     Mark("client_ready");
     if (!Await("host_moved")) return;
-    Settle();
+    WaitViewChanged(joined, true, false, false);
     LogState("2-host-moved-min");
+    const View seen = ReadView();
     Verb(L"scrollRemapMaxDown");
     FlipMode();
-    Settle();
+    WaitViewChanged(seen, false, true, true);
     LogState("3-client-changed");
     Mark("client_changed");
     if (!Await("host_done")) return;
@@ -128,11 +182,7 @@ void RunClient() {
 }  // namespace
 
 DWORD WINAPI DeskViewThread(LPVOID /*arg*/) {
-    g_dir = coop::config::ReadEnv("VOTVCOOP_CAN_DIR");
-    if (g_dir.empty()) {
-        UE_LOGW("desk-view: VERDICT ABORT -- VOTVCOOP_CAN_DIR is unset");
-        return 0;
-    }
+    if (!PS::Begin("desk-view")) return 0;
     if (IsClientRole()) RunClient();
     else                RunHost();
     return 0;

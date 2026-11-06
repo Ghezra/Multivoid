@@ -86,6 +86,11 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/bug_report_drill.cpp
     src/coop/dev/grants_drill.cpp
     src/coop/dev/pause_quit_drill.cpp
+    src/coop/dev/pause_menu_probe.cpp
+    src/coop/dev/pause_menu_probe_rows.cpp
+    src/coop/dev/pause_menu_probe_tree.cpp
+    src/coop/dev/pause_menu_probe_bind.cpp
+    src/coop/dev/pause_menu_probe_wire.cpp
     src/coop/dev/game_window.cpp
     src/coop/dev/desk_verb_drill.cpp
     src/coop/dev/desk_verb_drill_desk.cpp
@@ -99,6 +104,8 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/drive_selftest.cpp
     src/coop/dev/rack_birth_drill.cpp
     src/coop/dev/burn_revive_drill.cpp
+    src/coop/dev/cremator_probe.cpp
+    src/coop/dev/cremator_probe_host.cpp
     src/coop/dev/hand_drop_census.cpp
     src/coop/dev/hand_drop_selftest.cpp
     src/coop/dev/run_and_wait_selftest.cpp

@@ -1,9 +1,9 @@
 // ue_wrap/core/kismet_timer.h -- a Blueprint's timers by object and function name.
 //
-// KismetSystemLibrary's K2_ClearTimer, K2_PauseTimer, K2_UnPauseTimer and K2_IsTimerPaused, which build the delegate from the two
-// and so answer the blueprint's own K2_SetTimerDelegate({self, name}) arm. The library's default object is a whole-array walk to
-// find and never goes away, so it and the functions are found once here and kept. The name crosses as an FString whose count and
-// capacity include the terminator. Game thread.
+// KismetSystemLibrary's K2_ClearTimer, which builds the delegate from the two and so answers the blueprint's own
+// K2_SetTimerDelegate({self, name}) arm. The library's default object is a whole-array walk to find and never goes away, so it
+// and the function are found once here and kept. The name crosses as an FString whose count and capacity include the
+// terminator. Game thread.
 
 #pragma once
 
@@ -14,10 +14,5 @@ bool Resolved();
 
 // False when the library is not found or the call did not dispatch. A timer the object does not have is no failure.
 bool Clear(void* object, const wchar_t* function);
-bool Pause(void* object, const wchar_t* function);
-bool UnPause(void* object, const wchar_t* function);
-
-// False for a timer that does not stand, as for one that runs.
-bool IsPaused(void* object, const wchar_t* function);
 
 }  // namespace ue_wrap::kismet_timer

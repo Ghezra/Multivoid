@@ -87,8 +87,7 @@
 #include "coop/props/prop_can_state.h"
 #include "coop/props/prop_settle.h"
 #include "coop/interactables/kitchen_sync.h"
-#include "coop/creatures/ambient_creature_sync.h"
-#include "coop/creatures/ambient_fixture_sync.h"
+#include "coop/creatures/walker_sync.h"
 #include "coop/player/backrooms_guard.h"
 #include "coop/props/prop_fire_sync.h"
 #include "coop/world/build_sync.h"
@@ -105,6 +104,8 @@
 #include "coop/world/world_sound_sync.h"
 #include "coop/props/prop_food_sync.h"
 #include "coop/props/prop_tool_flags.h"
+#include "coop/props/food_tick_gate.h"  // the food ticks a client refuses: its counts end with the session
+#include "coop/world/plant_gate.h"  // the plant bodies a client refuses: its counts end with the session
 #include "coop/props/prop_stick_sync.h"  // wall-attachable stick mirror (camera-on-wall)
 #include "coop/dev/dev_lanes.h"  // the developer drills, probes and selftests, wired in one place
 #include "coop/dev/perf_probe.h"
@@ -118,6 +119,10 @@
 #include "coop/items/coingun_sync.h"
 #include "coop/items/order_sync.h"
 #include "coop/world/event_cue_sync.h"
+#include "coop/creatures/ambient_creature_sync.h"
+#include "coop/world/ambient_births.h"
+#include "coop/world/ambient_fixture_sync.h"
+#include "coop/world/sus_hole_intent.h"
 #include "coop/world/explosion_sync.h"
 #include "coop/world/explosion_parking.h"
 #include "coop/world/event_fire_sync.h"
@@ -165,6 +170,7 @@
 #include "coop/props/grab_observer.h"
 #include "coop/player/item_activate.h"
 #include "coop/player/player_damage.h"
+#include "coop/player/puppet_cremation.h"
 #include "coop/player/player_hit.h"
 #include "coop/session/player_handshake.h"  // TickSkinConverge
 #include "coop/player/skin_preview.h"
@@ -236,6 +242,7 @@ void InstallLoadWatchers(coop::net::Session& session) {
     coop::explosion_parking::Install(&session);  // the explosion copy's parking watches: the four verbs, the rune check, the force narrowing (client session only)
     coop::world_load_episode::InstallReplayWatch(session);
     coop::trash_native_hold::Install(&session);  // the join load's clumps held still at their spawn: a catch installed with the world would arm after the load
+    coop::sus_hole_intent::Install(&session);  // the sus hole spawner's holes stamped at their birth, a client's roll sent to the host, from the load window on
 }
 
 void Install(coop::net::Session& session) {
@@ -247,6 +254,7 @@ void Install(coop::net::Session& session) {
     coop::geom_octa_sync::Install(&session);  // the Geom Octa's lane: the [OCTA] watches (live once the class loads)
     coop::item_activate::Install(&session);  // flashlight
     coop::player_damage::Install(&session);  // the refusals on a peer's puppet: its impacts, damage, fire and hit verbs
+    coop::puppet_cremation::Install();  // a cremator never consumes a peer's puppet: it answers its crematorAction true
     coop::weather_sync::Install(&session);  // weather
     coop::interactable_sync::Install(&session);  // doors + lights + container lids
     coop::keypad_sync::Install(&session);  // the password keypads' index and wire (its own module)
@@ -262,6 +270,9 @@ void Install(coop::net::Session& session) {
     coop::coingun_sync::Install(&session);  // the sell gun + host-minted coins
     coop::firefly_sync::Install(&session);  // peer-symmetric ambient firefly mirror (each peer captures+shares its own)
     coop::event_cue_sync::Install(&session);  // cosmetic emitter cues: the host's runEvent watch sends them, the client replays
+    coop::ambient_births::Install();  // the ambient actors' births and deaths, named once for the two lanes below
+    coop::ambient_creature_sync::Install(&session);  // the host's deer and walking trees
+    coop::ambient_fixture_sync::Install(&session);  // the host's dirt holes and beehive branches
     coop::event_fire_sync::Install(&session);  // scheduled events: the host's runEvent/runSpecialEvent watches -> EventFire; client hold + policy replay
     coop::event_active_sync::Install(&session);  // the host's setEvent watch: begin/end edges; the join snapshot reads the game's registry
     coop::creature_event_relay::Install(&session);  // a creature's setEvent: the host's count per creature, applied to its mirror on a client
@@ -298,12 +309,11 @@ void Install(coop::net::Session& session) {
     coop::floppybox_sync::Install(&session);  // the disc crate stack
     coop::props::container_contents_sync::Install(&session);  // container contents
     coop::props::prop_record_refresh::Install(&session);  // drive box + reel case republish their own record
+    coop::vent_crawler_sync::Install(&session);  // the crawl's start, for a client's sounds
     coop::props::prop_can_state::Install(&session);  // a canned food's lid and contents: its record on a change
     coop::world_sound_sync::Install(&session);  // the sky's two sounds, a faucet's click
-    coop::vent_crawler_sync::Install(&session);  // the crawl's start, for a client's sounds
     coop::media_device_sync::Install(&session);  // a placed radio's track and play state
-    coop::ambient_creature_sync::Install(&session);  // the host's deer and walking trees
-    coop::ambient_fixture_sync::Install(&session);  // the host's dirt holes and beehive branches
+    coop::walker_sync::Install(&session);  // the host's walking mannequins
     coop::backrooms_guard::Install(&session);  // no level travel from a clip through a wall
     coop::plant_sync::Install(&session);  // the host runs every plant
     coop::prop_fire_sync::Install(&session);  // the host burns every keyed prop
@@ -505,8 +515,7 @@ DisconnectStats DisconnectAll() {
     coop::world_sound_sync::OnDisconnect();
     coop::vent_crawler_sync::OnDisconnect();
     coop::media_device_sync::OnDisconnect();
-    coop::ambient_creature_sync::OnDisconnect();
-    coop::ambient_fixture_sync::OnDisconnect();
+    coop::walker_sync::OnDisconnect();
     coop::backrooms_guard::OnDisconnect();
     coop::plant_sync::OnDisconnect();
     coop::prop_fire_sync::OnDisconnect();
@@ -521,6 +530,8 @@ DisconnectStats DisconnectAll() {
     coop::kitchen_sync::OnDisconnect();
     coop::props::prop_food_sync::OnDisconnect();  // a parked copy gets its tick back
     coop::prop_tool_flags::OnDisconnect();  // drop the pending press and the counters
+    coop::food_tick_gate::OnDisconnect();  // say the refused food ticks, start the next session from zero
+    coop::plant_gate::OnDisconnect();  // say the refused counts, start the next session from zero
     coop::prop_stick_sync::OnDisconnect();  // drop commit-pending stick records
     coop::sleepingbag_sync::OnDisconnect();
     coop::item_activate::OnDisconnect();
@@ -541,6 +552,10 @@ DisconnectStats DisconnectAll() {
     coop::coingun_sync::OnDisconnect();  // dump the lane summary + drop the sold-set, the barrier queue and the cached gun
     coop::firefly_sync::OnDisconnect();
     coop::event_cue_sync::OnDisconnect();  // drop the session the cue watch sends on
+    coop::ambient_creature_sync::OnDisconnect();
+    coop::ambient_fixture_sync::OnDisconnect();
+    coop::sus_hole_intent::OnDisconnect();
+    coop::ambient_births::OnDisconnect();
     coop::event_fire_sync::OnDisconnect();  // restore the client scheduler (allEvents.Num) + drop the queued fires
     coop::event_active_sync::OnDisconnect();  // drop the begun-events map and its world stamp
     coop::creature_event_relay::OnDisconnect();  // a client's applied creature events back out; both halves' state; the session
@@ -574,7 +589,7 @@ DisconnectStats DisconnectAll() {
     coop::floppybox_sync::OnDisconnect();  // box shadows + taken-ring + canonical retries
     coop::props::container_contents_sync::OnDisconnect();  // dirty set + retry + parked + assembler
     coop::props::prop_record_refresh::OnDisconnect();  // session release, counters, the drill red's map
-    coop::props::prop_can_state::OnDisconnect();  // what is known of every can
+    coop::props::prop_can_state::OnDisconnect();  // its counters (what is known of every can goes with the world)
     coop::dev::dev_lanes::RearmSelftests();  // [dev] the selftests re-arm for the next session
     coop::desk_cursor_sync::OnDisconnect();
     coop::desk_ping_sync::OnDisconnect();
@@ -685,8 +700,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:prop_drive_host"}; coop::prop_drive_host::Pump(session, isHost); }  // the driven props, both roles: HOST judges a syncing client's rows, publishes the props that moved, closes the streams that rested (after the hook poll that feeds it); then both park + drive what the host streams (an empty set costs one size check)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:prop_settle"}; coop::prop_settle::Tick(session); }  // the props this peer let go of: where each comes to rest goes out (an empty list costs one size check)
     coop::media_device_sync::Tick();  // the radios' poll
-    coop::ambient_creature_sync::Tick();  // the deer's and trees' poll
-    coop::ambient_fixture_sync::Tick();  // the holes' and branches' poll
+    coop::walker_sync::Tick();  // the walkers' poll
     coop::backrooms_guard::Tick();  // the backrooms flag's poll
     coop::plant_sync::Tick();  // the plants' poll
     coop::prop_fire_sync::Tick();  // the burning props' poll
@@ -796,6 +810,10 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; coop::sleepingbag_sync::Tick(session); }  // settle the gates and serve bounded fold/unfold intents
     { PP::Scope _s{PP::Bucket::Interactable}; coop::kerfus_lanes::Tick(session); }  // the Kerfus lanes' watches; CLIENT: waiting states; HOST: queued verbs
     { PP::Scope _s{PP::Bucket::Interactable}; coop::served_player::Tick(); }  // HOST: the served robots' seams
+    { PP::Scope _s{PP::Bucket::Interactable}; coop::spill_sync::Tick(); }  // the spills the hook saw
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:ambient_creature"}; coop::ambient_creature_sync::Tick(); }  // the walking trees' size and landing
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:ambient_fixture"}; coop::ambient_fixture_sync::Tick(); }  // the holes' and branches' poll
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:sus_hole_intent"}; coop::sus_hole_intent::Tick(session); }  // CLIENT: its stamped sus holes go to the host; HOST: the queued ones are made
     { PP::Scope _s{PP::Bucket::Balance};       coop::balance_sync::Tick(); }  // host polls saveSlot.Points + broadcasts on change; client retries the pending mirror apply
     { PP::Scope _s{PP::Bucket::Balance};       ue_wrap::ScopedWalkTimer _w{"sync:upgrades"}; coop::upgrade_sync::Tick(session); }  // host polls the upgrade struct + broadcasts on change, and runs one queued purchase a tick a client; client retries the pending mirror
     coop::dev::dev_lanes::TickProbes(session, isConnected, isHost);  // [dev] the RE probes, each self-installing when its knob is set

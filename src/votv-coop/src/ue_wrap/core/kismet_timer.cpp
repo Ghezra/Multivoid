@@ -17,9 +17,6 @@ namespace R = ue_wrap::reflection;
 
 void* g_library = nullptr;
 void* g_clear = nullptr;
-void* g_pause = nullptr;
-void* g_unpause = nullptr;
-void* g_isPaused = nullptr;
 uint64_t g_nextTryMs = 0;
 
 // Sets up the call on `f`; false when the frame or the name would not take.
@@ -40,7 +37,7 @@ bool Run(void* fn, void* object, const wchar_t* function) {
 }  // namespace
 
 bool Resolved() {
-    if (g_library && g_clear && g_pause && g_unpause && g_isPaused) return true;
+    if (g_library && g_clear) return true;
     const uint64_t now = ::GetTickCount64();
     if (now < g_nextTryMs) return false;
     g_nextTryMs = now + 1000;
@@ -48,20 +45,9 @@ bool Resolved() {
     void* cls = g_library ? R::FindClass(L"KismetSystemLibrary") : nullptr;
     if (!cls) return false;
     if (!g_clear) g_clear = R::FindFunction(cls, L"K2_ClearTimer");
-    if (!g_pause) g_pause = R::FindFunction(cls, L"K2_PauseTimer");
-    if (!g_unpause) g_unpause = R::FindFunction(cls, L"K2_UnPauseTimer");
-    if (!g_isPaused) g_isPaused = R::FindFunction(cls, L"K2_IsTimerPaused");
-    return g_clear && g_pause && g_unpause && g_isPaused;
+    return g_clear != nullptr;
 }
 
 bool Clear(void* object, const wchar_t* function) { return Run(g_clear, object, function); }
-bool Pause(void* object, const wchar_t* function) { return Run(g_pause, object, function); }
-bool UnPause(void* object, const wchar_t* function) { return Run(g_unpause, object, function); }
-
-bool IsPaused(void* object, const wchar_t* function) {
-    if (!object || !function || !Resolved()) return false;
-    ParamFrame f(g_isPaused);
-    return Prepare(f, object, function) && Call(g_library, f) && f.Get<bool>(L"ReturnValue");
-}
 
 }  // namespace ue_wrap::kismet_timer

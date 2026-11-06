@@ -64,11 +64,6 @@ void ListHoses(std::vector<void*>& out) {
     }, &out);
 }
 
-bool IsHose(void* actor) {
-    void* cls = HoseClass();
-    return cls && actor && R::IsLive(actor) && R::ClassOf(actor) == cls;
-}
-
 bool IsLaying(void* hose) { return engine::IsActorTickEnabled(hose); }
 
 std::wstring KeyOf(void* hose) { return SaveKey(hose); }

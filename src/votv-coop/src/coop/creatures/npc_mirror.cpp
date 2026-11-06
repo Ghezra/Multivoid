@@ -29,7 +29,7 @@
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/actors/puppet.h"
 #include "ue_wrap/core/reflection.h"
-#include "ue_wrap/core/sdk_profile.h"  // NpcClass_Wisp, NpcClass_GeomOcta (the mirrors that keep their actor tick)
+#include "ue_wrap/core/sdk_profile.h"  // NpcClass_Wisp, NpcClass_GeomOcta, NpcClass_Deer (the mirrors that keep their actor tick)
 #include "ue_wrap/core/types.h"
 
 #include <cmath>
@@ -74,12 +74,26 @@ void ArmWispLanding(coop::element::ElementId eid) {
     }
 }
 
+// The deer's floor: its ReceiveTick turns the mesh's SpringArm by the floor under it (CharacterMovement's CurrentFloor),
+// which a parked movement tick never refreshes, so the pose drive asks the engine for it as the mirror moves.
+void ArmDeerFloor(coop::element::ElementId eid) {
+    if (coop::element::Npc* el = NpcMirrors().Get(eid)) {
+        el->MarkFloorMirror();
+    } else {
+        // Unreachable after a successful install; a silent miss would be a mirror whose body keeps the lean of the
+        // floor it spawned on.
+        UE_LOGW("npc-sync[client OnSpawn]: deer mirror eid=%u not retrievable post-install -- floor refresh NOT armed", eid);
+    }
+}
+
 // What the mirror install parks, by the spawned class's name. A class with a row may keep its actor tick (the
 // movement tick is always parked: an ACharacter mirror whose movement ticks falls under gravity between pose packets)
 // and may arm something on its mirror; every other class takes both ticks off. The wisp keeps its actor tick: its
 // ReceiveTick is per-viewer cosmetics (fade-in, bob, the shy despawn), not AI. The Octa keeps it for its turn toward
 // the target and its charge rings (its decisions are parked by npc_mirror_brain); it needs no landing replay, since
-// the mirror spawns at the host's current pose and the pose stream carries it down.
+// the mirror spawns at the host's current pose and the pose stream carries it down. The deer keeps it for its dissolve
+// (the camera's nearness, each viewer's own) and for the lean of its body on the floor; the floor the tick reads is
+// the pose drive's to refresh.
 struct MirrorTickRow {
     const wchar_t* cls;
     bool           keepActorTick;
@@ -88,6 +102,7 @@ struct MirrorTickRow {
 constexpr MirrorTickRow kMirrorTicks[] = {
     {ue_wrap::profile::name::NpcClass_Wisp,     true, &ArmWispLanding},
     {ue_wrap::profile::name::NpcClass_GeomOcta, true, nullptr},
+    {ue_wrap::profile::name::NpcClass_Deer,     true, &ArmDeerFloor},
 };
 
 constexpr size_t kMirrorTickCount = sizeof(kMirrorTicks) / sizeof(kMirrorTicks[0]);
@@ -337,6 +352,25 @@ bool SpawnFreshNpcMirror(const std::wstring& classW, void* actorClass, uint32_t 
                     "LEAKS (Install gating invariant violated)", spawned);
         }
         return false;
+    }
+    // A mirror is driven by the host's pose and never thinks: it takes no controller, so no path following, perception
+    // or control-rotation update runs on a body the stream drives (a possessed deer mirror had its yaw overwritten by
+    // its AI controller). MTA's remote ped is the same shape: it has no local brain, and its controller state is the
+    // one the owner's keysync set (reference/mtasa-blue/Client/mods/deathmatch/logic/CClientPed.cpp:876-921,
+    // GetControllerState reads the pad only for the local ped; :961-972, AddKeysync takes a remote ped only). The
+    // AnimBPs read the pawn's velocity, which the pose drive writes, and need no controller.
+    // A non-pawn class is left as spawned; a pawn that could not be judged is said once per class.
+    if (E::MakePawnInert(spawned) == E::PawnInertResult::Unresolved) {
+        constexpr size_t kInertWarnCap = 32;
+        static void* warned[kInertWarnCap] = {};
+        static size_t warnedCount = 0;
+        bool seen = false;
+        for (size_t i = 0; i < warnedCount && !seen; ++i) seen = (warned[i] == actorClass);
+        if (!seen && warnedCount < kInertWarnCap) {
+            warned[warnedCount++] = actorClass;
+            UE_LOGW("npc-sync[client OnSpawn]: '%ls' could not be made inert (the Pawn class did not resolve) -- "
+                    "its mirror keeps the AI controller the engine gives it", classW.c_str());
+        }
     }
     // A mirror of a parked family is marked before the finish runs its BeginPlay, which the graph watches refuse.
     coop::npc_mirror_brain::PrepareBirth(spawned);

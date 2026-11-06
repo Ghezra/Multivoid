@@ -57,7 +57,8 @@ last knew, a can it has not seen comparing with its class's defaults (`coop/prop
 record landing here updates what is known and does not go back. `[V]`
 `harness/autotest/autotest_can_state.cpp`: two cans, each opened on one peer and eaten from on the
 other, read the same `opened`, `foods` and mesh on both peers after every step, with one record per
-change. The verbs ran by reflection; the can opener's and the use key's own routes into them are `[RD]`.
+change; the client walks to the host first, every step waits on the can's state, and the host judges
+the client's rows (`can-drill: VERDICT`). The verbs ran by reflection; the can opener's and the use key's own routes into them are `[RD]`.
 
 On the host, a prop born during play -- a device's eject, a drop, a place -- gets its record from
 the finish-spawning drain a tick after the birth, because the Blueprint that spawned it fills its
@@ -439,19 +440,27 @@ progression through the existing lanes (the pile shape); a host corrector that r
 deterministic, clamped accrual when the game keeps re-enabling the tick (the tape reel, at one
 hertz); or an anchor, a start stamp every peer computes from, valid only while the rate is
 constant ([architecture.md](architecture.md), where the authority is going). The reel corrector
-and the food's parked brain are built; concrete is designed and not built.
+and the food's tick gate are built; concrete is designed and not built.
 
 A world food takes the first shape (`coop/props/prop_food_sync`), cooking progress included. Its tick rolls temperature and spoilage and, at the
-ends of the range, spawns a burnt or frozen copy and destroys itself, so a client's copy is parked, again at each poll
-because the food's `Init` turns the tick back on, and writes the host's temperature, ripeness and uses, sent when they
-move. A client's bite runs on its copy, for its own hunger and effects, and goes to the host as `FoodBite`; the host's
-count answers. A last bite is already the host's through the prop act lane. A joiner gets every food again at its ready
-edge. A parked copy paints what the tick would, its steam and its frozen look. A food in a hand is its holder's: it
-keeps its tick, its condition goes out as `FoodHand`, and the copy the others show in that hand is parked and takes
-it. A client that lets a food go sends `FoodRelease`, since the host's new copy has none of what the hand kept, and
-the host takes over `[V]` (`harness/autotest/autotest_food_state.cpp`: conditions, bites from each peer, a last bite,
-one burnt food on both, a burn written on a parked copy, steam and the frozen flag, a held food shown both ways, a
-throw from each peer, a rejoin; the verbs by reflection and the food `prop_food_C`).
+ends of the range, spawns a burnt or frozen copy and destroys itself, so a client's copy is refused its tick at the
+script gate (`coop/props/food_tick_gate`: `prop_food_C.ReceiveTick` and the four subclasses that declare their own, a
+switch on the actor's tick being undone by the food's `init` and the coffee cup's BeginPlay) and takes the host's
+temperature, ripeness and uses, sent when they move. A client's bite runs on its copy, for its own hunger and effects, and goes to the host as `FoodBite`; the host
+judges it within 400 uu of the sender's body (the door's and the coffee's reach) and takes at most one bite per 200 ms
+from a slot, and its count answers. A bite it refuses changes nothing there and is answered with the food's own
+`FoodState` to that slot, once a second at most, which puts the client's count back; the client's hunger and effects
+stay its own. A last bite is already the host's through the prop act lane. A joiner gets every food again at its ready
+edge, and a value whose copy is not born yet waits for it with no time limit (512 at most; at the cap the oldest is dropped and logged). A copy whose tick is refused paints what the tick would, its steam and its frozen look. A food in a hand is its
+holder's: it keeps its tick, its condition goes out as `FoodHand`, and the copy the others show in that hand is refused
+its tick on every peer and takes it. A client that lets a food go sends `FoodRelease`, taken from the player's drop bodies (`simulateDrop`,
+`forceDrop`), since the host's new copy has none of what the hand kept, and the host takes over `[V]`
+(`harness/autotest/autotest_food_state.cpp`: conditions, bites from each peer, a last bite, one burnt food on both, a
+burn written on a client's copy, steam and the frozen flag, a held food shown both ways, a throw from each peer, a
+rejoin; the verbs by reflection and the food `prop_food_C`). The host judges a release as a bite, within reach, with
+its temperature in 0 to 2000, its ripeness finite and in -1 to 1e9, and its use count no higher than the host copy's;
+one whose copy is not born yet waits 30 s for it, judged against where the sender stood, and a refused release is
+answered like a refused bite. A held food placed down, not thrown, is run by the same drill on both peers `[?]`.
 
 A microwave's and a mini oven's presses run on the presser's copy, so each peer polls them for its player's change and
 sends it (`KitchenState`); the others apply it through the machine's start or repaint, so the host's machine heats the
@@ -464,17 +473,7 @@ host's count stands: a client sends only its player's coal, light, off press or 
 its copy never runs out first; the drill runs each from each peer, a food heating on it, three coals burnt on the host's
 count, the lid's own press and its return from each peer, and a lit grill for a rejoin, the verbs by reflection.
 
-A placed radio or TV (`coop/world/media_device_sync`) plays through each peer's own media player and picks its own next track, so the
-host's state stands: a client's copy is moved to its track, time and play state, and a client with the radio's interface
-open sends what its player changed. A track crosses as a hash of its catalog link and opens only from the peer's own
-catalog `[V]` (`harness/autotest/autotest_radio_state.cpp`: a pick, stop, play and mode from a client, a pick from the
-host and a rejoin, with silent test tracks, the rule written on and the pick by the radio's own function). A TV also
-carries its channel, volume, brightness and squeeze; its openLink needs its power as well as the rule, so a track waits
-for its cord `[V]` (`harness/autotest/autotest_tv_state.cpp`: the same from each peer with a channel and the picture, with
-a silent audio-only `.mp4`, powered by a write, so no picture was decoded). The ATV's radio is one of them, a child actor
-of the ATV named by the ATV's key (`atv:<key>`) `[V]` (`harness/autotest/autotest_atv_host.cpp`: a pick from each peer
-through the radio's own interface, read off its media player on both; on the code before it, each pick stayed on its
-own peer).
+A placed radio or TV, the ATV's radio among them, keeps the host's track ([devices.md](devices.md), radios and TVs).
 
 A keyed prop's fire (`coop/props/prop_fire_sync`) is its `flameBase`, whose fuel burns it down through its own
 `fireDamage`, which only the host decides, so the host owns it. The host polls the burning props and sends each one's
@@ -520,6 +519,7 @@ flame back on it).
 | `PropToolFlags` | the tool's user to all | a prop's static, frozen and sleep as a toolgun tool left them `[?]` |
 | `PropSettle` | the releaser to all | where its released copy rests: the transform, its frozen and sleep, and the hold whose release it follows `[?]` |
 | `PropHoldRefused` | the host to every client | a hold the host refused, by its holder's slot and generation, the prop's key, and the slot whose hold keeps the prop |
+| `FoodState`, `FoodBite`, `FoodRelease`, `FoodHand` | the host to all; a client to the host; a client to the host; the holder to all | a world food's temperature, ripeness and uses; a client's bite; the condition of a food a client let go; the condition of the food in a hand |
 | `PropDrivePose` (stream) | the host to all; a syncing client to the host | the poses of the props under a hook's drive or a broom's push that moved since their last one, with the claim generation; a client's rows of the prop its own interaction moves, which the host judges before it relays one `[?]` |
 | `PropDriveEnd` | the host to all; a syncing client to the host | the final pose and velocity of a driven prop that rested or that a hand took; closes its generation; a client's End is admitted when it is the row's syncer `[?]` |
 | `PropSyncClaim`, `PropSyncAnswer` | a client to the host; the host to that client | a client's request to sync a prop its interaction moves, and the host's grant, refusal (with the reason) or revoke (with the generation); the host also grants a thrown prop to its thrower unasked, `seq` being the throw sequence `[?]` |
@@ -563,10 +563,10 @@ prop resolves.
 | Two peers changing one canned food inside one round trip each publish a whole record, and the last to reach the host stands, so a bite can be lost; a can's `health` travels only with those records, so impact damage short of opening it stays on each peer | `[RD]` `coop/props/prop_can_state` publishes the record and takes no claim |
 | Concrete and every other local-accumulator prop drift between peers; only the tape reel and the world food have one author | `[V]` `coop/interactables/tape_caddy_sync`, `coop/props/prop_food_sync` |
 | A radio or TV plays only on a peer whose own catalog holds the track and whose Custom Content rule is on, and is silent elsewhere; a TV showing a security camera is not this lane's | `[V]` `coop/world/media_device_sync`: a track is a hash, so no peer can make another open an address |
-| A hot food's ignition is the host's alone, since a parked copy does not run it, so a client sees no flame on it | `[RD]` `prop_food_C.ReceiveTick`; `ue_wrap/actors/food` |
-| A parked food's frost, impact material and freeze sound are painted but only its frozen flag and steam were read back; placing a held food down was not run | `[RD]` `ue_wrap/actors/food`, `coop/props/prop_food_sync` |
+| A hot food's ignition is the host's alone, since a client's copy is refused its tick, so a client sees no flame on it | `[RD]` `prop_food_C.ReceiveTick`; `ue_wrap/actors/food` |
+| A client's food's frost, impact material and freeze sound are painted but only its frozen flag and steam were read back | `[RD]` `ue_wrap/actors/food`, `coop/props/prop_food_sync` |
 | A food subclass's own counter (the shrimp's `shrimps`) and its own tick are not carried, and a heating device's work on a client's copy is local until the host's next value | `[RD]` `coop/props/prop_food_sync` |
-| The host takes a client's bite without a reach check; it refuses only a bite under 200 ms after that client's last | `[RD]` `coop/props/prop_food_sync` |
+| A refused bite or release leaves the client's hunger and effects as its copy ran them; only the use count is put back | `[RD]` `coop/props/prop_food_sync` |
 | A prop tied by any hook -- a player's, an anchored one, the level's own -- is parked on every client for as long as the tie holds, since the host streams it, so it cannot be grabbed there until the hook lets go. A joiner parks one at rest on the host's ready-edge re-send, a single unreliable datagram: lost, it leaves that prop unparked there until it moves | `[V]` `coop/items/hook_prop_claim` claims every tied prop on the host every pass; `coop/props/prop_drive_stream` parks it; `coop/props/prop_drive_host` re-sends at the ready edge |
 | A wall-attachable whose stick replay finds no surface here is frozen in place without the attach, so when the thing it stuck to is destroyed it stays in the air here while every other copy falls | `[V]` `coop/props/prop_stick_sync`'s fallback writes the flag without the component's attach or its destroy binding; `[RD]` the stick carries no parent |
 | A prop the driven-prop channel set coasting can come to rest a few centimetres from the host's copy: the host ends a coasting stream half a second after the prop stops moving, before its body sleeps, and the end edge sets the client's copy to the host's pose and hands it back its physics, so each copy settles on its own. The broom drill measured 0 to 6.4 cm, and 12.1 cm for a prop whose support another prop knocked away on the host | `[V]` `coop/props/prop_drive_host` (`kRestMs`), `coop/props/prop_drive_stream` (the end edge restores simulation per `coop/props/prop_wire_parity`); the broom drill's push and dispense phases |

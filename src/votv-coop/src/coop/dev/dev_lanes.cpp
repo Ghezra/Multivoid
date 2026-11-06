@@ -25,6 +25,7 @@
 #include "coop/dev/drive_selftest.h"  // [dev] rack-lane e2e circles
 #include "coop/dev/rack_birth_drill.h"  // [dev] a rack born holding rows reaches the client, which sends no op
 #include "coop/dev/burn_revive_drill.h"  // [dev] a client who dies burning is revived with no fire
+#include "coop/dev/cremator_probe.h"  // [dev] the cremator's own burn on the local player
 #include "coop/dev/drone_call_drill.h"  // [dev] a client's console press flies the host's drone
 #include "coop/dev/dronesack_drill.h"  // [dev] a crate dropped onto the drone sack, both peers told
 #include "coop/dev/atv_health_drill.h"  // [dev] the ATV lane's table judged on the ATV the host spawns (trap: the world's)
@@ -84,6 +85,7 @@
 #include "coop/dev/bug_report_drill.h"  // [dev] a bug report is saved and its zip judged in memory
 #include "coop/dev/grants_drill.h"  // [dev] this machine's local grants judged against an arm
 #include "coop/dev/pause_quit_drill.h"  // [dev] a peer quits through the pause menu's own button
+#include "coop/dev/pause_menu_probe.h"  // [dev] the pause menu's tree, its frame time and the cost of rows in it
 #include "coop/dev/settings_drill.h"  // [dev] the host sets its own rows and the modules show they followed
 #include "coop/dev/mannequin_drill.h"  // [dev] the walking mannequin's spawn and baseline drill
 #include "coop/dev/fireext_drill.h"  // [dev] a wall-mounted fire extinguisher taken off and carried, watched on both peers
@@ -174,6 +176,7 @@ void Install(coop::net::Session& session) {
     coop::dev::drive_selftest::Install(&session);  // [dev] rack-lane e2e circles (no-op unless drive_selftest=1)
     coop::dev::rack_birth_drill::Install(&session);  // [dev] the rack birth drill (no-op unless rack_birth_drill=1)
     coop::dev::burn_revive_drill::Install(&session);  // [dev] the burn revive drill (no-op unless burn_revive_drill=1)
+    coop::dev::cremator_probe::Install(&session);  // [dev] the cremator probe (no-op unless cremator_probe=1)
     coop::dev::hand_drop_selftest::Install(&session);  // [dev] hand pickup+drop episodes (no-op unless hand_drop_selftest=1)
     coop::dev::floppy_selftest::Install(&session);  // [dev] disc/server insert+eject episodes (no-op unless floppy_selftest=1)
     coop::dev::hookdrag_selftest::Install(&session);  // [dev] a hook-dragged prop, both peers logging its position (no-op unless hookdrag_selftest=1)
@@ -244,6 +247,7 @@ void EndSession() {
     coop::dev::download_drill::OnDisconnect();  // [dev] the same for the download drill
     coop::dev::rack_birth_drill::OnDisconnect();  // [dev] a rejoin's peers run the drill again
     coop::dev::burn_revive_drill::OnDisconnect();  // [dev] a rejoin's client runs the drill again
+    coop::dev::cremator_probe::OnDisconnect();  // [dev] a rejoin's client runs the probe again
     coop::dev::settings_drill::OnDisconnect();  // [dev] the steps start over
     coop::dev::mannequin_drill::OnDisconnect();  // [dev] the client's samples belong to one session
     coop::dev::laptop_drill::OnDisconnect();  // [dev] a rejoin's peers run their legs again
@@ -268,6 +272,7 @@ void EndSession() {
     coop::dev::l10n_drill::OnDisconnect();  // [dev] the drill starts over, a menu it opened is closed
     coop::dev::ban_drill::OnSessionEnd();  // [dev] empty by design: its one state, the step, stands
     coop::dev::pause_quit_drill::OnDisconnect();  // [dev] a pending wait for the pause menu is dropped; the per-process latch stands
+    coop::dev::pause_menu_probe::OnDisconnect();  // [dev] a probe in flight ends with its session
     coop::dev::order_selftest::OnDisconnect();  // [dev] a rejoin's peers run their legs again
     coop::dev::bind_wait_selftest::OnDisconnect();  // [dev] a rejoin's client runs the checks again
     coop::dev::pile_late_load::OnDisconnect();  // [dev] a clump still aside goes back to its saved pose
@@ -401,9 +406,11 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::bug_report_drill::Tick(&session);  // [dev] the bug-report drill (a latched read when off)
     coop::dev::grants_drill::Tick(&session);  // [dev] the local grants drill (a latched read when off)
     coop::dev::pause_quit_drill::Tick(&session);  // [dev] the pause-quit drill (a latched read when off)
+    coop::dev::pause_menu_probe::Tick(&session);  // [dev] the pause-menu probe (a latched read when off)
     coop::dev::drive_selftest::Tick();  // [dev] rack-lane e2e circles (single bool read when off; 5 s self-throttle)
     coop::dev::rack_birth_drill::Tick();  // [dev] the rack birth drill (a latched read when off)
     coop::dev::burn_revive_drill::Tick();  // [dev] the burn revive drill (a latched read when off)
+    coop::dev::cremator_probe::Tick();  // [dev] the cremator probe (a latched read when off)
     coop::dev::floppy_selftest::Tick();  // [dev] disc/server episodes (single bool read when off; 6 s census period)
     coop::dev::hookdrag_selftest::Tick();  // [dev] the hook drag and its 4 Hz position log (single bool read when off)
     coop::dev::hand_drop_selftest::Tick();  // [dev] hand pickup+drop episodes (single bool read when off)

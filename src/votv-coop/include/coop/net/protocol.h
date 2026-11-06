@@ -31,7 +31,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 292;
+inline constexpr uint16_t kProtocolVersion = 293;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1208,6 +1208,18 @@ enum class ReliableKind : uint8_t {
     // rows, sent once after its join so the host can compare each with its own. Dropped at the host unless the drill
     // enabled it. Rides the Default lane; never relayed; not pre-world. Late join: none, a report is a reading.
     DevContainerParity = 206,
+    // HOST->CLIENTS: the host saved the world, or tried to -- the game's own save of the hosted world, by the player
+    // or the autosave, written to its slot; a join's scratch capture and the save-slot menu's own writes are not.
+    // While the game counts an event as running its save is refused, or with bypassEvent writes the slot without
+    // gathering the world; either is a failed save, and the outcome says so (a write whose event state could not be read
+    // is its own outcome: it may not have taken). A client writes no world save of its
+    // own, so this is how it learns of one: it shows the chat line the host shows.
+    // Host-authored: a client's copy is refused at the host's receive edge; never relayed; not pre-world. Late join:
+    // none, a save is an act. WorldSavedPayload.
+    // MTA precedent: CChatEchoPacket to every joined player (CPlayerManager.cpp:159). Diverges in two places: a typed
+    // outcome the client renders from its own locale where MTA sends the text, and the Default lane where MTA keeps
+    // chat on PACKET_ORDERING_CHAT (CChatEchoPacket.h:48-51), since a late notice is harmless.
+    WorldSaved = 212,
     // HOST->CLIENTS: two players reached for one keyed prop and the host keeps the hold it saw first. A client's
     // hold of a prop the host's player holds, or that another client's hold already drives on the host, is refused:
     // the host closes that hold and tells every client, so the refused holder lets go and sends no release, and
@@ -1223,22 +1235,14 @@ enum class ReliableKind : uint8_t {
     // follows by at least the rest time; a settle that still passes its release is dropped as no released hold.
     // Not pre-world. Late join: none, the snapshot carries the host's pose. PropSettlePayload.
     PropSettle = 211,
-    // HOST->CLIENTS: the host saved the world, or tried to -- the game's own save of the hosted world, by the player
-    // or the autosave, written to its slot; a join's scratch capture and the save-slot menu's own writes are not.
-    // While the game counts an event as running its save is refused, or with bypassEvent writes the slot without
-    // gathering the world; either is a failed save, and the outcome says so. A client writes no world save of its
-    // own, so this is how it learns of one: it shows the chat line the host shows.
-    // Host-authored: a client's copy is refused at the host's receive edge; never relayed; not pre-world. Late join:
-    // none, a save is an act. WorldSavedPayload.
-    WorldSaved = 212,
     // ANY->ALL: a toolgun tool this peer's player used changed a keyed prop's static, frozen or sleep (the freeze,
     // the unfreeze, the make-static). The tool runs on its user's machine alone, so every other copy kept the old
     // flags; the user sends the prop's flags as the tool left them, and every peer whose player does not hold the
     // prop sets them through prop_C's own setter. A client's copy is relayed to the other clients. Not pre-world.
     // Late join: none, the snapshot rows carry the host's flags. PropToolFlagsPayload.
     PropToolFlags = 213,
-    // HOST->ALL: a world food's temperature, ripeness and use count, sent when they move. A client's food is parked,
-    // so these are its values. Not pre-world. Late join: every food again at the joiner's ready edge, on the poll's
+    // HOST->ALL: a world food's temperature, ripeness and use count, sent when they move. A client's food is refused its tick
+    // at the gate, so these are its values. Not pre-world. Late join: every food again at the joiner's ready edge, on the poll's
     // budget. FoodStatePayload.
     FoodState = 214,
     // CLIENT->HOST: this client's player bit a world food. Its copy ran the bite; the host takes one use off its own
@@ -1260,18 +1264,12 @@ enum class ReliableKind : uint8_t {
     // client's player changed through its interface; never relayed, the host's next state answers. Not pre-world. Late join: every device again at
     // the ready edge. MediaDeviceStatePayload.
     MediaDeviceState = 219,
-    // HOST->ALL: a walking tree's random size and whether it has landed, on a change and every few seconds, as its mirror's
-    // begin play rolls its own and its movement never lands. Not relayed, not pre-world. Late join: every tree again at the
-    // ready edge. AmbientTreeStatePayload.
-    AmbientTreeState = 220,
-    // HOST->ALL: a dirt hole's or a beehive branch's place, once, and its end. Not relayed, not pre-world. Late join: every
-    // one again at the ready edge, and a peer that has the number keeps what it has. AmbientFixtureStatePayload.
-    AmbientFixtureState = 221,
     // HOST->ALL: a plant's identity, place and values, at once on an edge a viewer sees and every few seconds while it changes,
     // or its end. Not relayed, not pre-world. Late join: every plant again at the ready edge. PlantStatePayload.
     PlantState = 222,
-    // CLIENT->HOST: what this client's player did to a plant, its new values, its removal or a plant it planted. Never relayed;
-    // the host's next PlantState answers. PlantStatePayload.
+    // CLIENT->HOST: what this client's player did to a plant, its new values, its removal or a plant it planted. Never relayed.
+    // The host judges it (coop/world/plant_edit_gate) and answers a refused edit of a plant it holds with that plant's
+    // PlantState. PlantStatePayload.
     PlantEdit = 223,
     // CLIENT->HOST: its `angered` says this client's copy of a walking mannequin was just angered, as by a fire.
     // CLIENT->HOST: this client's player has a walking mannequin on screen, every second while it does, or no longer has. The
@@ -1294,20 +1292,6 @@ enum class ReliableKind : uint8_t {
     // CLIENT->HOST: a hose this client's player finished laying or changed (op 1, its record), or took up (op 2). Never
     // relayed; the host lays or takes up its own and its next GroundHoseState answers. BlobChunkPayload, as above.
     GroundHoseIntent = 229,
-    // HOST->ALL: a spilled liquid's decal on the host (a coffee cup, beer, wine, a gas bottle), where it landed. A client
-    // makes the same decal there, so the grime lane's position key names it on both. Not relayed, not pre-world. Late
-    // join: every live spill again at the ready edge, a client keeping one it already has there. SpillPayload.
-    SpillState = 230,
-    // CLIENT->HOST: a liquid this client's player held spilled, and its decal landed here; the client's own decal is
-    // removed. Never relayed; the host checks the class and the reach and makes it, and its SpillState answers.
-    // SpillPayload.
-    SpillIntent = 231,
-    // HOST->ALL: a bottle on the host poured, or a client's pour the host relays: each peer that did not pour it plays the
-    // bottle's pour sound there. Not relayed further, not pre-world, nothing at late join. SpillPourPayload.
-    SpillPour = 232,
-    // CLIENT->HOST: a bottle in this client's player's hand poured. Never relayed; the host plays it and sends it on as a
-    // SpillPour naming this client. SpillPourPayload.
-    SpillPourIntent = 233,
     // HOST->ALL: a piece of the host's a player built -- a nail, or a custom wall unfinished, wet or finished -- as its own
     // save record, when it is new or changed, or its key once when it went. A client makes it on its copy, or applies the
     // record to its piece of that key, a nail tied to the actors its keys name there. Not relayed, not pre-world. Late join:
@@ -1379,6 +1363,42 @@ enum class ReliableKind : uint8_t {
     // coop::props::container_act_wire's commit. Never relayed; not pre-world; the same lane as the request, so an act's
     // end cannot overtake its start.
     ContainerActCommit = 209,
+    // HOST->ALL: a spilled liquid's decal on the host (a coffee cup, beer, wine, a gas bottle), where it landed. A client
+    // makes the same decal there, so the grime lane's position key names it on both. Not relayed, not pre-world. Late
+    // join: every live spill again at the ready edge, a client keeping one it already has there. SpillPayload.
+    SpillState = 230,
+    // CLIENT->HOST: a liquid this client's player held spilled, and its decal landed here; the client's own decal is
+    // removed. Never relayed; the host checks the class and the reach and makes it, and its SpillState answers.
+    // SpillPayload.
+    SpillIntent = 231,
+    // HOST->ALL: a bottle on the host poured, or a client's pour the host relays: each peer that did not pour it plays the
+    // bottle's pour sound there. Not relayed further, not pre-world, nothing at late join. SpillPourPayload.
+    SpillPour = 232,
+    // CLIENT->HOST: a bottle in this client's player's hand poured. Never relayed; the host plays it and sends it on as a
+    // SpillPour naming this client. SpillPourPayload.
+    SpillPourIntent = 233,
+    // HOST->CLIENT: where the vent crawler's crawl stands (VentCrawlStatePayload): 1 under way, with the seconds since
+    // its cue, or 2 over; a crawl not begun is never sent. The cue (EventCue 102) is the live start; this is what a peer
+    // that joined after it needs, so its vent, signal room door power and sounds are the host's. Sent by the join replay
+    // to the joiner's slot alone. Host-authored: a client's copy is refused at the host's receive edge; never relayed;
+    // Default lane, held until the joiner's world is ready (not pre-world). Late join: this is it, one message at the
+    // joiner's world-ready edge when a crawl began in this world.
+    VentCrawlState = 242,
+    // HOST->ALL: a walking tree's random size and whether it has landed, when the host reads it at the tree's birth and
+    // again at its landing (its mirror's begin play rolls its own and its movement never lands). Not relayed, not
+    // pre-world. Late join: every tree again at the ready edge, to the joiner alone. AmbientTreeStatePayload.
+    AmbientTreeState = 220,
+    // HOST->ALL: a dirt hole's or a beehive branch's place, once, and a branch's end (a hole ends by each viewer alone, so none
+    // crosses); a branch carries the key its nest was born with and whether it holds the nest now, and goes again when
+    // that changes. Not relayed, not pre-world. Late join: every one again to the joiner alone, then a census-end
+    // (family 2), by which the joiner ends each loaded branch nothing named; a peer that has the number keeps what it has.
+    // AmbientFixtureStatePayload.
+    AmbientFixtureState = 221,
+    // CLIENT->HOST: a sus hole this client's own spawner rolled, on grass 100 to 500 m from its player: the client's hole is
+    // destroyed and this names its place. Never relayed, not pre-world. The host judges the ring, the grass and the player's
+    // standing holes, makes the hole, and its AmbientFixtureState goes to every peer. A refused intent loses that roll.
+    // Nothing at late join (the host's living holes are a joiner's set). SusHoleIntentPayload.
+    SusHoleIntent = 243,
 };
 
 #pragma pack(push, 1)
@@ -1996,36 +2016,11 @@ static_assert(sizeof(PropSyncAnswerPayload) == 12, "PropSyncAnswerPayload must b
 static_assert(sizeof(PropSyncAnswerPayload) <= 256 - 20 - 8,
               "PropSyncAnswerPayload must fit in one reliable datagram");
 
-// The host's refusal of a hold (PropHoldRefused): the prop by key, the refused hold by its holder's slot and the
-// generation that holder minted at the grab, and the slot whose hold keeps the prop.
-struct PropHoldRefusedPayload {
-    WireKey  key;         // 32 -- the prop's Key, as the refused hold streamed it
-    uint16_t holdGen;     // 2  -- the refused hold; never 0
-    uint8_t  slot;        // 1  -- the refused holder, 1..kMaxPeers-1
-    uint8_t  holder;      // 1  -- the slot whose hold keeps the prop, 0..kMaxPeers-1
-};
-static_assert(sizeof(PropHoldRefusedPayload) == 36, "PropHoldRefusedPayload must be 36 bytes");
-static_assert(sizeof(PropHoldRefusedPayload) <= 256 - 20 - 8,
-              "PropHoldRefusedPayload must fit in one reliable datagram");
-
-// Where a released prop came to rest on its releaser (PropSettle): the prop by key, its world transform at rest,
-// its frozen and sleep there, and the hold whose release it follows.
-struct PropSettlePayload {
-    WireKey  key;                          // 32 -- the prop's Key
-    float    locX, locY, locZ;             // 12 -- world cm
-    float    rotPitch, rotYaw, rotRoll;    // 12 -- degrees
-    uint16_t holdGen;                      // 2  -- the released hold
-    uint8_t  physFlags;                    // 1  -- propspawn_flags of the copy at rest
-    uint8_t  _pad;                         // 1  -- zero
-};
-static_assert(sizeof(PropSettlePayload) == 60, "PropSettlePayload must be 60 bytes");
-static_assert(sizeof(PropSettlePayload) <= 256 - 20 - 8,
-              "PropSettlePayload must fit in one reliable datagram");
-
 // What became of the host's save (WorldSaved). Wire-visible: the values are stable; 0 is never sent.
 enum class WorldSaveOutcome : uint8_t {
     Saved = 1,          // the world was gathered and written
     EventRunning = 2,   // an event was running: the game refused the save, or wrote the slot without the world
+    Unknown = 3,        // the slot was written, but whether an event was running could not be read
 };
 
 // The host saved the world or tried to (WorldSaved): the host's count of its save attempts this session, for the
@@ -2038,28 +2033,17 @@ struct WorldSavedPayload {
 static_assert(sizeof(WorldSavedPayload) == 8, "WorldSavedPayload must be 8 bytes");
 static_assert(sizeof(WorldSavedPayload) <= 256 - 20 - 8,
               "WorldSavedPayload must fit in one reliable datagram");
-
-// A toolgun tool changed a prop's flags (PropToolFlags): the prop by key, and its propspawn_flags as the tool left
-// them, read off the live prop (kLiveState set).
-struct PropToolFlagsPayload {
-    WireKey  key;          // 32 -- the prop's Key
-    uint8_t  physFlags;    // 1  -- propspawn_flags: kStatic, kFrozen, kSleep with kLiveState
-    uint8_t  _pad[3];      // 3  -- zero
+// The host's refusal of a hold (PropHoldRefused): the prop by key, the refused hold by its holder's slot and the
+// generation that holder minted at the grab, and the slot whose hold keeps the prop.
+struct PropHoldRefusedPayload {
+    WireKey  key;         // 32 -- the prop's Key, as the refused hold streamed it
+    uint16_t holdGen;     // 2  -- the refused hold; never 0
+    uint8_t  slot;        // 1  -- the refused holder, 1..kMaxPeers-1
+    uint8_t  holder;      // 1  -- the slot whose hold keeps the prop, 0..kMaxPeers-1
 };
-static_assert(sizeof(PropToolFlagsPayload) == 36, "PropToolFlagsPayload must be 36 bytes");
-static_assert(sizeof(PropToolFlagsPayload) <= 256 - 20 - 8,
-              "PropToolFlagsPayload must fit in one reliable datagram");
-
-// A world food's condition (FoodState): the food by key, and the three fields its tick and its bites move.
-struct FoodStatePayload {
-    WireKey key;          // 32 -- the food's Key
-    float   temperature;  // 4  -- kelvin
-    float   ripeness;     // 4
-    int32_t uses;         // 4
-    float   cookProgress;  // 4  -- a cooking food's, -1 for any other food
-};
-static_assert(sizeof(FoodStatePayload) == 48, "FoodStatePayload must be 48 bytes");
-static_assert(sizeof(FoodStatePayload) <= 256 - 20 - 8, "FoodStatePayload must fit in one reliable datagram");
+static_assert(sizeof(PropHoldRefusedPayload) == 36, "PropHoldRefusedPayload must be 36 bytes");
+static_assert(sizeof(PropHoldRefusedPayload) <= 256 - 20 - 8,
+              "PropHoldRefusedPayload must fit in one reliable datagram");
 
 // A client's bite of a world food (FoodBite).
 struct FoodBitePayload {
@@ -2074,48 +2058,6 @@ struct FoodHandPayload {
     int32_t uses;         // 4
 };
 static_assert(sizeof(FoodHandPayload) == 12, "FoodHandPayload must be 12 bytes");
-
-// A placed radio or TV (MediaDeviceState).
-struct MediaDeviceStatePayload {
-    WireKey  key;      // 32 -- the device's Key
-    uint64_t track;    // 8  -- ue_wrap::media_device::TrackId, 0 for none
-    int64_t  ticks;    // 8  -- the player's time, 100 ns
-    uint8_t  playing;  // 1
-    uint8_t  mode;     // 1  -- playmode, 0 to 3
-    uint8_t  _pad[2];  // 2  -- zero
-    int32_t  channel;     // 4  -- a TV's, -1 for none
-    float    volume;      // 4  -- a TV's
-    float    brightness;  // 4  -- a TV's
-    float    squeezeX;    // 4  -- a TV's
-    float    squeezeY;    // 4  -- a TV's
-};
-static_assert(sizeof(MediaDeviceStatePayload) == 72, "MediaDeviceStatePayload must be 72 bytes");
-
-// A walking tree (AmbientTreeState).
-struct AmbientTreeStatePayload {
-    uint32_t treeEid;  // 4 -- the tree's NPC element
-    float    scale;    // 4 -- its mesh's
-    uint8_t  landed;   // 1
-    uint8_t  _pad[3];  // 3 -- zero
-};
-static_assert(sizeof(AmbientTreeStatePayload) == 12, "AmbientTreeStatePayload must be 12 bytes");
-
-namespace ambient_fixture {
-inline constexpr uint8_t kHole = 0;
-inline constexpr uint8_t kBranch = 1;
-}  // namespace ambient_fixture
-
-// A dirt hole or a beehive branch (AmbientFixtureState).
-struct AmbientFixtureStatePayload {
-    uint32_t id;                // 4 -- the host's number for it
-    float    x, y, z;           // 12
-    float    pitch, yaw, roll;  // 12
-    uint8_t  family;            // 1 -- ambient_fixture
-    uint8_t  alive;             // 1 -- 0: it ended
-    uint8_t  _pad[2];           // 2 -- zero
-};
-static_assert(sizeof(AmbientFixtureStatePayload) == 32, "AmbientFixtureStatePayload must be 32 bytes");
-
 namespace plant_edit {
 inline constexpr uint8_t kGrow = 1, kFertilizer = 2, kWater = 4, kFruitGrow = 8, kDryness = 16, kAmount = 32, kRow = 64;
 }  // namespace plant_edit
@@ -2140,6 +2082,100 @@ struct PlantStatePayload {
     uint8_t       _pad;              // 1 -- zero
 };
 static_assert(sizeof(PlantStatePayload) == 212, "PlantStatePayload must be 212 bytes");
+static_assert(sizeof(PlantStatePayload) <= 256 - 20 - 8,
+              "PlantStatePayload must fit one reliable datagram");
+
+// A walking tree's size and landing (AmbientTreeState).
+struct AmbientTreeStatePayload {
+    uint32_t treeEid;  // 4 -- the tree's NPC element
+    float    scale;    // 4 -- its mesh's
+    uint8_t  landed;   // 1
+    uint8_t  _pad[3];  // 3 -- zero
+};
+static_assert(sizeof(AmbientTreeStatePayload) == 12, "AmbientTreeStatePayload must be 12 bytes");
+
+namespace ambient_fixture {
+inline constexpr uint8_t kHole = 0;
+inline constexpr uint8_t kBranch = 1;
+// Not a fixture: the host has sent a joiner every one it holds, so a loaded branch nothing named is one the host lacks.
+inline constexpr uint8_t kCensusEnd = 2;
+}  // namespace ambient_fixture
+
+// A dirt hole or a beehive branch (AmbientFixtureState), or the end of a joiner's census (family kCensusEnd, the rest zero).
+struct AmbientFixtureStatePayload {
+    uint32_t id;                // 4 -- the host's number for it
+    float    x, y, z;           // 12
+    float    pitch, yaw, roll;  // 12
+    uint8_t  family;            // 1 -- ambient_fixture
+    uint8_t  alive;             // 1 -- 0: the branch ended (a hole's end never crosses)
+    uint8_t  _pad[2];           // 2 -- zero
+    WireKey  birthKey;          // 32 -- a branch: the key its nest had when the host first read it; a hole: len 0
+    uint8_t  hasNest;           // 1 -- a branch: the host's branch holds its nest now (read at every send)
+    uint8_t  _pad2[3];          // 3 -- zero
+};
+static_assert(sizeof(AmbientFixtureStatePayload) == 68, "AmbientFixtureStatePayload must be 68 bytes");
+static_assert(sizeof(AmbientFixtureStatePayload) <= 256 - 20 - 8,
+              "AmbientFixtureStatePayload must fit in one reliable datagram");
+
+// A sus hole the client's own spawner rolled (SusHoleIntent): where its hole stood. The host places the hole by its own
+// trace at that point, so no rotation crosses.
+struct SusHoleIntentPayload {
+    float x, y, z;  // 12
+};
+static_assert(sizeof(SusHoleIntentPayload) == 12, "SusHoleIntentPayload must be 12 bytes");
+static_assert(sizeof(SusHoleIntentPayload) <= 256 - 20 - 8, "SusHoleIntentPayload must fit in one reliable datagram");
+
+// Where a released prop came to rest on its releaser (PropSettle): the prop by key, its world transform at rest,
+// its frozen and sleep there, and the hold whose release it follows.
+struct PropSettlePayload {
+    WireKey  key;                          // 32 -- the prop's Key
+    float    locX, locY, locZ;             // 12 -- world cm
+    float    rotPitch, rotYaw, rotRoll;    // 12 -- degrees
+    uint16_t holdGen;                      // 2  -- the released hold
+    uint8_t  physFlags;                    // 1  -- propspawn_flags of the copy at rest
+    uint8_t  _pad;                         // 1  -- zero
+};
+static_assert(sizeof(PropSettlePayload) == 60, "PropSettlePayload must be 60 bytes");
+static_assert(sizeof(PropSettlePayload) <= 256 - 20 - 8,
+              "PropSettlePayload must fit in one reliable datagram");
+
+// A toolgun tool changed a prop's flags (PropToolFlags): the prop by key, and its propspawn_flags as the tool left
+// them, read off the live prop (kLiveState set).
+struct PropToolFlagsPayload {
+    WireKey  key;          // 32 -- the prop's Key
+    uint8_t  physFlags;    // 1  -- propspawn_flags: kStatic, kFrozen, kSleep with kLiveState
+    uint8_t  _pad[3];      // 3  -- zero
+};
+static_assert(sizeof(PropToolFlagsPayload) == 36, "PropToolFlagsPayload must be 36 bytes");
+static_assert(sizeof(PropToolFlagsPayload) <= 256 - 20 - 8,
+              "PropToolFlagsPayload must fit in one reliable datagram");
+
+// A world food's condition (FoodState): the food by key, and the three fields its tick and its bites move.
+struct FoodStatePayload {
+    WireKey key;          // 32 -- the food's Key
+    float   temperature;  // 4  -- kelvin
+    float   ripeness;     // 4
+    int32_t uses;         // 4
+    float   cookProgress;  // 4  -- a cooking food's, -1 for any other food
+};
+static_assert(sizeof(FoodStatePayload) == 48, "FoodStatePayload must be 48 bytes");
+static_assert(sizeof(FoodStatePayload) <= 256 - 20 - 8, "FoodStatePayload must fit in one reliable datagram");
+
+// A placed radio or TV (MediaDeviceState).
+struct MediaDeviceStatePayload {
+    WireKey  key;      // 32 -- the device's Key
+    uint64_t track;    // 8  -- ue_wrap::media_device::TrackId, 0 for none
+    int64_t  ticks;    // 8  -- the player's time, 100 ns
+    uint8_t  playing;  // 1
+    uint8_t  mode;     // 1  -- playmode, 0 to 3
+    uint8_t  _pad[2];  // 2  -- zero
+    int32_t  channel;     // 4  -- a TV's, -1 for none
+    float    volume;      // 4  -- a TV's
+    float    brightness;  // 4  -- a TV's
+    float    squeezeX;    // 4  -- a TV's
+    float    squeezeY;    // 4  -- a TV's
+};
+static_assert(sizeof(MediaDeviceStatePayload) == 72, "MediaDeviceStatePayload must be 72 bytes");
 
 // A client's view of a walking mannequin (WalkerWatch), or the host's anger (WalkerAngry).
 struct WalkerWatchPayload {
@@ -4593,8 +4629,21 @@ struct StatQueryReplyPayload {
     StatEffectEntry effects[5];
 };
 static_assert(sizeof(StatQueryReplyPayload) == 205, "StatQueryReplyPayload must be 205 bytes");
-static_assert(sizeof(StatQueryReplyPayload) <= 256 - 20 - 8,
-              "StatQueryReplyPayload must fit in one reliable datagram");
+static_assert(sizeof(StatQueryReplyPayload) <= 256 - 20 - 8, "StatQueryReplyPayload must fit in one reliable datagram");
+
+// A vent crawl's state for a joiner (VentCrawlState).
+struct VentCrawlStatePayload {
+    float   elapsed;       // 4 -- seconds since the crawl's cue on the host (phase 1)
+    float   ventLoc[3];    // 12 -- the hanging vent's world location on the host: phase 1 at the crawl's start, phase 2 its end
+    float   ventRot[3];    // 12 -- its world rotation: pitch, yaw, roll in degrees (the same two poses)
+    uint8_t phase;         // 1 -- 1 crawling, 2 over (0, none, is never sent)
+    uint8_t doorActive;    // 1 -- the signal room door's `active` on the host
+    uint8_t hasVent;       // 1 -- the host's vent was read: ventLoc and ventRot hold the pose of its phase
+    uint8_t _pad;          // 1 -- zero
+};
+static_assert(sizeof(VentCrawlStatePayload) == 32, "VentCrawlStatePayload must be 32 bytes");
+static_assert(sizeof(VentCrawlStatePayload) <= 256 - 20 - 8,
+              "VentCrawlStatePayload must fit in one reliable datagram");
 
 #pragma pack(pop)
 

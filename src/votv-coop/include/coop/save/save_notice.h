@@ -6,13 +6,17 @@
 // object under a slot of the game's own, so a join's scratch capture and the save-slot menu's writes do
 // not count -- and puts one line in its chat feed and sends WorldSaved. While the game counts an event as
 // running, its save shows an error and returns without a write, so the host also watches mainGamemode.save;
-// a save told to bypass the event writes the slot without gathering the world. Either way the line says the
-// save did not take. A client puts the same line in its feed, naming the host. The game's own SAVED indicator stays
-// the host's: calling mainGamemode.saveAnim on a client's gamemode was measured to show nothing.
+// a save told to bypass the event writes the slot without gathering the world. The watch reports only when the
+// tests the game runs before its event test (dreaming, the Custom mode, mid air) pass; else nothing is sent. The line
+// says the save did not take, or may not have when the event state could not be read. A client puts the same line in
+// its feed, naming the host; it goes out Direct, as the host's word to every player. The game's own SAVED indicator
+// stays the host's: mainGamemode.saveAnim on a client's gamemode was measured to show nothing.
 //
 // Game thread.
 
 #pragma once
+
+#include <cstdint>
 
 namespace coop::net {
 class Session;
@@ -30,6 +34,14 @@ void Tick();
 
 // CLIENT: the host saved its world, or tried to during an event. Validated at the router.
 void OnWorldSaved(const coop::net::WorldSavedPayload& p);
+
+// The save attempts this session by outcome: the host's own (each WorldSaved it sends) and a client's heard ones.
+struct Counts {
+    uint32_t savedOk = 0, savedFailed = 0, heardOk = 0, heardFailed = 0;
+    uint32_t savedUnknown = 0, heardUnknown = 0;  // written, but an event could not be ruled out
+};
+// Read-only, for drills. Game thread.
+Counts GetCounts();
 
 // Session end: the save count and the once-said latches. Game thread.
 void OnDisconnect();
