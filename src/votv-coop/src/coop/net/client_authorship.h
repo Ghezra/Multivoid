@@ -50,6 +50,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::BuildIntent:
     case ReliableKind::AtvRequest:
     case ReliableKind::ContainerBreakRequest:
+    case ReliableKind::DeskShortRequest:
     case ReliableKind::PropSpawn:
     case ReliableKind::PropDestroy:
     case ReliableKind::LightState:
@@ -264,6 +265,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::BuildState:
     case ReliableKind::AtvHostState:
     case ReliableKind::GarbageBinState:
+    case ReliableKind::DeskShortState:
     case ReliableKind::SwingerRestPose:
     case ReliableKind::GeomOctaEvent:
     case ReliableKind::DevLoadFiller:

@@ -255,6 +255,7 @@ set(VOTVCOOP_SOURCES
     src/coop/interactables/atv_host_sync.cpp
     src/coop/interactables/atv_riders.cpp
     src/coop/interactables/garbage_bin_sync.cpp
+    src/coop/interactables/desk_short_sync.cpp
     src/coop/props/container_break.cpp
     src/coop/world/build_sync.cpp
     src/coop/world/spill_sync.cpp
@@ -699,6 +700,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_sv_request.cpp
     src/harness/autotest/autotest_module_buy.cpp
     src/harness/autotest/autotest_seat_ragdoll.cpp
+    src/harness/autotest/autotest_desk_short.cpp
     src/harness/autotest/autotest_ambient_creature.cpp
     src/harness/autotest/autotest_ambient_field.cpp
     src/harness/autotest/autotest_noclip.cpp

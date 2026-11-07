@@ -25,6 +25,7 @@
 #include "coop/world/ground_hose_sync.h"
 #include "coop/interactables/atv_host_sync.h"
 #include "coop/interactables/garbage_bin_sync.h"
+#include "coop/interactables/desk_short_sync.h"
 #include "coop/props/container_break.h"
 #include "coop/world/spill_sync.h"
 #include "coop/world/plant_edit_gate.h"
@@ -406,6 +407,22 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         ::coop::garbage_bin_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::DeskShortState:
+    case net::ReliableKind::DeskShortRequest: {
+        // DeskShortState HOST->ALL, DeskShortRequest CLIENT->HOST.
+        const bool request = msg.kind == net::ReliableKind::DeskShortRequest;
+        if (request != (session.role() == net::Role::Host)) {
+            UE_LOGW("event_feed: a desk short the wrong way from slot %d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::DeskShortPayload)) break;
+        net::DeskShortPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.on > 1) break;
+        if (request) ::coop::desk_short_sync::OnRequest(msg.senderPeerSlot, p);
+        else ::coop::desk_short_sync::OnState(p);
         break;
     }
     case net::ReliableKind::ContainerBreakRequest: {

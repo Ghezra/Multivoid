@@ -237,6 +237,8 @@ void SpawnEnvGatedTests(coop::net::Role role) {
 
     SpawnIf("VOTVCOOP_RUN_SV_REQUEST", "sv.request drill", &SvRequestThread, role);
     SpawnIf("VOTVCOOP_RUN_MODULE_BUY", "module row drill", &ModuleBuyThread, role);
+    // The base computer's short circuit on both peers.
+    SpawnIf("VOTVCOOP_RUN_DESK_SHORT", "desk short drill", &DeskShortThread, role);
     // A device's claim when its user ragdolls.
     SpawnIf("VOTVCOOP_RUN_SEAT_RAGDOLL", "seat ragdoll drill", &SeatRagdollThread, role);
     // The bot-director halt probe, solo: measures the path query over the baked NavMesh and a
