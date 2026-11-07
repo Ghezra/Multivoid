@@ -54,7 +54,8 @@ bool HandleSignalEvent(const net::Session::ReliableMessage& msg);
 // PropDropIntent, ReelEjectIntent, DoorVerbIntent, CameraToggleIntent, LaptopTabReport and KeypadIntent check role()==Host AND a client
 // sender slot; KerfurConvertRequest checks the role only, mapping an out-of-range
 // slot to the 0xFF sentinel and handing it on; RoachConsumed defers both gates to
-// roach_sync::OnConsumedIntent.
+// roach_sync::OnConsumedIntent. PropPropsIntent (a press of the toolgun's prop-properties tool) and its answer
+// PropPropsState sit beside the remover's pair and hand their bytes to the lane, which checks the role and the format.
 bool HandleIntentEvent(net::Session& session,
                        const net::Session::ReliableMessage& msg);
 
@@ -97,7 +98,7 @@ bool HandleEconomyEvent(net::Session& session,
 // it is the host's End, applied by the stream's receiver. PropSyncClaim checks role()==Host AND a client
 // sender slot; PropSyncAnswer is the HOST->CLIENT verdict, refused from a client at the host's edge, and
 // PropHoldRefused the host's refusal of a second hold, to every client; PropSettle is where a released prop
-// rests, from its releaser to all; PropToolFlags a toolgun's flag change, from its user to all; FoodState a world
+// rests, from its releaser to all; FoodState a world
 // food's condition, host to all, FoodBite a client's bite and FoodRelease the food it let go, client to host,
 // FoodHand the food in a hand, holder to all; KitchenState a press on a kitchen machine, from its presser to all;
 // MediaDeviceState a placed radio's or TV's state, host to all or a client's edit to the host; AmbientTreeState a

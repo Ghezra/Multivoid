@@ -37,7 +37,6 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::Join:
     case ReliableKind::PropRelease:
     case ReliableKind::PropSettle:
-    case ReliableKind::PropToolFlags:
     case ReliableKind::FoodBite:
     case ReliableKind::FoodRelease:
     case ReliableKind::FoodHand:
@@ -169,6 +168,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::PropSyncClaim:
     case ReliableKind::DevParityReport:
     case ReliableKind::DevContainerParity:
+    case ReliableKind::PropPropsIntent:
         return ClientAuthorship::Client;
     // The Host row matches MTA's protected element data, which a client may not write: opt-in there
     // (reference/mtasa-blue/Server/mods/deathmatch/logic/CGame.cpp:2743-2755), the only mode here.
@@ -252,6 +252,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::PropSyncAnswer:
     case ReliableKind::PropHoldRefused:
     case ReliableKind::WorldSaved:
+    case ReliableKind::PropPropsState:
     case ReliableKind::FoodState:
     case ReliableKind::AmbientTreeState:
     case ReliableKind::AmbientFixtureState:

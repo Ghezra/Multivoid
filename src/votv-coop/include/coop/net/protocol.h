@@ -31,7 +31,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 295;
+inline constexpr uint16_t kProtocolVersion = 296;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1238,12 +1238,6 @@ enum class ReliableKind : uint8_t {
     // follows by at least the rest time; a settle that still passes its release is dropped as no released hold.
     // Not pre-world. Late join: none, the snapshot carries the host's pose. PropSettlePayload.
     PropSettle = 211,
-    // ANY->ALL: a toolgun tool this peer's player used changed a keyed prop's static, frozen or sleep (the freeze,
-    // the unfreeze, the make-static). The tool runs on its user's machine alone, so every other copy kept the old
-    // flags; the user sends the prop's flags as the tool left them, and every peer whose player does not hold the
-    // prop sets them through prop_C's own setter. A client's copy is relayed to the other clients. Not pre-world.
-    // Late join: none, the snapshot rows carry the host's flags. PropToolFlagsPayload.
-    PropToolFlags = 213,
     // HOST->ALL: a world food's temperature, ripeness and use count, sent when they move. A client's food is refused its tick
     // at the gate, so these are its values. Not pre-world. Late join: every food again at the joiner's ready edge, on the poll's
     // budget. FoodStatePayload.
@@ -1322,6 +1316,20 @@ enum class ReliableKind : uint8_t {
     // here, which the client cancelled. The host breaks its own copy by the same lethal call, so the spill is the
     // host's. Never relayed. ContainerBreakPayload.
     ContainerBreakRequest = 241,
+    // CLIENT->HOST: this client's player pressed the toolgun's prop-properties tool on a keyed prop, with the tool's
+    // own static, frozen, active and sleep, seen from this camera point at this hit point. The host judges the sender's
+    // right, a toolgun in its hand, who holds the prop and the sight, applies the tool's values through the game's
+    // setter and publishes the prop's flags (PropPropsState); the client's own press is cancelled. Never relayed.
+    // Late join: none -- an act; a joiner's flags come from the save and the join-window correction. Trust: the eid
+    // is re-resolved by the host
+    // and the origin and hit are a claim it re-traces. PropPropsIntentPayload.
+    PropPropsIntent = 249,
+    // HOST->CLIENT: a keyed prop's static, frozen and sleep as the host's copy holds them, read back after the tool
+    // set them and the active value it applied (reason Applied, to every peer, the sender included), or the host's
+    // current flags with the reason it refused a press (to the sender alone; the flags are the host's when it
+    // resolved the prop, else zero). Host-authored: refused at the host's receive edge; never relayed; not pre-world. Late join: none, the save and the join-window correction carry the
+    // flags (static included), the snapshot rows frozen and sleep. PropPropsStatePayload.
+    PropPropsState = 250,
     // HOST->CLIENT: one decision of a Geom Octa, to be replayed into the client's own Blueprint (coop/creatures/
     // geom_octa_relay): op 0, an Aggro, the Octa took a target (the replay runs minSphere's begin-overlap handler with
     // the target's counterpart here), carrying the host's verdict count as the base; op 1, a FireVerdict, the host's
@@ -2238,17 +2246,6 @@ static_assert(sizeof(PropSettlePayload) == 60, "PropSettlePayload must be 60 byt
 static_assert(sizeof(PropSettlePayload) <= 256 - 20 - 8,
               "PropSettlePayload must fit in one reliable datagram");
 
-// A toolgun tool changed a prop's flags (PropToolFlags): the prop by key, and its propspawn_flags as the tool left
-// them, read off the live prop (kLiveState set).
-struct PropToolFlagsPayload {
-    WireKey  key;          // 32 -- the prop's Key
-    uint8_t  physFlags;    // 1  -- propspawn_flags: kStatic, kFrozen, kSleep with kLiveState
-    uint8_t  _pad[3];      // 3  -- zero
-};
-static_assert(sizeof(PropToolFlagsPayload) == 36, "PropToolFlagsPayload must be 36 bytes");
-static_assert(sizeof(PropToolFlagsPayload) <= 256 - 20 - 8,
-              "PropToolFlagsPayload must fit in one reliable datagram");
-
 // A world food's condition (FoodState): the food by key, and the three fields its tick and its bites move.
 struct FoodStatePayload {
     WireKey key;          // 32 -- the food's Key
@@ -2378,6 +2375,47 @@ struct KitchenStatePayload {
     float   remaining;  // 4  -- a running microwave's seconds left, or a grill's burn through its coal
 };
 static_assert(sizeof(KitchenStatePayload) == 44, "KitchenStatePayload must be 44 bytes");
+// A client's press of the toolgun's prop-properties tool (PropPropsIntent): the element it hit, the camera point it
+// looked from and the point its shot struck in world centimetres, and the tool's own four values as the spawn menu set
+// them. The host judges the first three; none is trusted.
+struct PropPropsIntentPayload {
+    uint32_t eid;          // 4  -- the hit actor's Element id on the sender
+    float    origin[3];    // 12 -- the sender's camera location at the press
+    float    hit[3];       // 12 -- the impact point of the shot
+    uint8_t  isStatic;     // 1  -- the tool's isStatic
+    uint8_t  isFrozen;     // 1  -- the tool's isFrozen
+    uint8_t  isActive;     // 1  -- the tool's isActive
+    uint8_t  isSleeping;   // 1  -- the tool's isSleeping
+};
+static_assert(sizeof(PropPropsIntentPayload) == 32, "PropPropsIntentPayload must be 32 bytes");
+static_assert(sizeof(PropPropsIntentPayload) <= 256 - 20 - 8, "PropPropsIntentPayload must fit in one reliable datagram");
+
+// Why the host sent a PropPropsState. Applied is the broadcast of a prop's flags after the tool set them; the rest are
+// refusals to the sender alone. NotReady and Gone are not shown to the player; the others are.
+enum class PropPropsReason : uint8_t {
+    Applied     = 0,  // the host applied the press and read the flags back
+    NotReady    = 1,  // the sender, its body or the host's classes were not ready; nothing was judged
+    Gone        = 2,  // the element is no longer live
+    Unsupported = 3,  // the element is not a prop the tool changes in multiplayer
+    NoRight     = 4,  // the host withholds the tool from this player
+    NoToolgun   = 5,  // the sender's hand holds no toolgun
+    Held        = 6,  // someone is holding or dragging the prop
+    OutOfSight  = 7,  // the sender's shot does not stand: too far from its body, off the prop, or blocked
+    Busy        = 8,  // the host could not judge the sight or run the setter just now
+    Count       = 9,
+};
+
+// A prop's flags on the host (PropPropsState): the element, its static, frozen and sleep, the active value the host's
+// setter ran with (a prop keeps no such field, so it is the applied value), and why it was sent.
+struct PropPropsStatePayload {
+    uint32_t eid;          // 4 -- the prop's Element id on the host
+    uint8_t  isStatic;     // 1
+    uint8_t  isFrozen;     // 1
+    uint8_t  isSleeping;   // 1
+    uint8_t  isActive;     // 1 -- the active the host's setter ran with; 0 on a refusal
+    uint8_t  reason;       // 1 -- PropPropsReason
+};
+static_assert(sizeof(PropPropsStatePayload) == 9, "PropPropsStatePayload must be 9 bytes");
 
 // One message of the drill filler (DevLoadFiller): its place in the run and the run's length; the rest is fill.
 struct DevLoadFillerPayload {
@@ -2470,7 +2508,7 @@ inline constexpr uint8_t kRemoveWOrespawn = 0x20;  // Aprop_C.removeWOrespawn
 // own init() derives physics and collision from them, a moment no later message can reach. A
 // sender that spawns something new may state them as a default. kLiveState says they were read off
 // the sender's live Aprop_C instead (PhysFlagsOf), and only then does a receiver make an existing
-// copy's frozen and sleep match them.
+// copy's frozen and sleep match them (the join-window correction also makes static match).
 inline constexpr uint8_t kLiveState       = 0x40;
 }  // namespace propspawn_flags
 

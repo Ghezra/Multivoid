@@ -254,13 +254,29 @@ does not broadcast it back (`coop/props/prop_echo_suppress`).
 
 ### Frozen and static by the toolgun
 
-A toolgun tool is a `tool_*_C` actor whose `init(toolgun)` acts on the prop the toolgun's `outHit`
-names, on its user's machine alone. Every class's `init` is watched at the script gate, so a tool
-the lane never named is covered (`coop/props/prop_tool_flags`): before a tool's body runs its
-target's static, frozen and sleep are read, after it they are read again, and a change goes out as
-`PropToolFlags`. Every other peer sets the same flags through `prop_C`'s own setter unless its own
-player holds the prop, whose release carries its flags anyway. A tool that changes no flag, the
-remover among them, sends nothing.
+The toolgun's prop-properties tool (`tool_propProps_C`) sets a prop's static, frozen and sleep: its `init` is the whole
+press, calling the prop's own `setPropProps` with the four values the spawn menu gave the tool, and it then destroys
+itself. A client's press is cancelled at the script gate and goes to the host as `PropPropsIntent`: the element it hit,
+its camera point, the shot's hit point and the tool's four values. A hit on a keyed prop with no element id is refused
+with a notice, as the remover refuses it; an actor the session does not share runs natively. The
+host judges the press in the remover's order (`coop/props/prop_tool_flags`): the sender's world and posed body, a live
+prop element that is not trash or a kerfur, the right `multivoid.gameplay.toolgun.propprops` (granted by default), a
+toolgun in the sender's hand, no other peer holding the prop, and a shot the host's eye could have made
+(`coop/props/toolgun_sight`, with the limits it shares with the remover). It runs the game's setter on its own copy, so
+a class that overrides it (a landmine, a TV) takes its own path as in single player, and publishes the static, frozen and
+sleep it reads back from the actor, with the active value it ran the setter with, as `PropPropsState` to every peer.
+The host's own press is published from the tool's
+post row. A refused press returns the reason to its sender alone, with the host's current flags when the host had resolved
+the prop (a press on an element that is no prop, or before the host is ready, carries none): the client shows the
+reason and puts its copy back through `prop_C`'s own setter if it differs.
+
+Every peer that receives `PropPropsState`, the sender included, replays the press on its copy through the same setter
+with the host's four values, each state a press, so the collision follows a static flag and an override runs its own
+path; an element it does not know is dropped. A joiner's save-loaded copy gets a prop's static from the save and from
+the join-window correction (`coop/save/join_window_baseline`), which now compares static as well as frozen and sleep
+and sets it through `prop_C`'s own setter, and frozen and sleep also from its snapshot row. A copy this player holds,
+or a drive moves, waits for its release before the newest press is replayed on it (an older state parked for the copy is
+dropped when a newer one reaches it); the drive's end edge converges static as well as frozen and sleep.
 
 ### Sticking to a wall
 
@@ -462,18 +478,7 @@ its temperature in 0 to 2000, its ripeness finite and in -1 to 1e9, and its use 
 one whose copy is not born yet waits 30 s for it, judged against where the sender stood, and a refused release is
 answered like a refused bite. A held food placed down, not thrown, is run by the same drill on both peers `[?]`.
 
-A microwave's and a mini oven's presses run on the presser's copy, so each peer polls them for its player's change and
-sends it (`KitchenState`); the others apply it through the machine's start or repaint, so the host's machine heats the
-food it authors. Each peer's timer ends its own microwave's run, so what crosses is its start, its door and a stop before
-its timer's end, through the game's own `forceOpenDoor`, `openDoor` and `closeDoor`. A joiner gets every machine
-off its defaults, since an oven's controls are in no save `[V]` (`harness/autotest/autotest_cook_state.cpp`: each
-control from each peer, a food heated in a microwave a client started, a shrimp's progress and its one cooked food, a
-rejoin; machines powered by a write and pressed by reflection). A grill burns coals in its tick on every peer, so the
-host's count stands: a client sends only its player's coal, light, off press or lid, and each host message sets the client's burn, so
-its copy never runs out first; the drill runs each from each peer, a food heating on it, three coals burnt on the host's
-count, the lid's own press and its return from each peer, and a lit grill for a rejoin, the verbs by reflection.
-
-A placed radio or TV, the ATV's radio among them, keeps the host's track ([devices.md](devices.md), radios and TVs).
+The kitchen's machines and a placed radio or TV are on [kitchen-and-media.md](kitchen-and-media.md).
 
 A keyed prop's fire (`coop/props/prop_fire_sync`) is its `flameBase`, whose fuel burns it down through its own
 `fireDamage`, which only the host decides, so the host owns it. The host polls the burning props and sends each one's
@@ -512,14 +517,12 @@ flame back on it).
 | `PropPose` (stream) | the holder to all | the held prop's world transform, per frame, and its hold's generation |
 | `PropSpawn`, `PropDestroy` | the host to all; a destroy from either role | class, key, id, transform, physics flags, the birth scalar; the key and id |
 | `PropRelease` | the holder to all | the prop's transform, its inherited linear and angular velocity and its frozen and sleep at the edge, the hold it closes and the throw sequence (0 = not a throw); a client's goes through the host, which clamps it and sends it on |
-| `MediaDeviceState` | the host to all; a client to the host | a placed radio's or TV's track hash, time, play state and mode, a TV's channel and picture; what a client's interface changed |
-| `KitchenState` | the presser to all; the host's burn of a grill's coals | a microwave's or a mini oven's setting and whether it runs; a grill's coals, fire, lid and burn |
 | `FoodState`, `FoodBite`, `FoodRelease`, `FoodHand` | the host to all; a client to the host; a client to the host; the holder to all | a world food's temperature, ripeness and uses; a client's bite; the condition of a food a client let go; the condition of the food in a hand |
 | `PropFireState`, `PropFireRequest` | the host to all; a client to the host | a keyed prop's flame, its fuel and speed, or that it went out; a client's light with its fuel |
-| `PropToolFlags` | the tool's user to all | a prop's static, frozen and sleep as a toolgun tool left them `[?]` |
 | `PropSettle` | the releaser to all | where its released copy rests: the transform, its frozen and sleep, and the hold whose release it follows `[?]` |
 | `PropHoldRefused` | the host to every client | a hold the host refused, by its holder's slot and generation, the prop's key, and the slot whose hold keeps the prop |
 | `FoodState`, `FoodBite`, `FoodRelease`, `FoodHand` | the host to all; a client to the host; a client to the host; the holder to all | a world food's temperature, ripeness and uses; a client's bite; the condition of a food a client let go; the condition of the food in a hand |
+| `PropPropsIntent`, `PropPropsState` | a client to the host; the host to all, or to the sender alone for a refusal | a client's press of the prop-properties tool with the tool's four values; a prop's static, frozen and sleep read back from the host's copy, or the reason the press was refused `[?]` |
 | `PropDrivePose` (stream) | the host to all; a syncing client to the host | the poses of the props under a hook's drive or a broom's push that moved since their last one, with the claim generation; a client's rows of the prop its own interaction moves, which the host judges before it relays one `[?]` |
 | `PropDriveEnd` | the host to all; a syncing client to the host | the final pose and velocity of a driven prop that rested or that a hand took; closes its generation; a client's End is admitted when it is the row's syncer `[?]` |
 | `PropSyncClaim`, `PropSyncAnswer` | a client to the host; the host to that client | a client's request to sync a prop its interaction moves, and the host's grant, refusal (with the reason) or revoke (with the generation); the host also grants a thrown prop to its thrower unasked, `seq` being the throw sequence `[?]` |
@@ -536,7 +539,7 @@ The join page owns the mechanism: explicit deletes for the props the joiner's sa
 gone from the host's world, then the snapshot bracket with one spawn per live keyed prop (adopted by
 key, created when missing, transform converged), then position corrections for what the host moved
 during the window, then the membership sweep that removes the locals the host never claimed. A keyed
-prop's frozen and sleep converge with its snapshot row and its correction, and a flag change without
+prop's frozen and sleep converge with its snapshot row and its correction (static with the correction), and a flag change without
 a move gets a correction too, so an extinguisher taken off its mount during the window is loose on
 the joiner; a wall-attach component's owner converges its stuck state there through the component's
 own unstick or force-stick, so a sign pried in the window is off its wall. A stuck prop otherwise
@@ -555,14 +558,13 @@ prop resolves.
 | Two players who grab one keyed prop inside one round trip both hold it until the host's refusal reaches the one it did not keep, so the refused player sees the prop in hand for that round trip before it is taken away. A swinger's drag has no such judge: two peers dragging one lid each move their own copy. A release delayed past another peer's whole later hold of the prop still puts it back where the first holder let go, and a join's snapshot row read before a live stick, unstick or release can reach the joiner after it and undo it there, until the window's late re-flush corrects the prop | `[V]` the grab race (`coop/dev/director/grab_race_probe`): both peers fired the grab within 20 ms of each other, three runs; the host refused the client's hold each time, the client let go with no release, and over a 4 s watch no sample on either peer had two holders and the client's copy followed the host's stream in 138 of 139; `[V]` `coop/props/remote_prop_drive` leaves a door the local player drags to that drag; `[RD]` the rows carry no version; the join gate holds a live stick or release behind the snapshot rows, so a joiner applies the rows first `[?]` |
 | A prop let go of without a throw (a drop, a place) flies by each peer's own physics from the same release transform and velocity, so the copies can take different paths before the releaser's rest corrects the others; a thrown prop is streamed by its thrower and the host (above). A fire extinguisher dropped from the hand ended between 0.2 and 152.6 cm apart on the two peers over fourteen drops before that correction existed, the widest where the client's copy stayed on a surface about a metre up that the host's copy landed on and rolled off. A copy that rests apart moves there in one step, a visible jump; one still moving ten seconds after its release is not corrected, and past sixteen released props at once the rest falls uncorrected. What the flying copy knocks on one peer stays knocked there alone | `[V]` the fire extinguisher drill (`coop/dev/fireext_drill`): the host's rest line against the client's last watch line; `[?]` `coop/props/prop_settle`, not yet measured in a two-peer run |
 | A prop whose own grab prelude adds to the base one gets only the base one on a receiver. The sprinkler's also detaches its hose; the grabber's own cut reaches the others through the garden hose lane ([deployables.md](deployables.md)), which a grab of the sprinkler has not been driven through on the rig. The glowstick's replaces the base one with its own release, and a receiver runs the base one | `[V]` the sprinkler and glowstick Blueprints: `prop_sprinkler_C`'s prelude calls `prop_C::playerGrabbed_pre` and `hose->detachSprinkler`, `prop_glowstick_C`'s calls `releaseGlowstick` alone; `coop/props/remote_prop` runs the base prelude; `[?]` the sprinkler grab through `coop/world/ground_hose_sync` |
-| A toolgun flag change reaches the others only when the tool sets the flags inside its own `init`; a tool that sets them later, from a timer or another event, stays on its user's copy. A change that crosses a hold of the prop on another peer is left to that hold, and the hold's release puts its own flags on every copy | `[?]` `coop/props/prop_tool_flags`, not yet measured in a two-peer run; which tools change flags, and when, is not established |
+| Only the prop-properties tool's press crosses. The stacker sets flags on the props it stacks and on its parent, a grab that unfreezes a frozen prop and a wall-mount that writes static and frozen directly each change the peer that did it alone | `[?]` `coop/props/prop_tool_flags` catches `tool_propProps_C::init` only; not yet measured in a two-peer run |
 | Another peer's hold can carry away the chair this peer sits in at the laptop, which single player never allows: the laptop freezes the seat only on the machine whose player sits | `[V]` the laptop Blueprint: `stabilizeSeat` sets the seat frozen, and the exit's `setPropProps` clears it; `coop/props/remote_prop` unfreezes a held copy at the hold's first pose |
 | A nested container's contents travel in container slices only: the player inventory's records and a prop's own record never carry them, so a container a client carries in its inventory across a rejoin, or one whose own record a prop lane sends, still names its slot as before | `[V]` `ue_wrap/actors/inventory` and `coop/props/prop_save_data` strip them; `coop/props/container_contents_io` attaches them |
 | A record past the transport ceiling drops signal photos, the biggest first; a receiver keeps its own photo of such a row, one that never had it gets none | `[V]` `coop/props/prop_save_data`, `coop/props/container_contents_publish`, `coop/items/player_inventory_sync` |
 | A keyed prop a client creates outside the intent door (a place after a pickup, the whitelisted births, a container extract, a player's own spawn verb) never reaches the host. It is logged now: the drain names its exit, and `[dev] prop_birth_key_probe` tallies every exit by name | `[V]` `coop/props/prop_drop_intent` drops it at the drain; `coop/dev/prop_birth_key_probe` |
 | Two peers changing one canned food inside one round trip each publish a whole record, and the last to reach the host stands, so a bite can be lost; a can's `health` travels only with those records, so impact damage short of opening it stays on each peer | `[RD]` `coop/props/prop_can_state` publishes the record and takes no claim |
 | Concrete and every other local-accumulator prop drift between peers; only the tape reel and the world food have one author | `[V]` `coop/interactables/tape_caddy_sync`, `coop/props/prop_food_sync` |
-| A radio or TV plays only on a peer whose own catalog holds the track and whose Custom Content rule is on, and is silent elsewhere; a TV showing a security camera is not this lane's | `[V]` `coop/world/media_device_sync`: a track is a hash, so no peer can make another open an address |
 | A hot food's ignition is the host's alone, since a client's copy is refused its tick, so a client sees no flame on it | `[RD]` `prop_food_C.ReceiveTick`; `ue_wrap/actors/food` |
 | A client's food's frost, impact material and freeze sound are painted but only its frozen flag and steam were read back | `[RD]` `ue_wrap/actors/food`, `coop/props/prop_food_sync` |
 | A food subclass's own counter (the shrimp's `shrimps`) and its own tick are not carried, and a heating device's work on a client's copy is local until the host's next value | `[RD]` `coop/props/prop_food_sync` |
@@ -583,15 +585,13 @@ prop resolves.
 | the receivers | `coop/props/remote_prop` (held), `coop/props/remote_prop_spawn` (birth: adopt, converge, create), `coop/props/prop_fresh_spawn` (the materialiser), `coop/props/prop_wire_parity`, `coop/props/active_drive`, `coop/props/prop_sound` |
 | one holder per prop | `coop/props/prop_hold_claim`, `coop/props/prop_hold` (who holds a prop on the host) |
 | where a released prop rests | `coop/props/prop_settle` |
-| the toolgun's flags | `coop/props/prop_tool_flags` |
+| the prop-properties tool | `coop/props/prop_tool_flags`; the toolgun's sight and limits, shared with the remover: `coop/props/toolgun_sight`, `coop/props/toolgun_limits` |
 | a client's intents | `coop/props/prop_drop_intent`; a thrown prop: `coop/props/prop_throw`, `coop/net/throw_bounds` |
 | the stick | `coop/props/prop_stick_sync` |
 | a prop under a hook's drive or a broom's push | `coop/props/prop_drive_host` (the host's set and stream), `coop/props/prop_drive_stream` (the receiver), `coop/items/hook_prop_claim` (the hook lane feeding it), `coop/items/hook_constraint` (the tie itself, host-only), `coop/items/broom_push` (the broom's push feeding it) |
 | containers | `coop/props/container_contents_sync`, `coop/items/save_record_wire`, `coop/interactables/interactable_sync`; a break, `coop/props/container_break`; nested contents, `ue_wrap/actors/container_inventory` |
 | a world food's condition | `coop/props/prop_food_sync`, `ue_wrap/actors/food` |
 | a keyed prop's fire | `coop/props/prop_fire_sync`, `ue_wrap/actors/prop_fire` |
-| a microwave's, a mini oven's and a grill's controls | `coop/interactables/kitchen_sync`, `ue_wrap/devices/kitchen` |
-| a placed radio or TV | `coop/world/media_device_sync`, `ue_wrap/world/media_device` |
 | a record that changes in place | `coop/props/prop_record_refresh` (the drive box, the reel case), `coop/props/prop_can_state` (the canned food) |
 | notebook sync | `coop/interactables/notebook_sync`, `coop/props/prop_save_data`, `ue_wrap/actors/notebook` |
 | the pocket blip | `coop/items/inventory_pickup_sync` |

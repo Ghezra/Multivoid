@@ -6,7 +6,7 @@ The keyed things around the base that are not the workstation: doors and their k
 light groups, the garage, the appliances, the lockers, the security cameras, the power panel, the wind turbine, the
 windows and the grime, the delivery drone, the woodchipper, and the signal servers. Who owns each and how a peer's
 press reaches the others. The laptop and the economy the drone serves (the balance, the shop orders, the coin gun) are
-in [base-computer.md](base-computer.md), and placed radios and TVs in [media-devices.md](media-devices.md).
+in [base-computer.md](base-computer.md), and placed radios and TVs in [kitchen-and-media.md](kitchen-and-media.md).
 
 ## How it works
 

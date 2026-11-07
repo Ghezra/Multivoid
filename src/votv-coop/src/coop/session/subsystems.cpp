@@ -106,9 +106,9 @@
 #include "coop/world/vent_crawler_sync.h"
 #include "coop/world/world_sound_sync.h"
 #include "coop/props/prop_food_sync.h"
-#include "coop/props/prop_tool_flags.h"
 #include "coop/props/food_tick_gate.h"  // the food ticks a client refuses: its counts end with the session
 #include "coop/world/plant_gate.h"  // the plant bodies a client refuses: its counts end with the session
+#include "coop/props/prop_tool_flags.h"
 #include "coop/props/prop_stick_sync.h"  // wall-attachable stick mirror (camera-on-wall)
 #include "coop/dev/dev_lanes.h"  // the developer drills, probes and selftests, wired in one place
 #include "coop/dev/perf_probe.h"
@@ -387,8 +387,8 @@ void Install(coop::net::Session& session) {
     coop::props::container_act_request::Install(&session);  // the take watch (CLIENT asks the host first); CLIENT: takes its answer and replays a grant
     coop::prop_act_request::Install(&session);  // the six take-or-use watches (CLIENT asks the host, HOST honours a reservation); CLIENT: the host's answer, and the replay of a grant
     coop::kerfur_form_assembler::Install(&session);  // script-body gate consumer: watch the two conversion verbs
-    coop::prop_tool_flags::Install(&session);  // a toolgun's freeze, unfreeze or make-static: every tool_*_C's init watched
     coop::prop_hold_claim::Install(&session);  // one hold per keyed prop: the host keeps the first and refuses a second
+    coop::prop_tool_flags::Install(&session);  // the toolgun's prop-properties tool: tool_propProps_C's init watched
     coop::prop_stick_sync::Install(&session);  // wall-attachable stick mirror (camera-on-wall -- commit observer -> PropStickState; receiver replays forceStick)
     coop::sleep_sync::Install(&session);  // who rests: each peer's rest state (client -> host -> clients) and the host's sleeping flag
     coop::sleep_rest::Install(&session);  // a client's rest at the native rate: its own sleep watch and the factor on its body and effects
@@ -543,10 +543,10 @@ DisconnectStats DisconnectAll() {
     coop::spill_sync::OnDisconnect();
     coop::kitchen_sync::OnDisconnect();
     coop::props::prop_food_sync::OnDisconnect();  // a parked copy gets its tick back
-    coop::prop_tool_flags::OnDisconnect();  // drop the pending press and the counters
     coop::food_tick_gate::OnDisconnect();  // say the refused food ticks, start the next session from zero
     coop::plant_gate::OnDisconnect();  // say the refused counts, start the next session from zero
     coop::woodchipper_gate::OnDisconnect();  // say the refused ticks and the asks, start the next session from zero
+    coop::prop_tool_flags::OnDisconnect();  // drop the pending press and the counters
     coop::prop_stick_sync::OnDisconnect();  // drop commit-pending stick records
     coop::sleepingbag_sync::OnDisconnect();
     coop::item_activate::OnDisconnect();
@@ -732,7 +732,6 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     coop::spill_sync::Tick();  // the spills the hook saw
     coop::kitchen_sync::Tick();  // the machines' poll
     coop::props::prop_food_sync::Tick();  // the host's poll, the client's parking
-    coop::prop_tool_flags::Tick();  // the init watch's names resolve until it is live (one flag test after)
     coop::props::prop_can_state::Tick();  // the same, for the can lane's watch
     coop::moderation::cremate::Tick();  // HOST: the begin-overlap watch until registered, then the trips' recorded events
     coop::dev::dev_lanes::TickDrills(session);  // [dev] the drills' and censuses' legs (a single read each when off)
@@ -832,6 +831,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:ambient_creature"}; coop::ambient_creature_sync::Tick(); }  // the walking trees' size and landing
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:ambient_fixture"}; coop::ambient_fixture_sync::Tick(); }  // the holes' and branches' poll
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:sus_hole_intent"}; coop::sus_hole_intent::Tick(session); }  // CLIENT: its stamped sus holes go to the host; HOST: the queued ones are made
+    { PP::Scope _s{PP::Bucket::TrashWatch};    coop::prop_tool_flags::Tick(); }  // the init watch's settle, once a second until it is live; HOST: each sender's queued properties-tool press, judged and paced; CLIENT: the states parked behind a hold
     { PP::Scope _s{PP::Bucket::Balance};       coop::balance_sync::Tick(); }  // host polls saveSlot.Points + broadcasts on change; client retries the pending mirror apply
     { PP::Scope _s{PP::Bucket::Balance};       ue_wrap::ScopedWalkTimer _w{"sync:upgrades"}; coop::upgrade_sync::Tick(session); }  // host polls the upgrade struct + broadcasts on change, and runs one queued purchase a tick a client; client retries the pending mirror
     coop::dev::dev_lanes::TickProbes(session, isConnected, isHost);  // [dev] the RE probes, each self-installing when its knob is set

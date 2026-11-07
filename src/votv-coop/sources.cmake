@@ -43,7 +43,9 @@ set(VOTVCOOP_SOURCES
     src/coop/props/prop_hold_claim.cpp
     src/coop/props/prop_settle.cpp
     src/coop/props/prop_tool_flags.cpp
+    src/coop/props/prop_tool_park.cpp
     src/coop/props/remover_request.cpp
+    src/coop/props/toolgun_sight.cpp
     src/coop/props/remote_prop.cpp
     src/coop/props/remote_prop_drive.cpp
     src/coop/props/unresolved_pose_ledger.cpp
@@ -713,6 +715,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_plant_gate.cpp
     src/harness/autotest/autotest_saveui.cpp
     src/harness/autotest/autotest_woodchipper.cpp
+    src/harness/autotest/autotest_prop_props.cpp
     src/ui/input_focus.cpp
     src/harness/screenshot.cpp
     src/harness/mod_environment.cpp
