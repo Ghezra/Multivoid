@@ -31,7 +31,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 299;
+inline constexpr uint16_t kProtocolVersion = 300;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1306,8 +1306,8 @@ enum class ReliableKind : uint8_t {
     // relayed, not pre-world. GarbageBinPayload.
     GarbageBinState = 240,
     // CLIENT->HOST: a container this client authors (it holds it, threw it or syncs it) took a lethal impact or fire
-    // here, which the client cancelled. The host breaks its own copy by the same lethal call, so the spill is the
-    // host's. Never relayed. ContainerBreakPayload.
+    // here, which the client cancelled, or its hacksaw cut it (sawn). The host breaks its own copy by the same lethal
+    // call, or as the saw does, so the spill is the host's. Never relayed. ContainerBreakPayload.
     ContainerBreakRequest = 241,
     // CLIENT->HOST: this client's player pressed the toolgun's prop-properties tool on a keyed prop, with the tool's
     // own static, frozen, active and sleep, seen from this camera point at this hit point. The host judges the sender's
@@ -2331,7 +2331,8 @@ static_assert(sizeof(GarbageBinPayload) == 196, "GarbageBinPayload must be 196 b
 struct ContainerBreakPayload {
     WireKey key;       // 32 -- the container's Key
     uint8_t fire;      // 1 -- a fireDamage (1) or an impactDamage (0)
-    uint8_t _pad[3];   // 3 -- zero
+    uint8_t sawn;      // 1 -- 1: the hacksaw's cut, which the host makes as the saw does (broken, then destroyed)
+    uint8_t _pad[2];   // 2 -- zero
 };
 static_assert(sizeof(ContainerBreakPayload) == 36, "ContainerBreakPayload must be 36 bytes");
 

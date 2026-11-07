@@ -257,6 +257,7 @@ set(VOTVCOOP_SOURCES
     src/coop/interactables/garbage_bin_sync.cpp
     src/coop/interactables/desk_short_sync.cpp
     src/coop/props/container_break.cpp
+    src/coop/props/hacksaw_cut.cpp
     src/coop/world/build_sync.cpp
     src/coop/world/spill_sync.cpp
     src/ue_wrap/actors/growing_plant.cpp
@@ -702,6 +703,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_seat_ragdoll.cpp
     src/harness/autotest/autotest_desk_short.cpp
     src/harness/autotest/autotest_drone_hover.cpp
+    src/harness/autotest/autotest_hacksaw.cpp
     src/harness/autotest/autotest_ambient_creature.cpp
     src/harness/autotest/autotest_ambient_field.cpp
     src/harness/autotest/autotest_noclip.cpp

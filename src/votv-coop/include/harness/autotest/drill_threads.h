@@ -278,4 +278,7 @@ DWORD WINAPI DeskShortThread(LPVOID arg);
 // VOTVCOOP_RUN_DRONE_HOVER, both peers -- harness/autotest/autotest_drone_hover.cpp
 DWORD WINAPI DroneHoverThread(LPVOID arg);
 
+// VOTVCOOP_RUN_HACKSAW, both peers -- harness/autotest/autotest_hacksaw.cpp
+DWORD WINAPI HacksawThread(LPVOID arg);
+
 }  // namespace harness::autotest

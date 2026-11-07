@@ -99,6 +99,7 @@
 #include "coop/interactables/garbage_bin_sync.h"
 #include "coop/interactables/desk_short_sync.h"
 #include "coop/props/container_break.h"
+#include "coop/props/hacksaw_cut.h"
 #include "coop/world/spill_sync.h"
 #include "coop/interactables/woodchipper_gate.h"  // the chipper bodies a client refuses: its counts end with the session
 #include "coop/world/plant_sync.h"
@@ -333,6 +334,7 @@ void Install(coop::net::Session& session) {
     coop::garbage_bin_sync::Install(&session);  // what a garbage container holds, and its pickup, are the host's
     coop::desk_short_sync::Install(&session);  // the base computer's short circuit is the host's
     coop::props::container_break::Install(&session);  // a container a client breaks breaks on the host
+    coop::props::hacksaw_cut::Install(&session);  // a container a client saws breaks on the host
     coop::build_sync::Install(&session);  // the host's nails and walls
     coop::spill_sync::Install(&session);  // the host's spilled liquids
     coop::kitchen_sync::Install(&session);  // a microwave's and a mini oven's controls
@@ -542,6 +544,7 @@ DisconnectStats DisconnectAll() {
     coop::garbage_bin_sync::OnDisconnect();
     coop::desk_short_sync::OnDisconnect();
     coop::props::container_break::OnDisconnect();
+    coop::props::hacksaw_cut::OnDisconnect();
     coop::build_sync::OnDisconnect();
     coop::spill_sync::OnDisconnect();
     coop::kitchen_sync::OnDisconnect();
@@ -732,6 +735,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     coop::garbage_bin_sync::Tick();  // the garbage containers' poll and apply
     coop::desk_short_sync::Tick();  // the desk's short-circuit poll, and the host's served requests
     coop::props::container_break::Tick();  // a client's container breaks, and the host's
+    coop::props::hacksaw_cut::Tick();  // a saw's cut never spans two ticks
     coop::build_sync::Tick();  // the nails' and walls' poll
     coop::vent_crawler_sync::Tick();  // a client's crawl sounds as their times come
     coop::spill_sync::Tick();  // the spills the hook saw
