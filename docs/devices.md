@@ -2,12 +2,11 @@
 
 ## Purpose
 
-The keyed things around the base that are not the workstation: doors and their keypads, the
-light switches and the light groups, the garage, the appliances, the lockers, the security cameras,
-the power panel, the wind turbine, the windows and the grime, the delivery drone, the woodchipper,
-and the signal servers. Who owns each and how a peer's press reaches the others. The laptop and the economy the
-drone serves (the balance, the shop orders, the coin gun) are in
-[base-computer.md](base-computer.md).
+The keyed things around the base that are not the workstation: doors and their keypads, the light switches and the
+light groups, the garage, the appliances, the lockers, the security cameras, the power panel, the wind turbine, the
+windows and the grime, the delivery drone, the woodchipper, and the signal servers. Who owns each and how a peer's
+press reaches the others. The laptop and the economy the drone serves (the balance, the shop orders, the coin gun) are
+in [base-computer.md](base-computer.md), and placed radios and TVs in [media-devices.md](media-devices.md).
 
 ## How it works
 
@@ -256,11 +255,10 @@ a disc in a basket in a backpack, the basket taken through the backpack's screen
 basket in the client's inventory named no slot and the disc was gone, on this one its slot holds the disc. The container
 join drill's parity, 281 containers on both peers, matched.)
 
-A signal's photo (the PNG the laptop shows) rides its record: a drive box, a container slice and the player inventory all
-carry it now. A record past the transport's 56 KB ceiling drops photos, the biggest first, until it fits, and the receiver
-keeps its own photo of a row that arrives without one (`save_record::ApplyRecord`). `[V]`
-(`harness/autotest/autotest_container_gaps.cpp`: a 30 KB photo filled into a drive box by each peer; on the code before it
-neither crossed, on this one both peers hold both, the second record sent without one and the receiver keeping its own.)
+A signal's photo (the PNG the laptop shows) rides its record in a drive box, a container slice and the player inventory.
+A record past the transport's 56 KB ceiling drops photos, the biggest first, and the receiver keeps its own photo of a
+row that arrives without one (`save_record::ApplyRecord`). `[V]` (`harness/autotest/autotest_container_gaps.cpp`: a
+30 KB photo filled into a drive box by each peer; on the code before it neither crossed, on this one both hold both.)
 
 ### Keypads and locks
 
@@ -451,31 +449,33 @@ click plays on the presser's machine and on the host.
 ### The woodchipper
 
 A woodchipper keeps its fuel (0 to 100) and whether it is on. A gas can fills it through its `gascanFuel`, its button
-flips it on or off, and its own tick burns fuel while it runs and switches it off at 0. Each of those ran only on the
-copy it happened on, so a client's pour or press never reached the host, whose copy the save keeps, and a host's
-never reached a client `[V]`. The host's copy is now the chipper (`coop/interactables/woodchipper_sync`). A client's
-own pour and press still run on its copy, so the can, the click and the button answer at once, and each goes to the
-host: the press from the button's own body, the pour as a rise in the copy's fuel that its burning cannot make (the gas
-can's `gascanFuel` has no row in the fingerprint table, so it is not watched). The host checks the sender's world, the
-chipper and its reach, adds the fuel or writes the button's result, and runs the chipper's `checkActive` as the
-game's bodies end. It sends each chipper's fuel and on/off when either changes and every second while it runs, and a
-client writes both on its copy and runs `checkActive` when on/off changed. A state the host sent before it heard of
-a client's own pour or press waits 1.5 s on that client, so it does not undo the act on the copy
-`[V]` (`harness/autotest/autotest_woodchipper.cpp`).
+flips it on or off, its own tick burns fuel while it runs and switches it off at 0, and a prop that enters its intake
+box is destroyed and chipped into a garbage clump. Each of those ran only on the copy it happened on, so a client's pour
+or press never reached the host, whose copy the save keeps, and a host's never reached a client `[V]`. The host's copy is
+now the machine (`coop/interactables/woodchipper_sync`, `coop/interactables/woodchipper_gate`):
 
-### Radios and TVs
+- A client's copy is refused its tick and its intake at the script gate, as the foods' and the plants' ticks are, so it
+  burns nothing and eats nothing; the host's copy eats, destroys the prop through the prop destroy path and drops the
+  clump, which reaches a client by the prop census's re-seed `[?]`.
+- Every change of the host's chipper is announced by the game's own `checkActive`, and by the button's body for a press
+  at fuel 0, so a watch on each sends the chipper's fuel and on/off at once, one message per changed chipper per tick. The
+  burn is the one thing nothing announces: while a chipper's fuel moves it is read and sent once a second. A client
+  writes both onto its copy and, when the on/off changed, runs the game's own `checkActive` on it, so the copy's motor and
+  its sounds start as in single player `[?]`; a state for a chipper it has not resolved yet is held, the newest per key,
+  and the held keys are retried when the prop index moves.
+- A client's pour runs on its copy as the game wrote it (its can drains and sounds), and the fuel the copy gained is
+  sent to the host; its press of the button is refused on the copy and sent as the state it wanted. The host judges each
+  (the sender's world, the chipper by key and class, a living sender, its reach, a bounded queue and rate, the gas can
+  in the sender's hand and the room in the tank for a pour, the state wanted for a press), adds the fuel it has room
+  for and runs `checkActive`, or runs the game's own press with the sender's puppet as the player, inside the requester
+  feedback scope, and answers a refused intent with the state, to the sender alone, whenever it can name the chipper (a
+  key that names none has no state to send). A client can refill a chipper to
+  full on demand, at the intent budget of four a second; it cannot overfill it, and no gas can drains but the one in
+  the client's own hand `[?]`.
+- At a joiner's ready edge the host sends which chippers are on; their fuel comes with the prop records. A chipper
+  that is mid-chip at the join, its chip animation and its chip sound are not carried `[?]`.
 
-A placed radio or TV (`coop/world/media_device_sync`) plays through each peer's own media player and picks its own next track, so the
-host's state stands: a client's copy is moved to its track, time and play state, and a client with the radio's interface
-open sends what its player changed. A track crosses as a hash of its catalog link and opens only from the peer's own
-catalog `[V]` (`harness/autotest/autotest_radio_state.cpp`: a pick, stop, play and mode from a client, a pick from the
-host and a rejoin, with silent test tracks, the rule written on and the pick by the radio's own function). A TV also
-carries its channel, volume, brightness and squeeze; its openLink needs its power as well as the rule, so a track waits
-for its cord `[V]` (`harness/autotest/autotest_tv_state.cpp`: the same from each peer with a channel and the picture, with
-a silent audio-only `.mp4`, powered by a write, so no picture was decoded). The ATV's radio is one of them, a child actor
-of the ATV named by the ATV's key (`atv:<key>`) `[V]` (`harness/autotest/autotest_atv_host.cpp`: a pick from each peer
-through the radio's own interface, read off its media player on both; on the code before it, each pick stayed on its
-own peer).
+`[?]` until the drill runs (`harness/autotest/autotest_woodchipper.cpp`, the `woodchipper_drill` row).
 
 ### The computer and the economy
 
@@ -534,7 +534,7 @@ removed from its author's hand -- and a joiner gets every box's count at its wor
 | a window, the grime | any peer, minimum wins | monotone decreases |
 | a spilled liquid's decal | the host | a client's spill from its hand and its wipe are requests |
 | the drone | the host | a transform stream; the client's tick suppressed |
-| a woodchipper's fuel and on/off | the host | a client's pour and press are intents; the host's state when it changes and every second while it runs |
+| a woodchipper's fuel and on/off | the host | a client's pour and press are intents the host judges; the host's state when it changes and every second while its fuel moves |
 
 ## Wire messages
 
@@ -558,7 +558,7 @@ removed from its author's hand -- and a joiner gets every box's count at its wor
 | `SpillPour`, `SpillPourIntent` | the host to all; a client to the host | where a bottle poured and who poured it; a pour of a bottle in a client's hand |
 | `DroneState` | the host to all | the drone's transform and flags, among them its leave timer |
 | `DroneFlyIntent` | a client to the host | the face pressed, the keyboard or the leave timer; the host finds the console by the sender's reach |
-| `WoodchipperState`, `WoodchipperIntent` | the host to all; a client to the host | a chipper's key, its fuel and on/off; a client's pour (the fuel it gained) or press (on/off after) |
+| `WoodchipperState`, `WoodchipperIntent` | the host to all; a client to the host | a chipper's key, its fuel and on/off, or to a joiner which are on; a client's pour (the fuel its copy gained) or press (the state it wanted) |
 
 ## Late join
 
@@ -566,8 +566,8 @@ Every channel snapshots the full state of every indexed instance to a joiner at 
 open and closed alike, because the save the joiner loaded, the host's captured at its join, holds
 neither a state the game does not save (a server box's `active`, a sink's tap) nor one changed while
 the joiner loaded; an oven's repair is in that save, and the snapshot says it again; the keypads, the power masks, the turbine, the windows, the grime and the
-drone's pose are sent the same way, and so is every woodchipper's fuel and on/off. Every live spill goes again at the ready edge, and a joiner keeps one it already
-has from the save at that place.
+drone's pose are sent the same way, and so is which woodchippers are on. Every live spill goes again at the
+ready edge, and a joiner keeps one it already has from the save at that place.
 
 The coordinate towers go to a joiner at the same edge, every tower's row. Its own world's load
 would have scrambled again any tower that was saved broken; that roll is refused, so the row is the
@@ -580,7 +580,7 @@ state it shows, and the first rows a world takes play no sound.
 | A cord's link is the host's: a client reports the plug its player made and the host's answer settles both copies, so two clients on one cord settle in arrival order and a claim on a cord the host's player is dragging is answered with the host's link. A socket's power, a generator's outlets and a Kerfus's charging are not this lane's. Not yet exercised in a two-peer game run | `[RD]` the cord and socket Blueprint call surface; `[?]` `coop/interactables/cord_sync`, `ue_wrap/devices/cord` |
 | A client's spill from its hand lands where its own flight put it, which the host takes as is within 15 m. A bottle's opening click and a liquid that leaves something other than a grime decal are not carried | `[V]` `prop_snack_beer_C`'s `openBottle` plays `impact_plastic_cue`; `coop/world/spill_sync` |
 | A client's light-group index has been reported dropping to zero after a join; not reproduced | `[?]` [issue 11](https://github.com/VOTV-MP/Multivoid/issues/11) |
-| A woodchipper's chipping (what it eats and the chips it drops) and the gas can's own fuel after a pour are not this lane's; a client's pour is the rise its copy shows, which the host takes as is within the 100 ceiling | `[?]` `coop/interactables/woodchipper_sync`; no lane carries the intake or the can |
+| A woodchipper's chip animation and chip sound, and the gas can's fuel on the other peers after a pour, are not carried; a client's pour is the fuel its own copy gained, which the host takes up to the room in the tank, and a prop a client holds over the hopper is not eaten while it is held | `[?]` `coop/interactables/woodchipper_sync`; no lane carries the can's fuel |
 
 ## Code map
 
@@ -594,7 +594,7 @@ state it shows, and the first rows a world takes play no sound.
 | power, turbine, windows, grime | `coop/world/power_panel`, `coop/world/power_grid`, `ue_wrap/devices/generator`, `coop/interactables/turbine_sync`, `coop/interactables/window_sync`, `coop/interactables/grime_sync`, `ue_wrap/devices/power_control`, `ue_wrap/devices/windturbine`, `ue_wrap/devices/base_window`, `ue_wrap/devices/grime` |
 | the fuse towers | `coop/world/fuse_tower_rows`, `coop/world/fuse_tower_ops`, `coop/world/fuse_tower_kind`, `ue_wrap/devices/coord_tower`, `ue_wrap/devices/radio_tower` |
 | the drone | `coop/interactables/drone_sync`, `coop/interactables/drone_call_intent`, `ue_wrap/devices/drone`, `ue_wrap/devices/drone_console` |
-| the woodchipper | `coop/interactables/woodchipper_sync` |
+| the woodchipper | `coop/interactables/woodchipper_sync`, `coop/interactables/woodchipper_gate`, `ue_wrap/actors/woodchipper` |
 | the signal servers | `coop/interactables/serverbox_sync`, `coop/interactables/server_upgrade_sync`, `ue_wrap/devices/serverbox` |
 | identity | `coop/element/portable_identity` |
 | tests and probes | `coop/dev/container_selftest`, `coop/dev/door_drill`, `coop/dev/lightswitch_probe`, `coop/dev/drone_probe`, `coop/dev/drone_call_drill`, `coop/dev/light_group_census`, `coop/dev/tower_drill` |

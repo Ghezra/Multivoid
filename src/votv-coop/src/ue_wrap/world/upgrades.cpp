@@ -12,6 +12,7 @@
 
 #include <cmath>
 #include <string>
+#include <vector>
 
 namespace ue_wrap::upgrades {
 namespace {
@@ -172,12 +173,11 @@ bool PressModuleRow(int panelIndex, bool sell) {
         const auto* base = static_cast<const uint8_t*>(obj);
         if (*reinterpret_cast<const int32_t*>(base + x->offIndex) != x->index || !(base[x->modByte] & x->modMask)) return;
         // A template of the panel stands beside the live one, and its gamemode was never set: its button does nothing.
-        if (*reinterpret_cast<void* const*>(base + x->offGamemode)) x->row = obj;
+        if (!*reinterpret_cast<void* const*>(base + x->offGamemode)) return;
+        x->row = obj;
     }, &ctx);
     if (!ctx.row) return false;
-    return ue_wrap::component_calls::CallParamlessNamed(ctx.row, sell
-        ? L"BndEvt__button_upgDown_K2Node_ComponentBoundEvent_1_OnButtonClickedEvent__DelegateSignature"
-        : L"BndEvt__button_upgDownloadSpd_K2Node_ComponentBoundEvent_0_OnButtonClickedEvent__DelegateSignature");
+    return ue_wrap::component_calls::CallParamlessNamed(ctx.row, sell ? kSellButtonFn : kBuyButtonFn);
 }
 
 int32_t PriceAtLevel(int panelIndex, int32_t level) {

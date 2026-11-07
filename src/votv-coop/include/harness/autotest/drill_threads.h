@@ -241,9 +241,6 @@ DWORD WINAPI JoinDropThread(LPVOID arg);
 // VOTVCOOP_RUN_LEVEL_TRAVEL, both peers -- harness/autotest/autotest_level_travel.cpp
 DWORD WINAPI LevelTravelThread(LPVOID arg);
 
-// VOTVCOOP_RUN_MODULE_BUY, both peers -- harness/autotest/autotest_module_buy.cpp
-DWORD WINAPI ModuleBuyThread(LPVOID arg);
-
 // VOTVCOOP_RUN_NOCLIP, both peers -- harness/autotest/autotest_noclip.cpp
 DWORD WINAPI NoclipThread(LPVOID arg);
 
@@ -252,9 +249,6 @@ DWORD WINAPI PropFireThread(LPVOID arg);
 
 // VOTVCOOP_RUN_RADIO_STATE, both peers -- harness/autotest/autotest_radio_state.cpp
 DWORD WINAPI RadioStateThread(LPVOID arg);
-
-// VOTVCOOP_RUN_SV_REQUEST, both peers -- harness/autotest/autotest_sv_request.cpp
-DWORD WINAPI SvRequestThread(LPVOID arg);
 
 // VOTVCOOP_RUN_TV_STATE, both peers -- harness/autotest/autotest_tv_state.cpp
 DWORD WINAPI TvStateThread(LPVOID arg);
@@ -268,10 +262,14 @@ DWORD WINAPI WalkerTargetThread(LPVOID arg);
 // VOTVCOOP_RUN_WALKER_WATCH, both peers -- harness/autotest/autotest_walker_watch.cpp
 DWORD WINAPI WalkerWatchThread(LPVOID arg);
 
-// VOTVCOOP_RUN_WOODCHIPPER, both peers -- harness/autotest/autotest_woodchipper.cpp
-DWORD WINAPI WoodchipperThread(LPVOID arg);
-
 // VOTVCOOP_RUN_WORLD_SOUND, both peers -- harness/autotest/autotest_world_sound.cpp
 DWORD WINAPI WorldSoundThread(LPVOID arg);
+// woodchipper_drill, both peers -- harness/autotest/autotest_woodchipper.cpp
+DWORD WINAPI WoodchipperThread(LPVOID arg);
+// VOTVCOOP_RUN_SV_REQUEST, both peers -- harness/autotest/autotest_sv_request.cpp
+DWORD WINAPI SvRequestThread(LPVOID arg);
+
+// VOTVCOOP_RUN_MODULE_BUY, both peers -- harness/autotest/autotest_module_buy.cpp
+DWORD WINAPI ModuleBuyThread(LPVOID arg);
 
 }  // namespace harness::autotest

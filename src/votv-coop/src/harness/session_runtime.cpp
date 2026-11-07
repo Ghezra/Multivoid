@@ -60,6 +60,7 @@
 #include "coop/props/container_birth.h"
 #include "coop/props/container_park.h"
 #include "coop/props/container_act_host.h"
+#include "coop/creatures/kerfur_command_wire.h"
 #include "coop/props/prop_act_host.h"
 #include "coop/props/prop_lifecycle.h"
 #include "coop/props/prop_snapshot.h"
@@ -81,6 +82,7 @@
 #include "coop/world/explosion_recipe.h"
 #include "coop/props/food_tick_gate.h"
 #include "coop/world/plant_gate.h"
+#include "coop/interactables/woodchipper_gate.h"
 #include "coop/world/spawn_authority.h"
 #include "ui/server_browser.h"
 #include "coop/net/end_reason.h"  // the named reason a join that reached the world load ends on
@@ -252,6 +254,10 @@ bool StartCoopSession(const coop::net::Config& netCfg, coop::net::Refusal* why) 
     // And a container act: the codec and its hostile blobs, one record's hash, the record lookup, the holds, the host's
     // judge and the order it reads in, the commit's rows and the client's reply decision, each from a stated input.
     coop::props::container_act_host::RunSelftest();
+    // And a kerfur command's bytes: a forged blob reaches the host only from a hostile client, so each way a blob is
+    // refused (a stray flag, a stray byte, a record on the wrong command, one past the cap, a lying chunk header) and the
+    // disc record's bound are asserted here, line by line.
+    coop::kerfur_command_wire::RunSelftest();
     // And the deferred-destroy table's retire rule: a destroy naming an element leaves with a spawn of
     // that element only, a key-only destroy with a spawn of its key, a None or empty key with nothing.
     coop::element::quiescence_drain::RunDestroyDeferSelftest();
@@ -345,6 +351,9 @@ bool StartCoopSession(const coop::net::Config& netCfg, coop::net::Refusal* why) 
     coop::food_tick_gate::Install();
     // A client's plants are refused the same way, on the session spawn_authority holds: they tick from the world's first frame.
     coop::plant_gate::Install();
+    // And a client's woodchippers: their tick and intake are refused from the world's first frame, and a player's pour
+    // and press at one is asked of the host (the session it sends on is this one).
+    coop::woodchipper_gate::Install(&g_session);
     // And the trash morph gate's three verbs: a joiner's pile loads with the save, and the watch is
     // by class and name, so no pile runs a morph unjudged. Idempotent across Stop/Start.
     coop::trash_morph_gate::Install(&g_session);

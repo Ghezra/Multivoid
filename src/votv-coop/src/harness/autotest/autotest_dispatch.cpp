@@ -228,12 +228,8 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIf("VOTVCOOP_RUN_SPILL", "spill drill", &SpillThread, role);
     SpawnIf("VOTVCOOP_RUN_BUILD", "nail and wall drill", &BuildThread, role);
     SpawnIf("VOTVCOOP_RUN_VENT_CRAWLER", "vent crawler drill", &VentCrawlerThread, role);
-    SpawnIf("VOTVCOOP_RUN_SV_REQUEST", "sv.request drill", &SvRequestThread, role);
-    SpawnIf("VOTVCOOP_RUN_MODULE_BUY", "module row drill", &ModuleBuyThread, role);
     SpawnIf("VOTVCOOP_RUN_DISC_RACE", "disc race drill", &DiscRaceThread, role);
     SpawnIf("VOTVCOOP_RUN_DESK_VIEW", "desk signal view drill", &DeskViewThread, role);
-    // The woodchipper: each peer pours a gas can, the client presses the button; fuel and on/off on both.
-    SpawnIf("VOTVCOOP_RUN_WOODCHIPPER", "woodchipper drill", &WoodchipperThread, role);
     // The ATV: what of it the host owns, from a client's refuel to its horn.
     SpawnIf("VOTVCOOP_RUN_ATV_HOST", "ATV host-owned state drill", &AtvHostThread, role);
     // The ATV's riders: the driver's body and the kerfur, on both peers.
@@ -241,6 +237,8 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // Containers: photos in a record, a nested container, a garbage container, a container that breaks.
     SpawnIf("VOTVCOOP_RUN_CONTAINER_GAPS", "container gaps drill", &ContainerGapsThread, role);
 
+    SpawnIf("VOTVCOOP_RUN_SV_REQUEST", "sv.request drill", &SvRequestThread, role);
+    SpawnIf("VOTVCOOP_RUN_MODULE_BUY", "module row drill", &ModuleBuyThread, role);
     // The bot-director halt probe, solo: measures the path query over the baked NavMesh and a
     // reflected AddMovementInput moving the possessed body.
     SpawnIf("VOTVCOOP_RUN_NAV_PROBE", "nav HALT probe (director Phase-0)", &NavHaltProbeThread, role);
@@ -287,6 +285,9 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // The cremator drill: the host pulls its lever and the client's copy must show the run, then show it again after a
     // rejoin (1); a client sent into the running machine must die by it (g3).
     SpawnIfEnum(coop::config_registry::rows::cremator_drill, "cremator drill", &coop::dev::cremator_drill::Thread, role);
+    // The woodchipper drill: the client pours a gas can and presses the button (1), or feeds a paper to the running
+    // chipper (feed); the host judges each.
+    SpawnIfEnum(coop::config_registry::rows::woodchipper_drill, "woodchipper drill", &WoodchipperThread, role);
 }
 
 }  // namespace harness::autotest

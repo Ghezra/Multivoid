@@ -18,6 +18,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/prop_birth_key_probe.cpp
     src/coop/dev/impact_damage_probe.cpp
     src/coop/dev/feedback_probe.cpp
+    src/coop/dev/kerfur_seat_probe.cpp
     src/coop/dev/requester_feedback_exercise.cpp
     src/coop/dev/host_settle_drill.cpp
     src/coop/dev/spawn_match_probe.cpp
@@ -99,6 +100,8 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/desk_verb_drill_refiner.cpp
     src/coop/dev/kerfur_serve_drill.cpp
     src/coop/dev/kerfur_serve_drill_disc.cpp
+    src/coop/dev/kerfur_serve_drill_disc_judge.cpp
+    src/coop/dev/kerfur_serve_drill_steps.cpp
     src/coop/dev/load_reroll_watch.cpp
     src/coop/dev/radio_tower_probe.cpp
     src/coop/dev/container_selftest.cpp

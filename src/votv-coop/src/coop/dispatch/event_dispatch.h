@@ -52,7 +52,7 @@ bool HandleSignalEvent(const net::Session::ReliableMessage& msg);
 // CLIENT->HOST intent and request family: a client asks the host to perform something it alone is
 // authoritative for. Read the case for its gate rather than assuming one. GrabIntent, ThrowIntent,
 // PropDropIntent, ReelEjectIntent, DoorVerbIntent, CameraToggleIntent, LaptopTabReport and KeypadIntent check role()==Host AND a client
-// sender slot; KerfurConvertRequest and KerfurCommand check the role only, mapping an out-of-range
+// sender slot; KerfurConvertRequest checks the role only, mapping an out-of-range
 // slot to the 0xFF sentinel and handing it on; RoachConsumed defers both gates to
 // roach_sync::OnConsumedIntent.
 bool HandleIntentEvent(net::Session& session,
@@ -74,6 +74,13 @@ bool HandleCrematorEvent(net::Session& session,
 // on the host and from any sender but slot 0.
 bool HandleRequesterFeedbackEvent(net::Session& session,
                                   const net::Session::ReliableMessage& msg);
+
+// Kerfur-command family: a client's radial command for a kerfur and the host's answer to it. KerfurCommand checks
+// role()==Host and the sender slot here and hands the request to the host's lane (its short payload is counted in
+// that lane's tally); KerfurCommandAnswer is the HOST->CLIENT answer, dropped on the host and from any sender but
+// slot 0.
+bool HandleKerfurCommandEvent(net::Session& session,
+                              const net::Session::ReliableMessage& msg);
 
 // Economy family: the delivery order with its queue, the coin gun's sale and collect, the laptop
 // upgrade purchase and the point sack. OrderRequest, CoinGunSell and CoinCollect check the slot here

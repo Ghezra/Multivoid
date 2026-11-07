@@ -11,6 +11,7 @@
 #include "coop/net/session.h"
 #include "coop/player/roster_ledger.h"
 #include "coop/props/container_act_wire.h"
+#include "coop/props/prop_record_wire.h"
 #include "coop/props/container_record_edit.h"
 #include "coop/props/container_slice_wire.h"
 #include "coop/props/container_truth.h"
@@ -36,6 +37,7 @@ namespace {
 namespace cas = coop::props::container_act_state;
 namespace cre = coop::props::container_record_edit;
 namespace caw = coop::props::container_act_wire;
+namespace prw = coop::props::prop_record_wire;
 namespace cr  = coop::props::container_reach;
 namespace csw = coop::props::container_slice_wire;
 namespace SR  = ue_wrap::save_record;
@@ -633,7 +635,7 @@ void OnCommitChunk(const coop::net::BlobChunkPayload& p, uint8_t senderSlot) {
     bool matched = internal::CommitMatches(hold, c.eid, c.hasRecord, c.committed);
     if (matched && hold->kind == cas::HoldKind::Reservation && c.committed == 1)
         matched = internal::StoredMatches(hold->record, c.record) &&
-                  internal::DoneSizeOk(caw::RecordBytes(hold->record), c.record);
+                  internal::DoneSizeOk(prw::RecordBytes(hold->record), c.record);
     const internal::CommitStep step = internal::DecideCommit(matched, c.committed);
     UE_LOGI("container_act: slot=%u id=%u eid=%u commit -> %s", static_cast<unsigned>(senderSlot),
             static_cast<unsigned>(c.id), static_cast<unsigned>(c.eid), internal::CommitName(step));
@@ -725,7 +727,7 @@ const char* TallyName(Tally t) {
     static const char* const kNames[] = {"target_gone", "bad_commit", "grant_unsent", "queue_full_unready", "bad_sender",
                                          "short_payload", "malformed", "unknown_family_unready", "restore_owed",
                                          "wait_expired", "reservation_lapsed", "late_done", "late_done_lost",
-                                         "put_no_name", "put_class_unresolved", "put_not_prop", "put_filtered",
+                                         "put_no_name", "put_class_unresolved", "put_not_prop", "put_bad_leaf", "put_filtered",
                                          "put_into_mailbox", "put_row_refuses", "put_unknown_name", "put_done_lost",
                                          "owed_lost", "take_armed", "put_overlap_filed", "put_overlap_unarmed",
                                          "put_overlap_reach", "put_overlap_unread", "put_overlap_held", "put_overlap_fit",

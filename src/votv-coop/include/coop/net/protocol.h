@@ -31,7 +31,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 294;
+inline constexpr uint16_t kProtocolVersion = 295;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -440,8 +440,9 @@ enum class ReliableKind : uint8_t {
     PlayerInventoryBlob = 69,
 
     // Client to host: a kerfur radial-menu verb for this kerfur. The host runs it; Follow follows
-    // the requesting player's puppet, which the Blueprint cannot do for a remote player.
-    // KerfurCommandPayload.
+    // the requesting player's puppet, which the Blueprint cannot do for a remote player. A chunked blob
+    // (coop::kerfur_command_wire): a KerfurCommandPayload head, and for a get_reports with a floppy disc in the
+    // client's hand, that disc's record. Never relayed.
     KerfurCommand = 70,
 
     // Host to all: an ATV with this game Key exists; a receiver that holds none under that Key
@@ -824,15 +825,17 @@ enum class ReliableKind : uint8_t {
     // UpgradeLevelsPayload.
     UpgradeLevels = 146,
 
-    // Client to host: buy or sell one level of the laptop panel row this index names. A client's
-    // press was entirely client-local -- it debited the CLIENT's own balance and raised the
-    // CLIENT's own level, so the group paid nothing and the host's next balance broadcast handed
-    // the money back, which made a client's upgrades free for everyone but the host. The client
-    // refuses its own body at the script-body gate and asks here instead, so it never debits
-    // itself and a refusal needs no correction. Trust: the index must be one of the fifteen LEVEL
-    // rows, and the host re-derives the price and the bounds from its own table and its own level
-    // -- nothing about the purchase is taken from the sender. A sender's presses run no faster
-    // than a bounded rate from a bounded queue. The host charges and writes, then republishes
+    // Client to host: buy or sell one row of the laptop panel. A client's press was entirely
+    // client-local -- it debited the CLIENT's own balance and raised the CLIENT's own level, so the
+    // group paid nothing and the host's next balance broadcast handed the money back, which made a
+    // client's upgrades free for everyone but the host. The client refuses its own body at the
+    // script-body gate and asks here instead, so it never debits itself. Trust, by `dir`: 0 and 1
+    // name one of the fifteen LEVEL rows, and the host re-derives the price and the bounds from its
+    // own table and its own level; 2 and 3 name a MODULE row, and the host presses its own row of
+    // that index, so the game's body decides the price and the bounds, and a module row the host's
+    // panel does not own is refused with the host's balance and levels sent back to the sender.
+    // Nothing about a purchase is taken from the sender. A sender's presses run no faster than a
+    // bounded rate from a bounded queue. The host charges and writes, then republishes
     // UpgradeLevels; the money moves on the balance lane that already polls it.
     // Late join: nothing to replay, since a purchase the host has not run changed nothing.
     // UpgradeIntentPayload.
@@ -1301,14 +1304,6 @@ enum class ReliableKind : uint8_t {
     // (op 3, [f32] the health it lost, negative, or gained), or a nail its pull snapped (op 4). Never relayed; the host
     // makes, destroys, hits, repairs or snaps its own and its BuildState answers. BlobChunkPayload, as above.
     BuildIntent = 235,
-    // HOST->ALL: a woodchipper of the host's, its fuel and whether it is on, when either changes, every second while it
-    // runs, and every chipper again at the ready edge. A client's copy takes both. Not relayed, not pre-world.
-    // WoodchipperPayload, op 0.
-    WoodchipperState = 236,
-    // CLIENT->HOST: this client's player poured fuel into a woodchipper (op 1, the fuel it gained) or pressed its button
-    // (op 2, whether it is on after). Never relayed; the host fuels or switches its own, and its WoodchipperState
-    // answers. WoodchipperPayload.
-    WoodchipperIntent = 237,
     // HOST->ALL: an ATV of the host's beyond its rig -- its fuel and health with the count of gains the host applied, its
     // modules, lights, brake and turbo, and whether it is empty or broken -- when any changes, every 2 s, and every ATV
     // again at the ready edge (op 0); or its horn pressed or released by a driver, to every peer but that driver (op 1,
@@ -1339,6 +1334,17 @@ enum class ReliableKind : uint8_t {
     // (reference/mtasa-blue/Server/mods/deathmatch/logic/CPedSync.cpp:141-163): the game's AI has one simulator and the
     // host is a listen server, so the host is the only sender. GeomOctaEventPayload.
     GeomOctaEvent = 200,
+
+    // HOST->ALL: a woodchipper of the host's, its fuel and whether it is on (op 0), when either changes and every second
+    // while its fuel falls; to a joiner at its ready edge, which of them are on (op 3, `active` alone, since the prop
+    // record lane carries the fuel). A client's copy takes it without running the chipper. Reliable, not relayed, not
+    // pre-world. WoodchipperPayload.
+    WoodchipperState = 236,
+    // CLIENT->HOST: this client's player poured a gas can into a woodchipper (op 1, the fuel its own copy gained) or
+    // pressed its button (op 2, the state it wanted). Never relayed; the host judges it (reach, rate, the can in the
+    // sender's hand, the room in the tank), does it on its chipper, and its WoodchipperState answers, to the sender alone
+    // when it refused. WoodchipperPayload.
+    WoodchipperIntent = 237,
 
     // CLIENT->HOST: this client pressed a coffee vending machine or a coffee maker (action 4), which its own copy
     // refused to run. The host resolves the device by its key, judges the sender's reach and that the key is
@@ -1425,6 +1431,14 @@ enum class ReliableKind : uint8_t {
     // host's receive edge; never relayed; not pre-world; the Default lane. Late join: none, an act sent to its
     // requester, not state. RequesterFeedbackPayload.
     RequesterFeedback = 247,
+
+    // HOST->CLIENT: the host's answer to a KerfurCommand it judged and did not run at once -- refused, with the
+    // reason as an enum the client words itself, or waiting for the host's body of its sender -- or that ran on the
+    // disc it carried and took it (consumed-held: the client destroys its own). Names the request by the id the
+    // client sent. Host-authored: refused at the host's receive edge; never relayed; not pre-world; the Default
+    // lane. Late join: none, an act sent to its requester, not state. PROVISIONAL number, final at landing.
+    // KerfurCommandAnswerPayload.
+    KerfurCommandAnswer = 248,
 };
 
 #pragma pack(push, 1)
@@ -1847,14 +1861,49 @@ static_assert(sizeof(KerfurConvertBroadcastPayload) == 104, "KerfurConvertBroadc
 static_assert(sizeof(KerfurConvertBroadcastPayload) <= 256 - 20 - 8,
               "KerfurConvertBroadcastPayload must fit in one reliable datagram");
 
-// A kerfur menu command (KerfurCommand), client to host. The host takes the requester from the
-// sender slot; a self-declared slot would be spoofable.
+// A kerfur menu command (KerfurCommand), client to host: the head of a chunked blob (coop::kerfur_command_wire). The
+// host takes the requester from the sender slot; a self-declared slot would be spoofable. `requestId` is the client's
+// own count of its commands, from 1, which the host echoes in its answer (KerfurCommandAnswer) so the client knows
+// which command it answers; it is also the blob's sequence. `flags` bit 0 says a record follows the head, `[u16 n][n
+// bytes]` in coop/props/prop_record_wire's form: the held disc of a get_reports, and of no other command.
 struct KerfurCommandPayload {
     uint32_t elementId;  // host Npc eid of the target kerfur
+    uint32_t requestId;  // the sender's request number, from 1; 0 names no request
     uint8_t  command;    // KerfurMenuCommand (follow/idle/patrol/fix_servers/get_reports/fix_transformers)
-    uint8_t  _pad[3];    // zeroed
+    uint8_t  flags;      // bit 0: a record follows
+    uint8_t  _pad[2];    // zeroed
 };
-static_assert(sizeof(KerfurCommandPayload) == 8, "KerfurCommandPayload must be 8 bytes");
+static_assert(sizeof(KerfurCommandPayload) == 12, "KerfurCommandPayload must be 12 bytes");
+
+// KerfurCommandAnswer's results and the reasons of a refusal (coop/creatures/kerfur_command_answer).
+namespace kerfur_command_answer {
+inline constexpr uint8_t kResultRefused = 0;  // the host judged the command and refused it: `reason` says why
+inline constexpr uint8_t kResultWaits = 1;    // the host has no body for the sender yet, or its seams are settling
+inline constexpr uint8_t kResultConsumedHeld = 2;  // get_reports took the disc the command carried: the client destroys its own
+
+// Why the host refused a command it understood. The client words each itself; malformed or flooding requests are
+// dropped and counted by the host and never answered, so they have no reason here.
+enum class KerfurRefusal : uint8_t {
+    Busy = 0,         // the kerfur is on a job (states 3 to 5), or the host cannot serve it for the sender
+    Stale = 1,        // the element is gone or not live
+    KillMode = 2,     // the kerfur is murderous
+    QueueFull = 3,    // the sender's queue is full: said once a streak
+    NotKerfur = 4,    // the element is not an Omega
+    Unavailable = 5,  // the host cannot run it: its seams are refused or the verb did not run; or an untracked Omega
+    TooFar = 6,       // the sender's body is out of reach of the kerfur
+};
+inline constexpr uint8_t kRefusalMax = static_cast<uint8_t>(KerfurRefusal::TooFar);
+}  // namespace kerfur_command_answer
+
+// The host's answer to one KerfurCommand (KerfurCommandAnswer): `requestId` echoes the command's, `result` is
+// kerfur_command_answer::kResult*, `reason` a KerfurRefusal for a refusal and 0 otherwise.
+struct KerfurCommandAnswerPayload {
+    uint32_t requestId;
+    uint8_t  result;
+    uint8_t  reason;
+    uint8_t  _pad[2];  // zeroed
+};
+static_assert(sizeof(KerfurCommandAnswerPayload) == 8, "KerfurCommandAnswerPayload must be 8 bytes");
 
 // A Kerfus's live state (KerfusState), host to all: the plain kerfur by its host-range prop eid, the
 // two flags a client shows and its energy (unclamped above 100 while it charges, as the game keeps it).
@@ -2245,17 +2294,6 @@ struct PropFirePayload {
     uint8_t _pad[3];    // 3 -- zero
 };
 static_assert(sizeof(PropFirePayload) == 44, "PropFirePayload must be 44 bytes");
-
-// A woodchipper's state (WoodchipperState), or a client's pour or press (WoodchipperIntent).
-inline constexpr uint8_t kWoodchipperOpState = 0, kWoodchipperOpPour = 1, kWoodchipperOpButton = 2;
-struct WoodchipperPayload {
-    WireKey key;       // 32 -- the chipper's key
-    float   fuel;      // 4 -- its fuel (0..100); a pour's gain
-    uint8_t active;    // 1 -- on; a press's result
-    uint8_t op;        // 1 -- kWoodchipperOp*
-    uint8_t _pad[2];   // 2 -- zero
-};
-static_assert(sizeof(WoodchipperPayload) == 40, "WoodchipperPayload must be 40 bytes");
 
 // An ATV's host state (AtvHostState), or a client's request (AtvRequest).
 namespace atv_host_op {
@@ -3943,6 +3981,19 @@ struct TurbineStatePayload {
     float   mult;           // per-instance BeginPlay rand(0.9,1.0) rate skew
 };
 static_assert(sizeof(TurbineStatePayload) == 56, "TurbineStatePayload must be 56 bytes");
+
+// A woodchipper's state (WoodchipperState: op 0 fuel and active, op 3 active alone), or a client's pour (op 1) or
+// press (op 2) (WoodchipperIntent).
+inline constexpr uint8_t kWoodchipperOpState = 0, kWoodchipperOpPour = 1, kWoodchipperOpSetActive = 2,
+                         kWoodchipperOpActiveOnly = 3;
+struct WoodchipperPayload {
+    WireKey key;       // 32 -- the chipper's key
+    float   fuel;      // 4 -- its fuel (0..100); a pour's gain; unread by op 3
+    uint8_t active;    // 1 -- on; the state a press wanted
+    uint8_t op;        // 1 -- kWoodchipperOp*
+    uint8_t _pad[2];   // 2 -- zero
+};
+static_assert(sizeof(WoodchipperPayload) == 40, "WoodchipperPayload must be 40 bytes");
 
 // The edge a PropConvert re-skins.
 namespace propconvert_kind {

@@ -549,6 +549,9 @@ msgstr "[[Joining %s]]"
 msgid "Keep line %1$d: %2$s"
 msgstr "[[Keep line %1$d: %2$s]]"
 
+msgid "Kerfur commands are not available right now."
+msgstr "[[Kerfur commands are not available right now.]]"
+
 msgid "LAN"
 msgstr "[[LAN]]"
 
@@ -1002,6 +1005,9 @@ msgstr "[[That can't be done right now.]]"
 msgid "That can't go in there."
 msgstr "[[That can't go in there.]]"
 
+msgid "That cannot take kerfur commands."
+msgstr "[[That cannot take kerfur commands.]]"
+
 msgid "That container is locked."
 msgstr "[[That container is locked.]]"
 
@@ -1016,6 +1022,15 @@ msgstr "[[That item is gone.]]"
 
 msgid "That item is too far away."
 msgstr "[[That item is too far away.]]"
+
+msgid "That kerfur is busy with a task."
+msgstr "[[That kerfur is busy with a task.]]"
+
+msgid "That kerfur is no longer there."
+msgstr "[[That kerfur is no longer there.]]"
+
+msgid "That kerfur will not take orders."
+msgstr "[[That kerfur will not take orders.]]"
 
 msgid "That line is too long."
 msgstr "[[That line is too long.]]"
@@ -1121,6 +1136,9 @@ msgstr "[[The host stopped sending the world it owed, or the connection stopped 
 
 msgid "The host was busy, and this connection was the slowest to prove itself."
 msgstr "[[The host was busy, and this connection was the slowest to prove itself.]]"
+
+msgid "The host will run that kerfur command in a moment."
+msgstr "[[The host will run that kerfur command in a moment.]]"
 
 msgid "The host's world arrived damaged and could not be used."
 msgstr "[[The host's world arrived damaged and could not be used.]]"
@@ -1234,6 +1252,9 @@ msgstr "[[Too many actions at once, try again.]]"
 
 msgid "Too many connections from you in a short time. Try again shortly."
 msgstr "[[Too many connections from you in a short time. Try again shortly.]]"
+
+msgid "Too many kerfur commands at once, try again."
+msgstr "[[Too many kerfur commands at once, try again.]]"
 
 msgid "Too many password attempts. Try again in ten minutes."
 msgstr "[[Too many password attempts. Try again in ten minutes.]]"
@@ -1386,6 +1407,9 @@ msgstr "[[Wrong password.]]"
 
 msgid "You are banned from this server."
 msgstr "[[You are banned from this server.]]"
+
+msgid "You are too far from that kerfur."
+msgstr "[[You are too far from that kerfur.]]"
 
 msgid "You can play anyway. This message will not show again for this game version."
 msgstr "[[You can play anyway. This message will not show again for this game version.]]"

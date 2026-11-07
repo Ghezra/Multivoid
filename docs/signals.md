@@ -205,12 +205,13 @@ by one route; a client writes the host's levels and runs the gamemode's own re-d
 (`coop/interactables/upgrade_sync`). A client's buy or sell button is cancelled at the script-body
 gate and sent as an intent: the host checks that the sender holds the laptop, re-derives the price
 and the bounds from its own table and level, charges the shared balance and writes the level, and
-its next broadcast is the answer. A module row is not a level of the panel's arithmetic, so its press
-goes as an intent too and the host presses its own copy of the row, whose body charges the balance.
-The row numbered 27 writes the triangle level at its 400 credits; the other nine have no store, as
-their index selects a temporary of the button's own, so a press charges and holds nothing, as in single
-player (read off the row's switch; which of them a player can reach is not measured). The ATV's physical modules are on
-[vehicles.md](vehicles.md).
+its next broadcast is the answer. The ATV's physical modules are on [vehicles.md](vehicles.md).
+A module row is not a level of the panel's arithmetic: a client's press of one is cancelled at the script-body gate
+and goes to the host as an intent, and the host presses its own copy of the row, whose body charges the balance
+(`coop/interactables/upgrade_sync`). The row numbered 27 writes the triangle level at its 400 credits; ten indices
+(12-19, 22 and 23) have no store, as the row's getLevel and setLevel switches select a temporary of the button's own for
+them, so a press charges its price and holds no level, as in single player (the switch read; row 23's 30 credits
+measured). Nine of the ten have a row on the laptop's panel, since no widget carries 12 (the panel's widget tree).
 
 ## Who owns what
 
@@ -250,6 +251,7 @@ player (read off the row's switch; which of them a player can reach is not measu
 | `SavedSignalAppend`, `SavedSignalDelete`, `MeadowAppend`, `MeadowDelete`, `MeadowOrder` | any peer, relayed; order from the host | list rows by content hash; the database's order |
 | `DeskVerb` | a client to the host; the host to that client | a desk press with what its button acts on as the client saw it; the verdict, and the profile stat of a decode its start began |
 | `RequesterFeedback` | the host to the requester | the hint, glossary entry or 2D sound a verb the host ran for that client showed on the host, for its own machine to show (the desk's press today) |
+| `KerfurCommandAnswer` | the host to the requester | the host's refusal of a kerfur command, with the reason as an enum, or its wait for a body of the sender; the client words it itself |
 | `PlayDeckEvent`, `CompState`, `CompData` | the presser; the host | playback edges; the refiner's state, its completions and its loaded signal |
 | `DriveSlotState` | any peer to the host; the host to every other client, a line it accepted; the host to the source, answering a line it refused | a slot's occupant, inserted or ejected |
 | `RackState`, `PhysModsState`, `FloppyBoxState` | any peer to the host; the host canonical | rack operations and arrays; the module set; the crate stack |
@@ -284,6 +286,7 @@ are sent at the joiner's ready edge, since its save was taken at the handshake.
 
 | Limit | Evidence |
 |---|---|
+| A module row of the upgrade panel (the RC module and the other one-shot unlocks) is bought on the presser's machine alone: a client's purchase debits only its own balance, which the host's next balance broadcast puts back, and the unlock stays on that machine | `[RD]` `coop/interactables/upgrade_sync` lets a module row run locally, since the lane carries no module store |
 | The coordinate log's animated line families are generated per peer from inputs that never mirror, so the host's and a client's logs differ; only the eight one-shot lines ride the wire, the reset's line written by each peer's own reset | `[V]` `coop/interactables/console_state_sync` |
 | A signal whose download's `begin` spawns a world prop (lifecrystal's crystal at the ROZ ship) spawns it on each peer, and a client's own is a world birth it does not author: the host's arriving birth adopts it when the arm's row came first, and it stays beside the host's when the host sent its birth before the arm's row (both ride the Default lane, so they arrive in send order) | `[RD]` `objectRenderer.begin`'s fourth step; the arriving birth's same-class match within 30 cm (`coop/props/remote_prop_spawn`) |
 | The signal camera's trigger runs on each peer, as its arm's `begin` does; the main map's one, the locker looker, watches that peer's own camera and ends that player's game as in single player | `[RD]` `mainGamemode.deleteActiveSignal`, `objectRenderer.begin`, `trigger_lockerLooker`; by design until decided |

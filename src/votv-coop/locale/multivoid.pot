@@ -680,6 +680,10 @@ msgstr ""
 msgid "Keep line %1$d: %2$s"
 msgstr ""
 
+#: src/coop/creatures/kerfur_command_answer.cpp
+msgid "Kerfur commands are not available right now."
+msgstr ""
+
 #: src/ui/link_format.cpp
 msgid "LAN"
 msgstr ""
@@ -1238,6 +1242,10 @@ msgstr ""
 msgid "That can't go in there."
 msgstr ""
 
+#: src/coop/creatures/kerfur_command_answer.cpp
+msgid "That cannot take kerfur commands."
+msgstr ""
+
 #: src/coop/props/container_act_request.cpp
 msgid "That container is locked."
 msgstr ""
@@ -1256,6 +1264,18 @@ msgstr ""
 
 #: src/coop/props/prop_act_request.cpp
 msgid "That item is too far away."
+msgstr ""
+
+#: src/coop/creatures/kerfur_command_answer.cpp
+msgid "That kerfur is busy with a task."
+msgstr ""
+
+#: src/coop/creatures/kerfur_command_answer.cpp
+msgid "That kerfur is no longer there."
+msgstr ""
+
+#: src/coop/creatures/kerfur_command_answer.cpp
+msgid "That kerfur will not take orders."
 msgstr ""
 
 #: src/coop/commands/command_sync.cpp
@@ -1398,6 +1418,10 @@ msgstr ""
 msgid "The host was busy, and this connection was the slowest to prove itself."
 msgstr ""
 
+#: src/coop/creatures/kerfur_command_answer.cpp
+msgid "The host will run that kerfur command in a moment."
+msgstr ""
+
 #: src/coop/net/end_reason.cpp
 msgid "The host's world arrived damaged and could not be used."
 msgstr ""
@@ -1538,6 +1562,10 @@ msgstr ""
 
 #: src/coop/net/end_reason.cpp
 msgid "Too many connections from you in a short time. Try again shortly."
+msgstr ""
+
+#: src/coop/creatures/kerfur_command_answer.cpp
+msgid "Too many kerfur commands at once, try again."
 msgstr ""
 
 #: src/coop/net/end_reason.cpp
@@ -1735,6 +1763,10 @@ msgstr ""
 
 #: src/coop/net/end_reason.cpp
 msgid "You are banned from this server."
+msgstr ""
+
+#: src/coop/creatures/kerfur_command_answer.cpp
+msgid "You are too far from that kerfur."
 msgstr ""
 
 #: src/ui/game_build_dialog.cpp

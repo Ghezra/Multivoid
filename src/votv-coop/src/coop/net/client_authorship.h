@@ -50,7 +50,6 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::SpillIntent:
     case ReliableKind::SpillPourIntent:
     case ReliableKind::BuildIntent:
-    case ReliableKind::WoodchipperIntent:
     case ReliableKind::AtvRequest:
     case ReliableKind::ContainerBreakRequest:
     case ReliableKind::PropSpawn:
@@ -127,6 +126,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::LinkProbeReply:
     case ReliableKind::PackTrashIntent:
     case ReliableKind::DroneFlyIntent:
+    case ReliableKind::WoodchipperIntent:
     case ReliableKind::UpgradeIntent:
     case ReliableKind::WindowStroke:
     case ReliableKind::DoorVerbIntent:
@@ -196,6 +196,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::SaveTransferBegin:
     case ReliableKind::SaveTransferChunk:
     case ReliableKind::TurbineState:
+    case ReliableKind::WoodchipperState:
     case ReliableKind::SkySignalState:
     case ReliableKind::EmailAppend:
     case ReliableKind::CompState:
@@ -261,7 +262,6 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::SpillState:
     case ReliableKind::SpillPour:
     case ReliableKind::BuildState:
-    case ReliableKind::WoodchipperState:
     case ReliableKind::AtvHostState:
     case ReliableKind::GarbageBinState:
     case ReliableKind::SwingerRestPose:
@@ -271,6 +271,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::CrematorState:
     case ReliableKind::CrematorHit:
     case ReliableKind::RequesterFeedback:
+    case ReliableKind::KerfurCommandAnswer:
         return ClientAuthorship::Host;
     }
     return ClientAuthorship::NotAKind;  // a byte value that names no kind: refused like Host

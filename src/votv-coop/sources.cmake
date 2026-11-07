@@ -75,12 +75,15 @@ set(VOTVCOOP_SOURCES
     src/coop/dispatch/event_dispatch_intent.cpp
     src/coop/dispatch/event_dispatch_prop_drive.cpp
     src/coop/dispatch/event_dispatch_requester_feedback.cpp
+    src/coop/dispatch/event_dispatch_kerfur_command.cpp
     src/coop/dispatch/event_dispatch_signal.cpp
     src/coop/dispatch/event_dispatch_state.cpp
     src/coop/dispatch/event_dispatch_world.cpp
     src/coop/comms/chat_sync.cpp
     src/coop/comms/chat_rate.cpp
     src/coop/interactables/turbine_sync.cpp
+    src/coop/interactables/woodchipper_sync.cpp
+    src/coop/interactables/woodchipper_gate.cpp
     src/coop/interactables/upgrade_sync.cpp
     src/coop/interactables/interactable_sync.cpp
     src/coop/interactables/cord_sync.cpp
@@ -90,7 +93,11 @@ set(VOTVCOOP_SOURCES
     src/coop/creatures/kerfur_convert_client.cpp
     src/coop/creatures/kerfur_convert_host.cpp
     src/coop/creatures/kerfur_command.cpp
-    src/coop/creatures/kerfur_menu_input.cpp
+    src/coop/creatures/kerfur_command_answer.cpp
+    src/coop/creatures/kerfur_command_seat.cpp
+    src/coop/creatures/kerfur_command_wire.cpp
+    src/coop/creatures/kerfur_command_wire_selftest.cpp
+    src/coop/creatures/kerfur_disc_carry.cpp
     src/coop/creatures/kerfur_entity.cpp
     src/coop/creatures/kerfur_form_assembler.cpp
     src/coop/creatures/kerfur_prop_adoption.cpp
@@ -234,7 +241,6 @@ set(VOTVCOOP_SOURCES
     src/coop/world/plant_sync.cpp
     src/coop/props/prop_fire_sync.cpp
     src/coop/world/ground_hose_sync.cpp
-    src/coop/interactables/woodchipper_sync.cpp
     src/coop/interactables/atv_host_sync.cpp
     src/coop/interactables/atv_riders.cpp
     src/coop/interactables/garbage_bin_sync.cpp
@@ -250,6 +256,7 @@ set(VOTVCOOP_SOURCES
     src/coop/props/food_tick_gate.cpp
     src/coop/world/plant_edit_gate.cpp
     src/coop/props/prop_record_refresh.cpp
+    src/coop/props/prop_record_wire.cpp
     src/coop/props/prop_can_state.cpp
     src/coop/props/pack_trash_intent.cpp
     src/coop/props/prop_drop_intent.cpp
@@ -261,6 +268,7 @@ set(VOTVCOOP_SOURCES
     src/coop/props/prop_spawn_authoring.cpp
     src/coop/props/prop_snapshot.cpp
     src/coop/props/prop_save_data.cpp
+    src/coop/props/disc_record_ceiling.cpp
     src/coop/props/prop_record_gates.cpp
     src/coop/props/prop_stick_sync.cpp
     src/coop/props/prop_synth_key.cpp
@@ -677,6 +685,8 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_tv_state.cpp
     src/harness/autotest/autotest_world_sound.cpp
     src/harness/autotest/autotest_dish_sound.cpp
+    src/harness/autotest/autotest_sv_request.cpp
+    src/harness/autotest/autotest_module_buy.cpp
     src/harness/autotest/autotest_ambient_creature.cpp
     src/harness/autotest/autotest_ambient_field.cpp
     src/harness/autotest/autotest_noclip.cpp
@@ -693,11 +703,8 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_build.cpp
     src/harness/autotest/autotest_vent_crawler.cpp
     src/harness/autotest/autotest_browser_filter.cpp
-    src/harness/autotest/autotest_sv_request.cpp
-    src/harness/autotest/autotest_module_buy.cpp
     src/harness/autotest/autotest_disc_race.cpp
     src/harness/autotest/autotest_desk_view.cpp
-    src/harness/autotest/autotest_woodchipper.cpp
     src/harness/autotest/autotest_atv_host.cpp
     src/harness/autotest/autotest_atv_riders.cpp
     src/harness/autotest/autotest_container_gaps.cpp
@@ -705,6 +712,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/meet.cpp
     src/harness/autotest/autotest_plant_gate.cpp
     src/harness/autotest/autotest_saveui.cpp
+    src/harness/autotest/autotest_woodchipper.cpp
     src/ui/input_focus.cpp
     src/harness/screenshot.cpp
     src/harness/mod_environment.cpp
