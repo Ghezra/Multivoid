@@ -31,7 +31,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 298;
+inline constexpr uint16_t kProtocolVersion = 299;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -3546,8 +3546,10 @@ struct DroneStatePayload {
     uint8_t _pad;              // 1
     float   dustX, dustY, dustZ;  // 12 -- the dust emitter's world location, which the host's tick pins to its ground
                                   //        trace; the mirror replays the same calls. Valid while bit 0 is set.
+    uint32_t hostMs;              // 4  -- the host's clock when it sent this pose (ms, wraps): the client plays the
+                                  //        poses back on the host's own timing, not on when they happened to arrive
 };
-static_assert(sizeof(DroneStatePayload) == 40, "DroneStatePayload must be 40 bytes");
+static_assert(sizeof(DroneStatePayload) == 44, "DroneStatePayload must be 44 bytes");
 
 // A shop order (OrderRequest), client to host: this header, then chunkItems packed items, each
 //     uint8  head;        // low 7 bits: the name's length (1..kMaxOrderRowName); top bit: the kind,
