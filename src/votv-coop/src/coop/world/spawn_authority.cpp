@@ -97,6 +97,8 @@ UE_FACT_FN(kRowReceiveTickTickerTreeSpawner, "spawn_authority", L"ticker_treeSpa
 UE_FACT_FN(kRowReceiveTickTickerHexahiveSpawner, "spawn_authority", L"ticker_hexahiveSpawner_C", L"ReceiveTick",
            Declared);
 UE_FACT_FN(kRowSpawnTickerBeehiveSpawner, "spawn_authority", L"ticker_beehiveSpawner_C", L"spawn", Declared);
+UE_FACT_FN(kRowReceiveTickTickerMannequinSpawner, "spawn_authority", L"ticker_mannequinSpawner_C", L"ReceiveTick",
+           Declared);
 UE_FACT_FN(kRowSpawnBushTickerBushSpawning, "spawn_authority", L"ticker_bushSpawning_C", L"spawnBush", Declared);
 UE_FACT_FN(kRowSphereHitMushroomSpore, "spawn_authority", L"mushroomSpore_C",
            L"BndEvt__mushroomSpore_Sphere_K2Node_ComponentBoundEvent_0_ComponentHitSignature__DelegateSignature",
@@ -206,12 +208,16 @@ constexpr Row kRows[] = {
 
     // The ambient creatures and fixtures, the host's: the deer and walking tree roll absolute map points and the npc lane
     // mirrors what the host rolled; the hexahive's field of dirt holes and the beehive's branches cross on the fixture lane.
-    // The three tickers roll in their tick; the beehive ticker's spawn is its looping timer's handler, refused as the
-    // cockroach master's timer rows are.
+    // The deer, tree and hexahive tickers roll in their tick; the beehive ticker's spawn is its looping timer's handler,
+    // refused as the cockroach master's timer rows are.
     {&kRowReceiveTickTickerDeerSpawner,     "deerSpawner.ReceiveTick"},
     {&kRowReceiveTickTickerTreeSpawner,     "treeSpawner.ReceiveTick"},
     {&kRowReceiveTickTickerHexahiveSpawner, "hexahiveSpawner.ReceiveTick"},
     {&kRowSpawnTickerBeehiveSpawner,        "beehiveSpawner.spawn"},
+    // The mannequin spawner: its tick is the only root of its graph (ubergraph entry 1788), and the walker's spawn, its
+    // Delay resumes and the reap of the walkers it counts are all scheduled from that entry, in exclusive branches, so the
+    // tick's row refuses every one. The host's walker, the statue's stand swap and its end cross as keyed props.
+    {&kRowReceiveTickTickerMannequinSpawner, "mannequinSpawner.ReceiveTick"},
     // The plant spawners: each product is a growingPlant_C, which the host's plant_sync sends as PlantState, so a
     // client's own would stand apart from the host's under another key. The winter bush ticker's timer entry plants
     // one bush on a random trace (ticker_bushSpawning UG @206, spawnBush). A spore's hit plants a shroom_7 at the hit
@@ -243,13 +249,16 @@ SG::Verdict OnRowPre(const SG::Call& call) {
 std::atomic<bool> g_watched{false};
 
 // The drills' red arms leave rows out of the table, so a drill that reads the refusal counters must fail. The creature drill's
-// arm leaves all four ambient rows out, the field drill's the hexahive's and the beehive's. Read once, at the install.
+// arm leaves all four ambient rows out, the field drill's the hexahive's and the beehive's, the mannequin drill's (`no_row`) the
+// mannequin spawner's. Read once, at the install.
 bool LeftOutByRedArm(const char* tag) {
     const bool fixtureRow = std::strcmp(tag, "hexahiveSpawner.ReceiveTick") == 0 || std::strcmp(tag, "beehiveSpawner.spawn") == 0;
     const bool creatureRow = std::strcmp(tag, "deerSpawner.ReceiveTick") == 0 || std::strcmp(tag, "treeSpawner.ReceiveTick") == 0;
+    const bool mannequinRow = std::strcmp(tag, "mannequinSpawner.ReceiveTick") == 0;
     static const bool creatureArm = coop::config::ResolveEnum(::coop::config_registry::rows::ambient_creature_red) == "no_rows";
     static const bool fieldArm = coop::config::ResolveEnum(::coop::config_registry::rows::ambient_field_red) == "no_rows";
-    return (creatureArm && (creatureRow || fixtureRow)) || (fieldArm && fixtureRow);
+    static const bool mannequinArm = coop::config::ResolveEnum(::coop::config_registry::rows::mannequin_drill) == "no_row";
+    return (creatureArm && (creatureRow || fixtureRow)) || (fieldArm && fixtureRow) || (mannequinArm && mannequinRow);
 }
 
 }  // namespace

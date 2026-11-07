@@ -26,6 +26,7 @@
 #include "ue_wrap/core/script_gate.h"
 #include "ue_wrap/core/ufunction_hook.h"
 #include "ue_wrap/devices/cremator.h"
+#include "ue_wrap/core/ufunction_hook.h"
 #include "ue_wrap/facts/function_row.h"
 
 #include <atomic>
@@ -254,14 +255,6 @@ coop::net::PlayerHitPayload BuildPunch(const sg::Call& c) {
     return p;
 }
 
-// A walker tests its victim's ragdoll and spares one, but a puppet's flag stays clear: what shows a peer lying down is its
-// puppet's display. Game thread.
-bool WalkerSparesPuppet(void* caller, uint8_t slot) {
-    if (!ue_wrap::ambient_creature::IsWalker(caller)) return false;
-    coop::RemotePlayer* rp = coop::players::Registry::Get().Puppet(slot);
-    return rp && rp->IsRagdollDisplayed();
-}
-
 // A cremator whose empty lane key was said: the machine hits again each second, so one line per cremator.
 void* g_unkeyedSeen[kSeenMax];
 size_t g_unkeyedSeenCount = 0;
@@ -332,6 +325,16 @@ bool DeliverFromCremator(const sg::Call& c, uint8_t verb) {
     return true;
 }
 
+// A walker tests its victim's isRagdoll (pwm 5763) and spares a ragdolled one, but a puppet's own flag is never written (the
+// ragdoll display is death-free: ue_wrap/engine/engine_playerragdoll.cpp:15, coop/player/remote_player_ragdoll.h:11-12). The
+// read that shows a peer lying down is the remote player's displayed ragdoll state, RemotePlayer::IsRagdollDisplayed.
+// Game thread.
+bool WalkerSparesPuppet(void* caller, uint8_t slot) {
+    if (!ue_wrap::ambient_creature::IsWalker(caller)) return false;
+    coop::RemotePlayer* rp = coop::players::Registry::Get().Puppet(slot);
+    return rp && rp->IsRagdollDisplayed();
+}
+
 // HOST: the cancelled hit's delivery. Game thread (a script-gate watch).
 void DeliverToOwner(const sg::Call& c, bool punch) {
     auto* s = g_session.load(std::memory_order_acquire);
@@ -352,9 +355,11 @@ void DeliverToOwner(const sg::Call& c, bool punch) {
     }
 }
 
-// HOST: the walker's timer_damage ends its hit with a 2D break_flesh_3, which would sound here whoever it hit. While its hit on
-// a puppet runs, a pre hook on PlaySound2D refuses that walker's next call, and the victim plays it beside the hit (the hit's
-// cue); a spared puppet hears none, as the game's own test spares a player lying down. Game thread.
+// HOST: the walker's timer_damage ends its hit with a 2D break_flesh_3 (pwm 6238, after the punch, unconditional on the hit's
+// branch), the walker's own sound played as a UI sound on this machine whoever it hit. A hit on a peer's puppet cancelled here
+// would still sound on the host, so a pre hook on PlaySound2D, armed by the walker's own hit relay below and cleared after that
+// call (or at the next tick), refuses that walker's one call; the victim plays the sound through kPlayerHitCueWalker. A
+// spared puppet hears none, as the game's own test spares a player lying down. Game thread.
 void* g_soundFn = nullptr;
 bool g_soundHooked = false, g_soundRefused = false;
 void* g_hushWalker = nullptr;
@@ -388,9 +393,16 @@ void HushWalker(void* walker) {
 }
 
 // HOST: a walker's hit names the damage verb itself, not addDamage, with no actor to carry. The peer runs its addDamage with
-// no source, as a nameless hit, and the punch that follows is delivered as any other. Game thread (a script-gate watch).
+// no source, as a nameless hit, and the punch that follows is delivered as any other. The walker's hit lands on
+// Array_Get(overlap, 0) (pwm 5655), which may not be its target: the damage goes to whichever puppet the game's own choice hit,
+// and the walker's served record (walker_target) does not decide it. The delivery itself is the one DeliverFromCremator cites
+// above: the hit is made where the walker runs (Source's NPC, ClawAttack through its hull trace, npc_BaseZombie.cpp:1267-1320)
+// and its victim's machine applies it (MTA's owner, CNetAPI.cpp:1189). Game thread (a script-gate watch).
 void DeliverWalkerDamage(const sg::Call& c) {
     if (!c.callerObject || !ue_wrap::ambient_creature::IsWalker(c.callerObject)) return;
+    // The mannequin drill's red: a walker's hit on a client is cancelled here and sent nowhere, so the drill's hit step must FAIL.
+    static const bool s_redNoDelivery = coop::config::ResolveEnum(::coop::config_registry::rows::mannequin_drill) == "no_delivery";
+    if (s_redNoDelivery) return;
     auto* s = g_session.load(std::memory_order_acquire);
     if (!s || !s->connected() || s->role() != coop::net::Role::Host) return;
     const uint8_t slot = coop::players::Registry::Get().PeerIdOfActor(c.object);
@@ -468,7 +480,6 @@ uint32_t RefusedIgnites() { return g_igniteCanceled.load(std::memory_order_relax
 uint32_t RefusedAchievements() { return g_achievementRefused.load(std::memory_order_relaxed); }
 uint32_t DeliveredCount() { return g_delivered.load(std::memory_order_relaxed); }
 uint32_t MirrorHitCount() { return g_mirrorHits.load(std::memory_order_relaxed); }
-uint32_t HushedSounds() { return g_hushed; }
 
 void Tick() {
     // Publish the local pawn for the interceptor's any-thread compare (GT here;

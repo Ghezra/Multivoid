@@ -41,6 +41,7 @@
 #include "coop/interactables/drone_sync.h"
 #include "coop/world/event_cue_sync.h"
 #include "coop/creatures/ambient_creature_sync.h"
+#include "coop/creatures/walker_lanes.h"
 #include "coop/world/ambient_fixture_sync.h"
 #include "coop/comms/chat_sync.h"
 #include "coop/interactables/upgrade_sync.h"
@@ -52,7 +53,6 @@
 #include "coop/world/power_panel.h"
 #include "coop/world/sky_sync.h"
 #include "coop/interactables/window_sync.h"
-#include "coop/creatures/walker_sync.h"
 #include "coop/props/prop_fire_sync.h"
 #include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
@@ -142,7 +142,6 @@ void ConnectReplayForSlot(int slot) {
     coop::desk_snd_fx::QueueConnectBroadcastForSlot(slot);  // desk loop-sound ground truth (a mid-loop joiner gets the ON)
     coop::physmods_sync::QueueConnectBroadcastForSlot(slot);  // canonical module array (ground truth over save drift)
     coop::media_device_sync::QueueConnectBroadcastForSlot(slot);  // every radio again
-    coop::walker_sync::QueueConnectBroadcastForSlot(slot);  // every angry walker again
     coop::prop_fire_sync::QueueConnectBroadcastForSlot(slot);  // every burning prop again
     coop::ground_hose_sync::QueueConnectBroadcastForSlot(slot);  // every hose again
     coop::garbage_bin_sync::QueueConnectBroadcastForSlot(slot);  // every garbage container again
@@ -211,6 +210,7 @@ void ConnectReplayForSlot(int slot) {
     coop::event_cue_sync::QueueConnectBroadcastForSlot(slot);
     coop::ambient_creature_sync::QueueConnectBroadcastForSlot(slot);  // every tree again
     coop::ambient_fixture_sync::QueueConnectBroadcastForSlot(slot);  // every hole and branch again
+    coop::walker_lanes::OnPeerWorldReady(slot);  // every held walker's pose and the player it hunts, to the joiner alone: its copy holds the state until it is born
     // The chat lane's late-join answer: the lobby's chat record, oldest first, one message per
     // line. It lands retained on the joiner: arriving in a lobby must not replay a conversation
     // you were not in across your screen; it is there when you open the chat.

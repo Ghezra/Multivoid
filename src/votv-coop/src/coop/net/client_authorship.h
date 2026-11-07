@@ -43,7 +43,6 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::KitchenState:
     case ReliableKind::MediaDeviceState:
     case ReliableKind::PlantEdit:
-    case ReliableKind::WalkerWatch:
     case ReliableKind::PropFireRequest:
     case ReliableKind::GroundHoseIntent:
     case ReliableKind::SpillIntent:
@@ -169,6 +168,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::DevParityReport:
     case ReliableKind::DevContainerParity:
     case ReliableKind::PropPropsIntent:
+    case ReliableKind::WalkerSeen:
         return ClientAuthorship::Client;
     // The Host row matches MTA's protected element data, which a client may not write: opt-in there
     // (reference/mtasa-blue/Server/mods/deathmatch/logic/CGame.cpp:2743-2755), the only mode here.
@@ -257,7 +257,6 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::AmbientTreeState:
     case ReliableKind::AmbientFixtureState:
     case ReliableKind::PlantState:
-    case ReliableKind::WalkerAngry:
     case ReliableKind::PropFireState:
     case ReliableKind::GroundHoseState:
     case ReliableKind::SpillState:
@@ -273,6 +272,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::CrematorHit:
     case ReliableKind::RequesterFeedback:
     case ReliableKind::KerfurCommandAnswer:
+    case ReliableKind::WalkerState:
         return ClientAuthorship::Host;
     }
     return ClientAuthorship::NotAKind;  // a byte value that names no kind: refused like Host

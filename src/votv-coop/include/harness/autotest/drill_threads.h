@@ -253,14 +253,8 @@ DWORD WINAPI RadioStateThread(LPVOID arg);
 // VOTVCOOP_RUN_TV_STATE, both peers -- harness/autotest/autotest_tv_state.cpp
 DWORD WINAPI TvStateThread(LPVOID arg);
 
-// VOTVCOOP_RUN_WALKER_STATUE, both peers -- harness/autotest/autotest_walker_statue.cpp
-DWORD WINAPI WalkerStatueThread(LPVOID arg);
 
-// VOTVCOOP_RUN_WALKER_TARGET, both peers -- harness/autotest/autotest_walker_target.cpp
-DWORD WINAPI WalkerTargetThread(LPVOID arg);
 
-// VOTVCOOP_RUN_WALKER_WATCH, both peers -- harness/autotest/autotest_walker_watch.cpp
-DWORD WINAPI WalkerWatchThread(LPVOID arg);
 
 // VOTVCOOP_RUN_WORLD_SOUND, both peers -- harness/autotest/autotest_world_sound.cpp
 DWORD WINAPI WorldSoundThread(LPVOID arg);

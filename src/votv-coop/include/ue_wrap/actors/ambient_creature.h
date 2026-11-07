@@ -1,6 +1,6 @@
-// ue_wrap/actors/ambient_creature.h -- the deer and the walking tree, the dirt holes and the beehive branches, and the walking
-// mannequins: a tree's size and landing, a deer's dissolve, a hole's place, a branch's nest and a walker's brain, view and
-// anger. Each class is read by reflection on the game thread.
+// ue_wrap/actors/ambient_creature.h -- the deer, the walking tree and the walking mannequin, the dirt holes and the beehive
+// branches: a tree's size and landing, a deer's dissolve, a walker's view and stand, a hole's place and a branch's nest. Each
+// class is read by reflection on the game thread.
 
 #pragma once
 
@@ -10,9 +10,6 @@
 #include <vector>
 
 namespace ue_wrap::ambient_creature {
-
-// The live mannequin spawners, which a client's walker lane parks (coop/creatures/walker_sync).
-void ListSpawners(std::vector<void*>& out);
 
 // The live deer and walking trees.
 void ListDeer(std::vector<void*>& out);
@@ -32,33 +29,43 @@ bool Dissolve(void* deer);
 // The walking mannequins.
 void ListWalkers(std::vector<void*>& out);
 
-// A copy's brain off: its tick, which walks it and reads this peer's view, and the timers its begin play set, which jump, hit
-// and take up weapons. Its AI pawn's move loop keeps asking for paths, and nothing reads them.
-void ParkWalker(void* walker);
-void UnparkWalker(void* walker);
+// Writes its anim's stand: the pose it holds while its `looking` is true. False when the walker has no anim or its class has no
+// such field.
+bool WriteWalkerStanding(void* walker, bool standing);
 
-// Its anim's stand: the pose it holds when watched.
-void WriteWalkerStanding(void* walker, bool standing);
+// The controller the walker's own tick reads its gaze through: GetPlayerController(walker, 0). Null when it does not resolve.
+// Game thread.
+void* WalkerGazeController(void* worldContext);
 
-// The walker's own view test, as its tick runs it: inside this controller's frustum and rendered of late.
+// The parts of the walker's view test, each read apart: its mesh's bounds, the game's frustum test of them for this controller, and
+// the mesh's WasRecentlyRendered(3). A part that was not read says so; `diagnostics` also reads the rest of the test after a frustum
+// miss and the mesh's and the actor's hidden bits, for a drill that must say which part fails.
+// Game thread: the calls and their frames are kept between calls.
+struct WalkerView {
+    void*             mesh = nullptr;
+    ue_wrap::FVector  origin{}, extent{};
+    bool              boundsRead = false;
+    bool              frustumRead = false, inFrustum = false;
+    bool              renderedRead = false, rendered = false;
+    bool              visibleRead = false, visible = false;            // the mesh's bVisible
+    bool              hiddenInGameRead = false, hiddenInGame = false;  // the mesh's bHiddenInGame
+    bool              actorHiddenRead = false, actorHidden = false;    // the walker's bHidden
+    bool              InView() const { return inFrustum && rendered; }
+};
+WalkerView WalkerViewParts(void* walker, void* playerController, bool diagnostics = false);
+
+// The walker's own view test, as its tick runs it: inside this controller's frustum and rendered of late. Game thread.
 bool WalkerInView(void* walker, void* playerController);
 
-// Its saw flag holds it frozen, as its tick reads it, until its own timer clears the flag. An angry walker does not freeze.
-void HoldWalkerSeen(void* walker);
-void ReleaseWalkerSeen(void* walker);
+// Its `looking` flag: true while it holds still.
 bool ReadWalkerLooking(void* walker);
 
-// Is this actor a walker?
+// Is this actor a walker? Game thread: the class is held between calls.
 bool IsWalker(void* actor);
 
-// Its angry flag: an angry walker hits a player it touches, and does not freeze.
-bool ReadWalkerAngry(void* walker);
-void WriteWalkerAngry(void* walker);
-
-// The points its tick walks, and the index of the next. The tick walks them only while its AI pawn's controller has a path of
-// its own, so WalkerEnsureMove asks for one toward `dest` when that controller has none.
-bool WriteWalkerPath(void* walker, const std::vector<FVector>& points, bool restart);
-void WalkerEnsureMove(void* walker, const FVector& dest);
+// The walker's class object, null until it is loaded; the pointer a caller on any thread compares `ClassOf(actor)` with.
+// Resolved on the game thread.
+void* WalkerClass();
 
 // A hexahive's and a sus hole's dirt holes, and the beehive spawner's branches.
 void ListHoles(std::vector<void*>& out);

@@ -90,7 +90,6 @@
 #include "coop/props/prop_can_state.h"
 #include "coop/props/prop_settle.h"
 #include "coop/interactables/kitchen_sync.h"
-#include "coop/creatures/walker_sync.h"
 #include "coop/player/backrooms_guard.h"
 #include "coop/props/prop_fire_sync.h"
 #include "coop/world/build_sync.h"
@@ -205,6 +204,7 @@
 #include "coop/creatures/roach_sync.h"  // host-authoritative roach-infestation mirror
 #include "coop/creatures/owner_entity_sync.h"
 #include "coop/creatures/npc_mirror_brain.h"  // a parked family's mirror runs none of its Blueprint graph
+#include "coop/creatures/walker_lanes.h"  // the walking mannequin: its brain refused on a client, its claim, state and gaze
 #include "coop/items/hook_anchor.h"
 #include "coop/items/hook_sync.h"  // the hook lane: owner-phase stream, mirrors, the tick park
 #include "coop/world/event_active_sync.h"  // the native activeEvents registry probe
@@ -250,6 +250,7 @@ void InstallLoadWatchers(coop::net::Session& session) {
     coop::world_load_episode::InstallReplayWatch(session);
     coop::trash_native_hold::Install(&session);  // the join load's clumps held still at their spawn: a catch installed with the world would arm after the load
     coop::sus_hole_intent::Install(&session);  // the sus hole spawner's holes stamped at their birth, a client's roll sent to the host, from the load window on
+    coop::walker_lanes::Install(session);  // the walking mannequin: a client's copy never thinks, the host claims it and answers its gaze, a client's gaze goes to the host
 }
 
 void Install(coop::net::Session& session) {
@@ -322,7 +323,6 @@ void Install(coop::net::Session& session) {
     coop::props::prop_can_state::Install(&session);  // a canned food's lid and contents: its record on a change
     coop::world_sound_sync::Install(&session);  // the sky's two sounds, a faucet's click
     coop::media_device_sync::Install(&session);  // a placed radio's track and play state
-    coop::walker_sync::Install(&session);  // the host's walking mannequins
     coop::backrooms_guard::Install(&session);  // no level travel from a clip through a wall
     coop::plant_sync::Install(&session);  // the host runs every plant
     coop::prop_fire_sync::Install(&session);  // the host burns every keyed prop
@@ -467,6 +467,7 @@ void DisconnectSlot(coop::net::Session& session, int slot) {
     coop::desk_snd_fx::OnPeerLeft(slot);  // host-owned teardown of the leaver's loop sounds (broadcast OFF)
     coop::comp_sync::OnPeerLeft(static_cast<uint8_t>(slot));  // and the refiner's decode it began is the host's
     coop::served_player::OnPeerLeft(static_cast<uint8_t>(slot));  // robots serving the leaver read the host
+    coop::walker_lanes::OnPeerLeft(static_cast<uint8_t>(slot));  // a walker that hunted the leaver chooses again, and the level the leaver sent is dropped
     coop::power_panel::OnPeerLeft(static_cast<uint8_t>(slot));  // and its presses that wait for its body
     coop::power_grid::OnPeerLeft(static_cast<uint8_t>(slot));  // and its generator ops
     coop::fuse_tower_ops::OnPeerLeft(static_cast<uint8_t>(slot));  // and its tower ops
@@ -530,7 +531,6 @@ DisconnectStats DisconnectAll() {
     coop::prop_settle::OnDisconnect();  // drop the watched releases
     coop::world_sound_sync::OnDisconnect();
     coop::media_device_sync::OnDisconnect();
-    coop::walker_sync::OnDisconnect();
     coop::backrooms_guard::OnDisconnect();
     coop::plant_sync::OnDisconnect();
     coop::prop_fire_sync::OnDisconnect();
@@ -575,6 +575,7 @@ DisconnectStats DisconnectAll() {
     coop::event_active_sync::OnDisconnect();  // drop the begun-events map and its world stamp
     coop::creature_event_relay::OnDisconnect();  // a client's applied creature events back out; both halves' state; the session
     coop::npc_mirror_brain::OnDisconnect();  // what the graph watches refused, and every mark
+    coop::walker_lanes::OnDisconnect();  // the walker lanes' records, queue and hooks
     coop::alarm_sync::OnDisconnect();  // drop the cached trigger + poll baseline
     coop::serverbox_sync::OnDisconnect();  // the poll baseline and the session
     coop::server_upgrade_sync::OnDisconnect();  // verb snapshots + parked canonical + deny records
@@ -715,10 +716,10 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:owner_entity"}; coop::owner_entity_sync::Tick(); }  // owner-entity: 4 Hz own-pose stream + keepalive + death-watch + mirror prune
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:hook"}; coop::hook_sync::Tick(); }  // hook: one activeHook read, then a gated 4/20 Hz head poll only while a hook exists
     if (isHost) { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:explosion_coast"}; coop::explosion_parking::Tick(&session); }  // HOST: the props a blast flung, handed to the driven-prop channel (before its tick below; an empty list costs one size check)
+    coop::walker_lanes::Tick(session, isHost);  // the walkers: HOST claims the born ones into the drive stream (before the pump below); CLIENT hears its copies end and judges its gaze
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:prop_drive_host"}; coop::prop_drive_host::Pump(session, isHost); }  // the driven props, both roles: HOST judges a syncing client's rows, publishes the props that moved, closes the streams that rested (after the hook poll that feeds it); then both park + drive what the host streams (an empty set costs one size check)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:prop_settle"}; coop::prop_settle::Tick(session); }  // the props this peer let go of: where each comes to rest goes out (an empty list costs one size check)
     coop::media_device_sync::Tick();  // the radios' poll
-    coop::walker_sync::Tick();  // the walkers' poll
     coop::backrooms_guard::Tick();  // the backrooms flag's poll
     coop::plant_sync::Tick();  // the plants' poll
     coop::prop_fire_sync::Tick();  // the burning props' poll

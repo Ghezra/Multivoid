@@ -6,10 +6,12 @@
 #include "coop/element/mirror_managers.h"
 #include "coop/element/npc.h"
 #include "coop/element/player.h"
+#include "coop/net/net_clock.h"
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
 #include "coop/player/players_registry.h"
 
+#include "ue_wrap/core/class_reask.h"
 #include "ue_wrap/core/game_thread.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/obj_keyed_cache.h"
@@ -43,11 +45,11 @@ constexpr float kMaxComponent = 1e7f;  // a world coordinate or an impulse; far 
 
 int  g_applyDepth = 0;  // game thread
 uint32_t g_applied = 0;
+uint32_t g_appliedWalker = 0;
 uint32_t g_droppedNoBody = 0;
 uint32_t g_droppedSource = 0;
 uint32_t g_failedApplies = 0;
 uint32_t g_refusedSends = 0;
-uint32_t g_cuesPlayed = 0;
 uint32_t g_cuesLost = 0;
 bool g_boneSaid = false;
 bool g_noneSaid = false;                          // the first hit with no source creature has been said
@@ -104,17 +106,30 @@ ue_wrap::FVector Vec(const float (&v)[3]) { return ue_wrap::FVector{v[0], v[1], 
 // as a UI sound. Its class is loaded wherever a walker stands, as one must for its hit.
 void PlayCue(void* body, uint8_t cue) {
     if (cue != coop::net::kPlayerHitCueWalker) return;
-    static void* sSound = nullptr;
-    if (!sSound || !R::IsLive(sSound)) {
-        sSound = R::FindObject(L"break_flesh_3", L"SoundWave");
-        if (!sSound) sSound = R::FindObject(L"break_flesh_3", L"SoundCue");
+    // The asset is found once and held. A miss walks the whole object table, and an asset finishing its load moves no
+    // object-index number (the reasoning of object_index.h:55-58, which states it of a class), so no class-set move announces
+    // it: a miss is asked again on each call for the load window after a move, and besides at most once per kAssetReaskMs.
+    constexpr uint64_t                 kAssetReaskMs = 1000;
+    static void*                       sSound = nullptr;
+    static ue_wrap::class_reask::Latch sAsk;
+    static uint64_t                    sNextAskMs = 0;
+    if (sSound && !R::IsLive(sSound)) {
+        sSound = nullptr;
+        sAsk.Reset();
+    }
+    if (!sSound) {
+        const uint64_t now = coop::net::NowMs();
+        if (sAsk.Due() || now >= sNextAskMs) {
+            sNextAskMs = now + kAssetReaskMs;
+            sSound = R::FindObject(L"break_flesh_3", L"SoundWave");
+            if (!sSound) sSound = R::FindObject(L"break_flesh_3", L"SoundCue");
+        }
     }
     if (!sSound) {
         if (++g_cuesLost == 1) UE_LOGW("player_hit: the walker's hit sound break_flesh_3 is not loaded here -- not played");
         return;
     }
     EN::PlaySound2D(body, sSound, 1.f, 1.f, 0.f, true);
-    ++g_cuesPlayed;
 }
 
 struct ApplyScope {
@@ -159,8 +174,12 @@ void Apply(const coop::net::PlayerHitPayload& p) {
         else
             ok = EN::InvokePunch(body, Vec(p.v0), Vec(p.v1), kBones[p.bone], p.damage, Vec(p.v2));
     }
-    if (ok) ++g_applied;
-    else if (++g_failedApplies == 1) UE_LOGW("player_hit: the verb did not run on the local player");
+    if (ok) {
+        ++g_applied;
+        if (p.cue == coop::net::kPlayerHitCueWalker) ++g_appliedWalker;
+    } else if (++g_failedApplies == 1) {
+        UE_LOGW("player_hit: the verb did not run on the local player");
+    }
     PlayCue(body, p.cue);
     // The first hit of a source class says what it was; the rest are counted (g_applied).
     void* const sourceClass = source ? R::ClassOf(source) : nullptr;
@@ -218,8 +237,9 @@ bool InApply() { return g_applyDepth > 0; }
 
 uint32_t AppliedCount() { return g_applied; }
 
+uint32_t AppliedWalkerCount() { return g_appliedWalker; }
+
 uint32_t RefusedSendCount() { return g_refusedSends; }
 
-uint32_t CuesPlayed() { return g_cuesPlayed; }
 
 }  // namespace coop::player_hit

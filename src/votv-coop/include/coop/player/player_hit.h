@@ -51,11 +51,11 @@ bool InApply();
 // [dev], for the drill alone: the hits applied to this machine's own player.
 uint32_t AppliedCount();
 
+// [dev], for the walker drill alone: the applied hits that carried the walker's cue (kPlayerHitCueWalker).
+uint32_t AppliedWalkerCount();
+
 // [dev], for the drill alone: the calls of Deliver that sent nothing, for any reason (each reason said once,
 // counted each time).
 uint32_t RefusedSendCount();
-
-// [dev], for the drill alone: the hit sounds played beside an applied hit.
-uint32_t CuesPlayed();
 
 }  // namespace coop::player_hit

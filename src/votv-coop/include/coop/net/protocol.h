@@ -31,7 +31,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 296;
+inline constexpr uint16_t kProtocolVersion = 297;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1268,13 +1268,6 @@ enum class ReliableKind : uint8_t {
     // The host judges it (coop/world/plant_edit_gate) and answers a refused edit of a plant it holds with that plant's
     // PlantState. PlantStatePayload.
     PlantEdit = 223,
-    // CLIENT->HOST: its `angered` says this client's copy of a walking mannequin was just angered, as by a fire.
-    // CLIENT->HOST: this client's player has a walking mannequin on screen, every second while it does, or no longer has. The
-    // host holds that walker frozen. Never relayed, not pre-world, nothing at late join. WalkerWatchPayload.
-    WalkerWatch = 224,
-    // HOST->ALL: a walking mannequin of the host's is angry, once for each walker, and every angry one again at the ready edge.
-    // A client's copy takes the anger, which nothing undoes. Not relayed, not pre-world. WalkerWatchPayload, `angered` set.
-    WalkerAngry = 225,
     // HOST->ALL: a keyed prop of the host's burns, with its flame's fuel and speed, at the edge, on a refuel and every 2 s while
     // it burns, or it stopped. A client's copy shows that flame and burns nothing down. Not relayed, not pre-world. Late join:
     // every burning prop again at the ready edge. PropFirePayload.
@@ -1447,6 +1440,15 @@ enum class ReliableKind : uint8_t {
     // lane. Late join: none, an act sent to its requester, not state. PROVISIONAL number, final at landing.
     // KerfurCommandAnswerPayload.
     KerfurCommandAnswer = 248,
+    // CLIENT->HOST: whether the player a walking mannequin hunts has it on screen, a LEVEL sent on each change of it, when that
+    // client becomes the walker's target (WalkerState); a copy's end sends nothing. The host answers the walker's own gaze reads
+    // with it while this client is the walker's target. Only the target's is taken; never relayed, not pre-world, nothing at
+    // late join (a joiner who is a target sends its level when it learns it). WalkerSeenPayload.
+    WalkerSeen = 251,
+    // HOST->ALL: a walking mannequin of the host's: whether it stands still (`looking`) and the player it hunts, sent on each
+    // change of either and again to a joiner alone at its ready edge. A client holds one for a copy that is not here yet and
+    // applies it at the copy's birth. Not relayed, not pre-world. WalkerStatePayload.
+    WalkerState = 252,
 };
 
 #pragma pack(push, 1)
@@ -2273,15 +2275,6 @@ struct MediaDeviceStatePayload {
 };
 static_assert(sizeof(MediaDeviceStatePayload) == 72, "MediaDeviceStatePayload must be 72 bytes");
 
-// A client's view of a walking mannequin (WalkerWatch), or the host's anger (WalkerAngry).
-struct WalkerWatchPayload {
-    WireKey key;       // 32 -- the walker's prop key
-    uint8_t watching;  // 1
-    uint8_t angered;   // 1 -- this client's copy just turned angry
-    uint8_t _pad[2];   // 2 -- zero
-};
-static_assert(sizeof(WalkerWatchPayload) == 36, "WalkerWatchPayload must be 36 bytes");
-
 // A burning prop (PropFireState), or a client's light (PropFireRequest).
 struct PropFirePayload {
     WireKey key;        // 32 -- the prop's key
@@ -2416,6 +2409,27 @@ struct PropPropsStatePayload {
     uint8_t  reason;       // 1 -- PropPropsReason
 };
 static_assert(sizeof(PropPropsStatePayload) == 9, "PropPropsStatePayload must be 9 bytes");
+
+// Whether a client's player has the walking mannequin it is hunted by on screen (WalkerSeen).
+struct WalkerSeenPayload {
+    WireKey key;       // 32 -- the walker's prop key
+    uint8_t seen;      // 1  -- 0 or 1
+    uint8_t _pad[3];   // 3  -- zero
+};
+static_assert(sizeof(WalkerSeenPayload) == 36, "WalkerSeenPayload must be 36 bytes");
+static_assert(sizeof(WalkerSeenPayload) <= 256 - 20 - 8, "WalkerSeenPayload must fit in one reliable datagram");
+
+// A walking mannequin of the host's (WalkerState): the walker's own `looking` (it holds still while it is true, the pose its
+// copy takes) and the slot it hunts (0 the host, 0xFF none). The walker's anger does not cross: a copy's own fire is the fire
+// lane's, and an angry walker's `looking` is false by the Blueprint's own formula and crosses as such.
+struct WalkerStatePayload {
+    WireKey key;       // 32 -- the walker's prop key
+    uint8_t looking;   // 1  -- 0 or 1
+    uint8_t target;    // 1  -- a slot below kMaxPeers, or 0xFF
+    uint8_t _pad[2];   // 2  -- zero
+};
+static_assert(sizeof(WalkerStatePayload) == 36, "WalkerStatePayload must be 36 bytes");
+static_assert(sizeof(WalkerStatePayload) <= 256 - 20 - 8, "WalkerStatePayload must fit in one reliable datagram");
 
 // One message of the drill filler (DevLoadFiller): its place in the run and the run's length; the rest is fill.
 struct DevLoadFillerPayload {

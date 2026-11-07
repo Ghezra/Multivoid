@@ -4,9 +4,9 @@
 // taken. The joiner's branches from the save must bind to the host's by key with no copy beside them, every nest-holding branch
 // must hold its nest, the census-end must end the loaded branch the host lacks, and the field of holes must be the host's. Then
 // the host's own beehive body makes a branch whose nest and end reach the client, the nest's end by the prop lane. The client's
-// hexahive and beehive rows refuse, read from the gate's counters. The host prints `ambient-field: VERDICT` over both peers'
-// fails and the rejoined life's: the client's second life (VOTVCOOP_AMBIENT_FIELD_REJOIN=1, set by the rig for it) is a new
-// load and a new census. Gated by VOTVCOOP_RUN_AMBIENT_FIELD; the folder is VOTVCOOP_CAN_DIR. Red arms:
+// hexahive, beehive and mannequin spawner rows refuse, read from the gate's counters. The host prints `ambient-field: VERDICT`
+// over both peers' fails and the rejoined life's: the client's second life (VOTVCOOP_AMBIENT_FIELD_REJOIN=1, set by the rig for
+// it) is a new load and a new census. Gated by VOTVCOOP_RUN_AMBIENT_FIELD; the folder is VOTVCOOP_CAN_DIR. Red arms:
 // VOTVCOOP_AMBIENT_FIELD_RED.
 
 #include "harness/autotest.h"
@@ -325,7 +325,7 @@ bool WorldReady() {
     });
 }
 
-// The hexahive and beehive rows refuse on this client: each spawner's body is run here, and its refusal count must rise.
+// The hexahive, beehive and mannequin rows refuse on this client: each spawner's body is run here, and its refusal count must rise.
 void CheckRefusals() {
     struct Spawner {
         const wchar_t* cls;
@@ -336,6 +336,7 @@ void CheckRefusals() {
     const Spawner spawners[] = {
         {L"ticker_hexahiveSpawner_C", L"ReceiveTick", true, "hexahiveSpawner.ReceiveTick"},
         {L"ticker_beehiveSpawner_C", L"Spawn", false, "beehiveSpawner.spawn"},
+        {L"ticker_mannequinSpawner_C", L"ReceiveTick", true, "mannequinSpawner.ReceiveTick"},
     };
     for (const Spawner& s : spawners) {
         uint64_t before = 0, after = 0;

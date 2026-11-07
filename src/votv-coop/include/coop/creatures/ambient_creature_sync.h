@@ -7,6 +7,7 @@
 // changed, and again to a joiner alone. A client writes the size onto the mirror of that tree, again for a mirror born after
 // the message. A deer dissolves when the viewing camera comes near, and each peer judges that for itself: its mirror keeps
 // its actor tick (coop/creatures/npc_mirror), so the deer's own body runs the test, and the pose drive keeps the floor it reads.
+// The walking mannequins are props and cross as props, not here (coop/creatures/walker_target and its neighbours).
 
 #pragma once
 
@@ -15,7 +16,6 @@
 namespace coop::net {
 class Session;
 struct AmbientTreeStatePayload;
-struct WalkerWatchPayload;
 }  // namespace coop::net
 
 namespace coop::ambient_creature_sync {

@@ -204,6 +204,16 @@ set(VOTVCOOP_SOURCES
     src/coop/creatures/npc_mirror.cpp
     src/coop/creatures/npc_mirror_brain.cpp
     src/coop/creatures/npc_mirror_brain_table.cpp
+    src/coop/creatures/walker_brain.cpp
+    src/coop/creatures/walker_gaze.cpp
+    src/coop/creatures/walker_gaze_host.cpp
+    src/coop/creatures/walker_graph.cpp
+    src/coop/creatures/walker_lanes.cpp
+    src/coop/creatures/walker_state_client.cpp
+    src/coop/creatures/walker_state_host.cpp
+    src/coop/creatures/walker_target.cpp
+    src/coop/creatures/walker_target_rule.cpp
+    src/coop/creatures/walker_target_rule_selftest.cpp
     src/coop/creatures/creature_hit.cpp
     src/coop/creatures/hit_target_creature.cpp
     src/coop/creatures/npc_pose_drive.cpp
@@ -216,7 +226,6 @@ set(VOTVCOOP_SOURCES
     src/coop/creatures/geom_octa_relay.cpp
     src/coop/creatures/roach_sync.cpp
     src/coop/creatures/ambient_creature_sync.cpp
-    src/coop/creatures/walker_sync.cpp
     src/coop/world/ambient_births.cpp
     src/coop/world/ambient_fixture_sync.cpp
     src/coop/creatures/owner_entity_sync.cpp
@@ -694,11 +703,8 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_noclip.cpp
     src/harness/autotest/autotest_level_travel.cpp
     src/harness/autotest/autotest_plant_state.cpp
-    src/harness/autotest/autotest_walker_watch.cpp
-    src/harness/autotest/autotest_walker_target.cpp
     src/harness/autotest/autotest_sus_hole.cpp
     src/harness/autotest/autotest_join_drop.cpp
-    src/harness/autotest/autotest_walker_statue.cpp
     src/harness/autotest/autotest_prop_fire.cpp
     src/harness/autotest/autotest_ground_hose.cpp
     src/harness/autotest/autotest_spill.cpp

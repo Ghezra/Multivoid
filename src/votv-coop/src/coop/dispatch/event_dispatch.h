@@ -103,7 +103,9 @@ bool HandleEconomyEvent(net::Session& session,
 // FoodHand the food in a hand, holder to all; KitchenState a press on a kitchen machine, from its presser to all;
 // MediaDeviceState a placed radio's or TV's state, host to all or a client's edit to the host; AmbientTreeState a
 // walking tree's size and landing and AmbientFixtureState a dirt hole's or beehive branch's place, host to all;
-// SusHoleIntent a client's sus hole for the host to make, dropped on a client. DevLoadFiller
+// SusHoleIntent a client's sus hole for the host to make, dropped on a client; WalkerSeen whether the player a
+// walker hunts has it on screen, client to host, and WalkerState the host's walker's pose and the player it hunts,
+// host to all. DevLoadFiller
 // is the developer filler of the syncer drill's load arm, host to client; DevParityReport is the pile deferral
 // drill's report, client to host; DevContainerParity is the container join drill's.
 bool HandlePropDriveEvent(net::Session& session,
