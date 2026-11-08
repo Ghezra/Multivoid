@@ -85,6 +85,7 @@ set(VOTVCOOP_SOURCES
     src/coop/comms/chat_rate.cpp
     src/coop/interactables/turbine_sync.cpp
     src/coop/interactables/woodchipper_sync.cpp
+    src/coop/interactables/woodchipper_feed.cpp
     src/coop/interactables/woodchipper_gate.cpp
     src/coop/interactables/upgrade_sync.cpp
     src/coop/interactables/interactable_sync.cpp
@@ -704,6 +705,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_desk_short.cpp
     src/harness/autotest/autotest_drone_hover.cpp
     src/harness/autotest/autotest_hacksaw.cpp
+    src/harness/autotest/autotest_chipper_feed.cpp
     src/harness/autotest/autotest_fill_needs.cpp
     src/harness/autotest/autotest_ambient_creature.cpp
     src/harness/autotest/autotest_ambient_field.cpp
