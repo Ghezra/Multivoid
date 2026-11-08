@@ -229,6 +229,7 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIf("VOTVCOOP_RUN_DISC_RACE", "disc race drill", &DiscRaceThread, role);
     SpawnIf("VOTVCOOP_RUN_DESK_VIEW", "desk signal view drill", &DeskViewThread, role);
     SpawnIf("VOTVCOOP_RUN_CAP_LABEL", "refiner cap label drill", &CapLabelThread, role);
+    SpawnIf("VOTVCOOP_RUN_MUSHROOM", "mushroom drill", &MushroomThread, role);
     // The ATV: what of it the host owns, from a client's refuel to its horn.
     SpawnIf("VOTVCOOP_RUN_ATV_HOST", "ATV host-owned state drill", &AtvHostThread, role);
     // The ATV's riders: the driver's body and the kerfur, on both peers.
