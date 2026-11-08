@@ -704,6 +704,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_desk_short.cpp
     src/harness/autotest/autotest_drone_hover.cpp
     src/harness/autotest/autotest_hacksaw.cpp
+    src/harness/autotest/autotest_fill_needs.cpp
     src/harness/autotest/autotest_ambient_creature.cpp
     src/harness/autotest/autotest_ambient_field.cpp
     src/harness/autotest/autotest_noclip.cpp

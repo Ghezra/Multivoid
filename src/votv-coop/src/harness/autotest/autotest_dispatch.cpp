@@ -240,6 +240,7 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // How steadily the delivery drone flies and hovers on each peer.
     SpawnIf("VOTVCOOP_RUN_DRONE_HOVER", "drone hover drill", &DroneHoverThread, role);
     SpawnIf("VOTVCOOP_RUN_HACKSAW", "hacksaw drill", &HacksawThread, role);
+    SpawnIf("VOTVCOOP_FILL_NEEDS", "food and sleep kept full", &FillNeedsThread, role);
     // The base computer's short circuit on both peers.
     SpawnIf("VOTVCOOP_RUN_DESK_SHORT", "desk short drill", &DeskShortThread, role);
     // A device's claim when its user ragdolls.
