@@ -253,6 +253,9 @@ DWORD WINAPI RadioStateThread(LPVOID arg);
 // VOTVCOOP_RUN_TV_STATE, both peers -- harness/autotest/autotest_tv_state.cpp
 DWORD WINAPI TvStateThread(LPVOID arg);
 
+
+
+
 // VOTVCOOP_RUN_WORLD_SOUND, both peers -- harness/autotest/autotest_world_sound.cpp
 DWORD WINAPI WorldSoundThread(LPVOID arg);
 // woodchipper_drill, both peers -- harness/autotest/autotest_woodchipper.cpp
@@ -283,5 +286,8 @@ DWORD WINAPI ChipperFeedThread(LPVOID arg);
 
 // VOTVCOOP_FILL_NEEDS, both peers -- harness/autotest/autotest_fill_needs.cpp
 DWORD WINAPI FillNeedsThread(LPVOID arg);
+
+// VOTVCOOP_RUN_BODY_PUSH, both peers -- harness/autotest/autotest_body_push.cpp
+DWORD WINAPI BodyPushThread(LPVOID arg);
 
 }  // namespace harness::autotest

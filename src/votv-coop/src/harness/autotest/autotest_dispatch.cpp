@@ -242,6 +242,7 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIf("VOTVCOOP_RUN_HACKSAW", "hacksaw drill", &HacksawThread, role);
     SpawnIf("VOTVCOOP_RUN_CHIPPER_FEED", "chipper feed drill", &ChipperFeedThread, role);
     SpawnIf("VOTVCOOP_FILL_NEEDS", "food and sleep kept full", &FillNeedsThread, role);
+    SpawnIf("VOTVCOOP_RUN_BODY_PUSH", "body push drill", &BodyPushThread, role);
     // The base computer's short circuit on both peers.
     SpawnIf("VOTVCOOP_RUN_DESK_SHORT", "desk short drill", &DeskShortThread, role);
     // A device's claim when its user ragdolls.
