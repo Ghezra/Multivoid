@@ -1,19 +1,17 @@
 // harness/autotest/autotest_mushroom.cpp -- TEST-ONLY: the mushrooms on two peers, the host's alone.
 //
-// The game makes mushrooms three ways, and each is driven here through the game's own classes:
-//   - a wild mushroom: a mushroomSpawner_C (what the mushroom master places) named by a list_shrooms row, whose
-//     Spawn makes the prop at its own transform. The host's must stand on the client once, and a client's own
+// The game makes mushrooms three ways, each driven here through the game's own classes:
+//   - a wild mushroom: a mushroomSpawner_C named by a list_shrooms row makes the prop at its own transform. The
+//     host's stands on the client once; the client picks it up and it leaves the host's world. A client's own
 //     spawner makes nothing on either peer (coop/world/spawn_authority).
-//   - the growing stage, prop_food_mushroom7_C: the host's never crosses, and its Transform makes a mature puffball,
-//     which must stand on the client once.
-//   - a mushroom plant, growingPlant_shroom_7_C: a puffball's explosion (puffballExplosion_C) throws 0 to 3 spores,
-//     and a spore's hit on grass, dirt or gravel plants one, so each peer sets off several over plantable ground. A
-//     thrown spore that comes to rest without planting is the game's own surface test saying no, so each peer also
-//     runs a spore's own hit event with a hit on the traced ground and its physical material. The host's plants must stand on the client under their keys,
-//     and a client's own explosion plants nothing on either peer.
-// Then the client picks the host's wild mushroom up, and it must leave the host's world. Each check logs
-// `mushroom: PASS|FAIL <what>`, a step whose game state the rig cannot give logs `mushroom: SKIP <why>`, and the
-// drill ends with `mushroom: DONE fails=N`. Gated by VOTVCOOP_RUN_MUSHROOM; the folder is VOTVCOOP_CAN_DIR.
+//   - the growing stage, prop_food_mushroom7_C: the host's never crosses; its Transform makes a mature puffball,
+//     which stands on the client once.
+//   - a mushroom plant, growingPlant_shroom_7_C: a puffball's explosion throws 0 to 3 spores, and a spore's hit on
+//     grass, dirt or gravel plants one. Thrown spores can rest without planting, so each peer also runs a spore's
+//     hit event on traced ground with its physical material. The host's plants stand on the client under their
+//     keys; a client's explosions and spore hit plant nothing on either peer.
+// Each check logs `mushroom: PASS|FAIL <what>` or `mushroom: SKIP <why>`, ending with `mushroom: DONE fails=N`.
+// Gated by VOTVCOOP_RUN_MUSHROOM; the folder is VOTVCOOP_CAN_DIR.
 
 #include "harness/autotest.h"
 #include "harness/autotest/peer_signal.h"
