@@ -726,6 +726,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_desk_view.cpp
     src/harness/autotest/autotest_cap_label.cpp
     src/harness/autotest/autotest_mushroom.cpp
+    src/harness/autotest/autotest_crowbar.cpp
     src/harness/autotest/autotest_atv_host.cpp
     src/harness/autotest/autotest_atv_riders.cpp
     src/harness/autotest/autotest_container_gaps.cpp

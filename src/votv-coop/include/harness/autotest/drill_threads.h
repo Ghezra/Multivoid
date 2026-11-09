@@ -134,6 +134,9 @@ DWORD WINAPI CapLabelThread(LPVOID arg);
 // VOTVCOOP_RUN_MUSHROOM, both peers -- harness/autotest/autotest_mushroom.cpp
 DWORD WINAPI MushroomThread(LPVOID arg);
 
+// VOTVCOOP_RUN_CROWBAR, both peers -- harness/autotest/autotest_crowbar.cpp
+DWORD WINAPI CrowbarThread(LPVOID arg);
+
 // VOTVCOOP_RUN_DISH_SOUND, both peers -- harness/autotest/autotest_dish_sound.cpp
 DWORD WINAPI DishSoundThread(LPVOID arg);
 
