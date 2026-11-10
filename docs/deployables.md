@@ -46,6 +46,21 @@ the hook lane did not have in front of it:
   its head still rides what it bit. Two players hooking one prop is then two host constraints on
   one host body, which is what single-player physics would do (`coop/items/hook_constraint`).
 
+An anchored hook is taken back with the use key, as the game has it: the player's look takes one of its two spheres,
+which the game leaves query-only, the pop-up offers the hook's one action, and `hook_C::actionOptionIndex` drops a hook
+item at the player, puts it in the inventory and destroys the hook. A client's copy of an anchored hook -- the mirror
+`HookAnchored` built, or the hook a joiner's save loaded -- keeps that collision, so the look takes it (the mirror's
+was switched off before, and no client got the pop-up), but its pickup is refused there and asked of the host by the
+hook's save key (`HookRetrieve`). The host takes its hook away without a drop when either end is within 200 uu of the
+sender's puppet, with the authority's pads, and tells every client the hook is gone, naming the taker; the taker's
+copy then runs the game's own pickup, so the item lands in that player's inventory, or at its feet when the inventory
+is full, and every other copy goes. The host player's own pickup runs the game's and is told the same way: a copy a
+joiner's save loaded has no other word that the hook went. A refused request has no answer; the copy stays and the
+player may press again (`coop/items/hook_retrieve`). `[V]` on the rig (`coop/dev/hook_retrieve_drill`): a client takes
+a mirror and a save-loaded copy, and the host takes its hook while the client holds each kind of copy; the reds fail,
+`nocollision` with no pose of the aim fan putting the client's look on its copy, the reported symptom, and
+`clientruns` with the host's hook still standing.
+
 A garden hose (`coop/world/ground_hose_sync`) is laid on one peer: the coil used on a faucet spawns a
 `groundHose_C` there, and until the coil finishes it the hose's tick lays a point wherever that peer's own
 player walks. So only a finished hose crosses, as its own save record: its points and the keys of its
@@ -99,6 +114,7 @@ wall builder).
 | a deployed hook, while its thrower still holds it | that peer | keyed by (slot, sequence); the others render a parked mirror |
 | a deployed hook once both ends are anchored | the host | the thrower hands over the hook's own save record; it is a save actor from then on |
 | a hook's tie, the physics constraint | the host | a client breaks every tie a hook builds on it; the host builds a client's tie on its mirror of that hook |
+| an anchored hook taken back with the use key | the host | a client's pickup is asked of the host by the hook's save key; the taker's copy runs the game's pickup once the host has taken its hook away |
 | a garden hose being laid | the peer whose player lays it | not sent until it is finished |
 | a finished garden hose, its points and its two ends | the host | the hose's own save record; a client's change is a route the host checks |
 | a nail, and a custom wall in each stage | the host | the piece's own save record; a client's new piece or removal is an intent the host checks |
@@ -111,6 +127,7 @@ wall builder).
 | `HookDestroy` | the owner to all, or the host for a leaver | that hook is gone |
 | `HookAnchorCommit` | a client to the host | the anchored hook's own save record, chunked |
 | `HookAnchored` | the host to all | an anchored hook exists, as the same record |
+| `HookRetrieve` | a client to the host (op 0); the host to all (op 1) | an anchored hook's save key: a client's pickup of it; or that it is gone, and whose pickup it was |
 | `GroundHoseState` | the host to all | a finished hose's own record, or its key when it went; chunked |
 | `GroundHoseIntent` | a client to the host | a hose its player finished or changed, as its record, or took up; chunked |
 | `BuildState` | the host to all | a nail's or a custom wall's own record, or its key when it went; chunked |
@@ -120,7 +137,7 @@ wall builder).
 
 A hook its thrower still owns reaches a joiner on its keepalive. An anchored hook is a save actor
 of the host's and arrives with the save, and the game's own load re-resolves both of its attach
-keys in the joiner's world. A garden hose arrives with the save and again from the host at the ready edge,
+keys in the joiner's world, and its pickup goes through the host like any other copy's. A garden hose arrives with the save and again from the host at the ready edge,
 which re-ties it in the joiner's world and carries what changed after the save was taken. Nails and walls arrive
 with the save and again at the ready edge, keyed, so the joiner applies the host's record to the piece its save made; a
 piece of the joiner's save the host does not name within 20 s goes. The deployables that are not built reach a joiner
@@ -130,6 +147,7 @@ only through the save.
 
 | Limit | Evidence |
 |---|---|
+| A hook whose save key the wire cannot carry (over 31 characters), or that has none, is not taken on a client: the press is refused there. The lane's hooks carry 23; the game's own keys and the level's hook were not measured | `[?]` `coop/items/hook_retrieve` |
 | The timed explosives, the fishing rod and the physgun are not synced | `[V]` no lane carries them |
 | A client's hit or repair shows on its own copy at once; the host and the other clients see it one network trip later, and a host's own change reaches the clients on the next poll, within half a second | `[RD]` `coop/world/build_sync` |
 | A client's pull snaps a host nail by its own physics, and the host takes its word within the hold and reach checks; a snap the host refuses was not run, and the drill grabs through the player's physics handle as the game's grab does rather than by a press | `[?]` `harness/autotest/autotest_build.cpp` step R |
@@ -147,5 +165,6 @@ only through the save.
 | the anchor handoff | `coop/items/hook_anchor` |
 | the tie, host-only | `coop/items/hook_constraint` |
 | the props a tie claims for the driven-prop channel | `coop/items/hook_prop_claim` |
+| an anchored hook taken back with the use key | `coop/items/hook_retrieve` |
 | the garden hose lane | `coop/world/ground_hose_sync`; the hose, its faucet and sprinkler `ue_wrap/actors/ground_hose` |
 | nails and custom walls | `coop/world/build_sync`; the pieces `ue_wrap/actors/build_piece` |
