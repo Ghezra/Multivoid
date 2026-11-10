@@ -331,6 +331,18 @@ bool HarvestTakesPlant(void* plant) {
 
 void HarvestSound(void* plant) { CallPlain(plant, L"harvestSound"); }
 
+bool RunHarvest(void* plant, void* player) {
+    if (!plant || !R::IsLive(plant)) return false;
+    void* fn = R::FindDispatchFunctionCached(R::ClassOf(plant), L"actionOptionIndex");
+    if (!fn) return false;
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (R::FindBoolProperty(R::ClassOf(plant), L"discard", off, mask))
+        *(static_cast<uint8_t*>(plant) + off) = static_cast<uint8_t>(*(static_cast<uint8_t*>(plant) + off) & ~mask);
+    ParamFrame f(fn);
+    return f.valid() && f.Set<void*>(L"player", player) && f.Set<uint8_t>(L"action", 4) && Call(plant, f);
+}
+
 void Apply(void* plant, const std::wstring& row, const Values& v) {
     Values old;
     if (!Read(plant, old)) return;

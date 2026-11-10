@@ -702,6 +702,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_tv_state.cpp
     src/harness/autotest/autotest_world_sound.cpp
     src/harness/autotest/autotest_dish_sound.cpp
+    src/harness/autotest/autotest_farm_harvest.cpp
     src/harness/autotest/autotest_sv_request.cpp
     src/harness/autotest/autotest_module_buy.cpp
     src/harness/autotest/autotest_seat_ragdoll.cpp

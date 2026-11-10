@@ -67,6 +67,11 @@ bool HarvestTakesPlant(void* plant);
 
 // Its own harvest sound, played at its place on this peer.
 void HarvestSound(void* plant);
+// Its own harvest, as `player`'s E runs it: actionOptionIndex with action 4. The plant's `discard`, which the looking player's
+// view sets, is cleared first, so a ripe crop is harvested whoever looked at it last. A crop drops its yield into the world and
+// ends itself; a bush puts its berries in `player`'s inventory. False when the function does not resolve or the call fails.
+// Game thread.
+bool RunHarvest(void* plant, void* player);
 
 // Writes the values and refreshes what the plant shows from them: its row's data when the row changed, its grown mesh, its
 // fruit mesh, its size.
