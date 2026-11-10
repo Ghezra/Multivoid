@@ -95,6 +95,22 @@ each peer's battery drained in turn).
 A carried trash clump is driven to the puppet's hand on
 the host each tick (`coop/player/puppet_carry_drive`); a held physics prop is on the props lane.
 
+### A nametag on a prop
+
+A nametag item (`prop_nametag_C`) carries a tag. Its left click reads the player's interaction hit and, on a prop,
+writes the tag into the prop's `nametag`, runs the prop's `setNametag` -- which takes down the floating label it had
+and builds one for a tag that is not None -- and destroys the item. A prop's nametag is base save state, carried by
+its save record and its spawn row, so before this lane a tag reached another peer only when the prop was born again: a
+client's tag stayed on its own copy, and the host's reached no client. The nametag is the host's
+(`coop/props/prop_nametag`). The host player's click runs the game's own, and the watch on its exit tells every
+client. A client's click is refused there and asked of the host with the prop's key and the tag; the host applies it
+when the prop is within the sender's reach and a nametag was in the sender's hand within the hand lane's 3 s, at most
+one a second a client, and tells every client, the sender included, whose held item then goes as the game's use takes
+it. A refused request has no answer, and the item stays. The message is a second body shape on the record lane's
+kinds, so no kind is added. `[V]` on the rig (`coop/dev/nametag_drill`): a client's tag lands on the host's cup once
+and its item is spent; the host player's tag reaches the client's copy; with `nametag_client_runs` the tag stays on
+the client's copy and the host FAILs.
+
 ### Name, colour and nameplate
 
 The host is the canonical namer. Two clients typing the same name each believe they are unique,
@@ -314,6 +330,7 @@ host. A setting that holds a password is never set or shown by command.
 
 | State | Owner | Shape |
 |---|---|---|
+| a prop's nametag | the host | a client's tag is a request by the prop's key; the host applies it and tells every client |
 | pose, vitals, ragdoll | that peer | a sender-authored stream, never gated on receive |
 | the display name | the host | assigned for uniqueness; every peer adopts it |
 | nameplate visibility, colour, skin | that peer | a preference, relayed to all |
@@ -329,6 +346,7 @@ host. A setting that holds a password is never set or shown by command.
 
 | Kind | Direction | Carries |
 |---|---|---|
+| `PropSaveData`, `PropSaveDataIntent`, body 2 | the host to all; a client to the host | a prop's nametag: the prop's key, the slot whose tag it was and the tag; a client's tag on a prop |
 | `PoseSnapshot` (stream) | each peer | position, yaw, pitch, head delta, speed, state bits, three vitals |
 | `RagdollPose` (stream) | each peer, while ragdolled | pelvis transform and velocity |
 | `Join`, `RosterRow` | each peer; the host | identity, nickname, skin, preferences; who occupies each slot |
@@ -347,7 +365,7 @@ choice made during the load is not lost. Hand items and item states are replayed
 at its ready edge. A joiner is sent the host's sleeping flag and the rest state of every peer
 that is not awake. A joiner that rests before the host holds its world ready has that report refused, and repeats
 it each time the host's sleeping flag reaches it, which the host sends once it holds the joiner ready. The inventory is seeded before the world. A peer's death state is not seeded; a joiner sees a
-dead peer through the ragdoll bit of its next pose.
+dead peer through the ragdoll bit of its next pose. A prop's nametag comes with the save and with its spawn row.
 
 ## Known limits
 
@@ -385,6 +403,7 @@ cannot be visited in a session. Every site above and the two placed triggers wer
 
 | Concept | Files |
 |---|---|
+| a prop's nametag | `coop/props/prop_nametag`, `ue_wrap/actors/nametag` |
 | the remote player and its engine actor | `coop/player/remote_player`, `coop/player/remote_player_ragdoll`, `ue_wrap/actors/puppet` |
 | the per-slot puppet lifecycle and drive | `coop/player/puppet_drive`, `coop/player/puppet_body_yaw`, `coop/player/puppet_footsteps`, `coop/player/puppet_carry_drive` |
 | the local player's outbound streams | `coop/player/local_streams`, `coop/player/movement_ledger` |

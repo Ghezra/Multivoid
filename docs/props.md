@@ -7,7 +7,7 @@ of a container: how it is named across peers, where the mod catches its birth an
 owns it at rest and in a hand, and what happens to a prop whose own Blueprint keeps changing
 it. Trash piles and clumps are a family of their own on [piles.md](piles.md); the item in a
 player's hand is on [players.md](players.md); the tools that leave a persistent actor behind, the
-grappling hook and rope among them, are on [deployables.md](deployables.md).
+grappling hook and rope among them, are on [deployables.md](deployables.md); a nametag put on a prop is on [players.md](players.md).
 
 ## How it works
 
