@@ -537,6 +537,10 @@ CFG_STRING(nametag_drill, "nametag_drill", "dev", "", "VOTVCOOP_NAMETAG_DRILL", 
     "copy carries the host's tag.")
 CFG_FLAG(nametag_client_runs, "nametag_client_runs", "dev", false, "VOTVCOOP_NAMETAG_CLIENT_RUNS",
     "Developer: a client's nametag runs the game's own use there instead of asking the host (the nametag drill's red).")
+CFG_STRING(equip_drill, "equip_drill", "dev", "", "VOTVCOOP_EQUIP_DRILL", false,
+    "Drill (BOTH peers): every empty equipment slot takes an item. run -- 15 s after this peer's world is up it counts "
+    "its empty equipment slots and equips a list of wearables through the game's own AddEquipment; each peer says DONE "
+    "PASS when every slot that was empty took an item, FAIL when one stays empty after the list.")
 CFG_ENUM(prop_syncer_drill, "prop_syncer_drill", "dev", "off", "off|kick|forge", "VOTVCOOP_PROP_SYNCER_DRILL",
     "Drill (host and BOTH clients, the same value; three peers): a client syncs a prop its own interaction moves. "
     "kick: the client in slot 1 walks to a keyed prop with the director, claims it, kicks it with the game's own "
