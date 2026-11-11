@@ -476,7 +476,7 @@ burn written on a client's copy, steam and the frozen flag, a held food shown bo
 rejoin; the verbs by reflection and the food `prop_food_C`). The host judges a release as a bite, within reach, with
 its temperature in 0 to 2000, its ripeness finite and in -1 to 1e9, and its use count no higher than the host copy's;
 one whose copy is not born yet waits 30 s for it, judged against where the sender stood, and a refused release is
-answered like a refused bite. A held food placed down, not thrown, is run by the same drill on both peers `[?]`.
+answered like a refused bite. A held food placed down, not thrown, is run by the same drill on both peers `[?]`. The white mushroom (`prop_food_mushroom7_C`) turns itself: its BeginPlay sets a looping 180 s timer whose `Transform` makes a `prop_puffballMature_C` one time in twenty and ends the mushroom. It crosses as any prop, whoever made it (a harvest, a spawner, the save, a hand). The roll is the host's: a client clears each copy's timer (`K2_ClearTimer` on `Transform`, the inverse of the Blueprint's own set) from the food lane's poll (`coop/props/prop_food_sync`), and the host's puffball and the mushroom's end reach it as a birth and a destroy. It used to be held off the wire altogether, taken for a hidden growing stage, so a client never saw a white mushroom at all. `[V]` on the rig (`harness/autotest/autotest_farm_harvest.cpp`): a white mushroom from each peer's harvest stands on both, every host copy's timer is set and no client copy's, and the host's two turned into two puffballs that stand on the client while its two copies went.
 
 The kitchen's machines and a placed radio or TV are on [kitchen-and-media.md](kitchen-and-media.md).
 

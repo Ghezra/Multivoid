@@ -4,8 +4,8 @@
 //   - a wild mushroom: a mushroomSpawner_C named by a list_shrooms row makes the prop at its own transform. The
 //     host's stands on the client once; the client picks it up and it leaves the host's world. A client's own
 //     spawner makes nothing on either peer (coop/world/spawn_authority).
-//   - the growing stage, prop_food_mushroom7_C: the host's never crosses; its Transform makes a mature puffball,
-//     which stands on the client once.
+//   - the white mushroom, prop_food_mushroom7_C: the host's stands on the client once, its puffball timer cleared there;
+//     the host's Transform makes a mature puffball, which stands on the client once, and the client's copy goes.
 //   - a mushroom plant, growingPlant_shroom_7_C: a puffball's explosion throws 0 to 3 spores, and a spore's hit on
 //     grass, dirt or gravel plants one. Thrown spores can rest without planting, so each peer also runs a spore's
 //     hit event on traced ground with its physical material. The host's plants stand on the client under their
@@ -21,6 +21,7 @@
 #include "coop/player/remote_player.h"
 #include "coop/props/prop_key_index.h"
 #include "coop/session/net_pump.h"
+#include "ue_wrap/actors/food.h"
 #include "ue_wrap/actors/growing_plant.h"
 #include "ue_wrap/actors/prop.h"
 #include "ue_wrap/core/asset_load.h"
@@ -452,12 +453,12 @@ void RunHost() {
     }
     Mark("client_spawner_seen");
 
-    // 4. The growing stage stays the host's; its Transform makes a mature puffball the client sees.
+    // 4. The host's white mushroom crosses; its Transform, the host's alone, makes a mature puffball the client sees.
     std::string puffKey = "none", puffCls, puffAt;
     ue_wrap::FVector gAt{};
     if (Beside(-150.f, 0.f, gAt)) {
         void* young = SpawnAt(L"prop_food_mushroom7_C", L"/Game/objects/prop_food_mushroom7.prop_food_mushroom7_C", gAt);
-        Check(young != nullptr, "4: the host's growing stage stands");
+        Check(young != nullptr, "4: the host's white mushroom stands");
         Mark("young", FormatPoint(gAt));
         if (!Await("young_seen")) return;
         constexpr float kAnywhere = 1.0e7f;  // the stage falls before it turns: the puffball is found by class
@@ -470,7 +471,7 @@ void RunHost() {
                 turned = !R::IsLive(young);
             });
         }
-        Check(turned, "4: the growing stage's Transform turned it");
+        Check(turned, "4: the white mushroom's Transform turned it");
         std::vector<NearProp> fresh;
         WaitFor("the host's mature puffball", 10, [&] {
             fresh.clear();
@@ -584,15 +585,23 @@ void RunClient() {
     }
     if (!Await("client_spawner_seen")) return;
 
-    // 4. The host's growing stage is not here; its mature puffball is, once.
+    // 4. The host's white mushroom is here once, its puffball timer cleared; after the host's Transform its copy goes and
+    // the mature puffball is here, once.
     std::string young;
     if (!AwaitText("young", young)) return;
+    ue_wrap::FVector youngAt{};
     if (young != "none") {
         ::Sleep(3000);
-        int n = 0;
-        const ue_wrap::FVector gAt = ParsePoint(young);
-        OnGameThread([&] { n = static_cast<int>(PropsNear(gAt, 300.f, L"prop_food_mushroom7_C").size()); });
-        Check(n == 0, "4: the host's growing stage did not cross (" + std::to_string(n) + " here)");
+        int n = 0, armed = 0;
+        youngAt = ParsePoint(young);
+        OnGameThread([&] {
+            for (const NearProp& p : PropsNear(youngAt, 300.f, L"prop_food_mushroom7_C")) {
+                ++n;
+                if (p.actor && ue_wrap::food::PuffballTransformArmed(p.actor)) ++armed;
+            }
+        });
+        Check(n == 1, "4: the host's white mushroom stands here once (" + std::to_string(n) + " here)");
+        Check(armed == 0, "4: its puffball timer is cleared here (" + std::to_string(armed) + " armed)");
     }
     Mark("young_seen");
     std::string puff;
@@ -608,6 +617,9 @@ void RunClient() {
         const bool there = WaitFor("the host's mature puffball here", 15, [&] { return HasKey(puffKey); }, false);
         Check(there, "4: the host's mature puffball stands on the client under its key");
         Check(CopiesNear(puffKey, puffCls, ParsePoint(puffAt), 100.f) == 1, "4: one copy of it here");
+        int left = 0;
+        OnGameThread([&] { left = static_cast<int>(PropsNear(youngAt, 1000.f, L"prop_food_mushroom7_C").size()); });
+        Check(left == 0, "4: the white mushroom's copy went with the host's Transform (" + std::to_string(left) + " left)");
     }
     Mark("puffball_seen");
 
