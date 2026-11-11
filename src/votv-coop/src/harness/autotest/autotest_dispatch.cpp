@@ -235,6 +235,8 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIf("VOTVCOOP_RUN_ATV_HOST", "ATV host-owned state drill", &AtvHostThread, role);
     // The ATV's riders: the driver's body and the kerfur, on both peers.
     SpawnIf("VOTVCOOP_RUN_ATV_RIDERS", "ATV riders drill", &AtvRidersThread, role);
+    // The ATV's passenger: a player in the kerfur's spot.
+    SpawnIf("VOTVCOOP_RUN_ATV_PASSENGER", "ATV passenger drill", &AtvPassengerThread, role);
     // Containers: photos in a record, a nested container, a garbage container, a container that breaks.
     SpawnIf("VOTVCOOP_RUN_CONTAINER_GAPS", "container gaps drill", &ContainerGapsThread, role);
 

@@ -1168,9 +1168,9 @@ enum class ReliableKind : uint8_t {
     // PropIgniteIntentPayload.
     PropIgniteIntent = 193,
 
-    // CLIENT->HOST: this client's player sat in an ATV's driver seat, or left it. The host judges the request
-    // (world-ready, key, seat, sender alive, pace, one seat at a time, the seat free, reach) and answers every
-    // one with AtvAnswer. Never relayed; not pre-world; a client sends none before its own world-ready. Late
+    // CLIENT->HOST: this client's player sat in an ATV's driver seat or its passenger spot, or left it. The host
+    // judges the request (world-ready, key, seat, sender alive, pace, one seat at a time, the seat free, a driver
+    // for a passenger, reach) and answers every one with AtvAnswer. Never relayed; not pre-world; a client sends none before its own world-ready. Late
     // join: none, a request is an act. AtvSeatPayload.
     AtvSeat = 196,
     // CLIENT->HOST: this client's player took hold of an ATV with the grav hand. The host judges it as AtvSeat
@@ -3458,6 +3458,9 @@ struct AtvStatePayload {
     uint8_t  stateBits;    // 1  -- bit0=isDriven, bit1=brake, bit2=grabbed (the sender's grav hand holds it),
                            //      bit3=kAtvFromSyncer, bit4=kAtvTrap
     uint8_t  adopt;        // 1  -- 1 = host connect-snapshot (warp as is), 0 = live stream
+    uint8_t  passengerSlot; // 1 -- the host's stamp: the peer slot in the passenger spot (0xFF = free), the seat
+                           //      behind the driver a riding kerfur takes
+    uint8_t  pad[3];       // 3  -- zero
     // The condition block: the syncer's accumulators travel; a mirror's own accrual is held at zero,
     // so overwriting never races an irreversible act. Presence (tiresMask, hasSpare) is consumed
     // from the host's own copy only: a client's eject ships a mask bit whose wheel-prop birth
@@ -3479,7 +3482,7 @@ struct AtvStatePayload {
     uint8_t  tiresTypes[4];       // 4  -- setWheelsType input (zero runtime writers measured; kept
                                   //      because it IS reducer input and 4 B closes the class)
 };
-static_assert(sizeof(AtvStatePayload) == 148, "AtvStatePayload must be 148 bytes");
+static_assert(sizeof(AtvStatePayload) == 152, "AtvStatePayload must be 152 bytes");
 
 // stateBits bit 3: the block is the syncer's, re-sent by the host (a client syncer's pose and condition), not the
 // host's own copy. A receiver applies the pose and condition of such a block to an ATV it does not sync; the host's
@@ -3518,7 +3521,7 @@ static_assert(sizeof(AtvSetCompletePayload) == 4, "AtvSetCompletePayload must be
 // leaves and takeovers (1..255, wrapping to 1); the host keeps no record of it and echoes it in the answer.
 struct AtvSeatPayload {
     WireKey key;       // 32 -- the ATV's Key
-    uint8_t seat;      // 1  -- 0 the driver's; 1 is reserved for a passenger seat and refused until one exists
+    uint8_t seat;      // 1  -- 0 the driver's, 1 the passenger spot (the kerfur's, behind the driver)
     uint8_t action;    // 1  -- 1 sit, 0 leave; anything else is malformed
     uint8_t seq;       // 1
     uint8_t pad;       // 1  -- zero
@@ -3553,6 +3556,7 @@ enum class AtvRefusal : uint8_t {
     Seated = 13,
     Synced = 14,
     TakeoverPaced = 15,
+    NoDriver = 16,       // a passenger sit on an ATV nobody else drives
 };
 
 // The host's verdict on one request (AtvAnswer), with the seat and the syncer it holds for that ATV: 0xFF and 0 when
@@ -3564,7 +3568,8 @@ struct AtvAnswerPayload {
     uint8_t occupantSlot;  // 1  -- the host's seat for that ATV (0xFF = free)
     uint8_t syncerSlot;    // 1  -- the host's syncer for that ATV (0 = the host)
     uint8_t reason;        // 1  -- an AtvRefusal
-    uint8_t pad[3];        // 3  -- zero
+    uint8_t passengerSlot; // 1  -- the host's passenger spot for that ATV (0xFF = free)
+    uint8_t pad[2];        // 2  -- zero
 };
 static_assert(sizeof(AtvAnswerPayload) == 40, "AtvAnswerPayload must be 40 bytes");
 static_assert(sizeof(AtvAnswerPayload) <= 256 - 20 - 8, "AtvAnswerPayload must fit in one reliable datagram");

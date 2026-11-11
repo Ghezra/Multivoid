@@ -95,6 +95,7 @@
 #include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
 #include "coop/interactables/atv_host_sync.h"
+#include "coop/interactables/atv_passenger.h"
 #include "coop/interactables/atv_riders.h"
 #include "coop/interactables/garbage_bin_sync.h"
 #include "coop/interactables/desk_short_sync.h"
@@ -331,6 +332,7 @@ void Install(coop::net::Session& session) {
     coop::ground_hose_sync::Install(&session);  // the host's garden hoses
     coop::atv_host_sync::Install(&session);  // what of an ATV is the host's beyond its rig
     coop::atv_riders::Install(&session);  // a remote driver's body in the seat, the kerfurs a client's seat calls
+    coop::atv_passenger::Install(&session);  // this player in an ATV's passenger spot
     coop::garbage_bin_sync::Install(&session);  // what a garbage container holds, and its pickup, are the host's
     coop::desk_short_sync::Install(&session);  // the base computer's short circuit is the host's
     coop::props::container_break::Install(&session);  // a container a client breaks breaks on the host
@@ -541,6 +543,7 @@ DisconnectStats DisconnectAll() {
     coop::ground_hose_sync::OnDisconnect();
     coop::atv_host_sync::OnDisconnect();
     coop::atv_riders::OnDisconnect();
+    coop::atv_passenger::OnDisconnect();
     coop::garbage_bin_sync::OnDisconnect();
     coop::desk_short_sync::OnDisconnect();
     coop::props::container_break::OnDisconnect();
@@ -732,6 +735,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     coop::ground_hose_sync::Tick();  // the hoses' poll
     coop::atv_host_sync::Tick();  // the ATVs' fuel, health, modules, controls and horn
     coop::atv_riders::Tick();  // the ATVs' riders: the remote drivers' bodies, a client seat's kerfurs
+    coop::atv_passenger::Tick();  // this player's passenger ask, its seat and the seat's end
     coop::garbage_bin_sync::Tick();  // the garbage containers' poll and apply
     coop::desk_short_sync::Tick();  // the desk's short-circuit poll, and the host's served requests
     coop::props::container_break::Tick();  // a client's container breaks, and the host's
