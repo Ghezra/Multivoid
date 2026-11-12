@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 304;
+inline constexpr uint16_t kProtocolVersion = 305;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -156,7 +156,8 @@ inline constexpr size_t kReliableKindSpace = 1024;
 
 // Payload kinds carried inside a Reliable message. A retired value is never reused: 16, 17, 21,
 // 22, 24, 26, 29, 71 and 138 stay unassigned; 32 and 128 are reserved. Two bytes on the wire
-// (ReliableHeader::kind), so a kind may take any value below kReliableKindSpace.
+// (ReliableHeader::kind), so a kind may take any value below kReliableKindSpace. The first kind at or past 256
+// ships with a kProtocolVersion bump: an older build reads only the low byte.
 enum class ReliableKind : uint16_t {
     // Each peer to the other, once after admission: the sender's Player element id, then the nick,
     // the skin, the display flags, the nick colour, the game target, the build claim (the build's
@@ -1258,9 +1259,10 @@ enum class ReliableKind : uint16_t {
     // follows by at least the rest time; a settle that still passes its release is dropped as no released hold.
     // Not pre-world. Late join: none, the snapshot carries the host's pose. PropSettlePayload.
     PropSettle = 211,
-    // HOST->ALL: a world food's temperature, ripeness and use count, sent when they move. A client's food is refused its tick
-    // at the gate, so these are its values. Not pre-world. Late join: every food again at the joiner's ready edge, on the poll's
-    // budget. FoodStatePayload.
+    // HOST->ALL: a world food's temperature, ripeness and use count, sent when they move, and its poison (the two floats a
+    // bite adds as an effect), which every send carries. A client's food is refused its tick at the gate, so these are its
+    // values. Not pre-world. Late join: every food again at the joiner's ready edge, on the poll's budget, poison included.
+    // FoodStatePayload.
     FoodState = 214,
     // CLIENT->HOST: this client's player bit a world food. Its copy ran the bite; the host takes one use off its own
     // count and the next FoodState answers. Not relayed, not pre-world. Late join: none. FoodBitePayload.
@@ -2297,13 +2299,15 @@ static_assert(sizeof(PropSettlePayload) <= 256 - 20 - 8,
 
 // A world food's condition (FoodState): the food by key, and the three fields its tick and its bites move.
 struct FoodStatePayload {
-    WireKey key;          // 32 -- the food's Key
-    float   temperature;  // 4  -- kelvin
-    float   ripeness;     // 4
-    int32_t uses;         // 4
-    float   cookProgress;  // 4  -- a cooking food's, -1 for any other food
+    WireKey key;             // 32 -- the food's Key
+    float   temperature;     // 4  -- kelvin
+    float   ripeness;        // 4
+    int32_t uses;            // 4
+    float   cookProgress;    // 4  -- a cooking food's, -1 for any other food
+    float   poisonDelay;     // 4  -- prop_food_C's poison_delay, 0 when the food carries none: the host's value, and
+    float   poisonStrength;  // 4  -- its poison_strength; a client's FoodRelease sends both as 0 and the host ignores them
 };
-static_assert(sizeof(FoodStatePayload) == 48, "FoodStatePayload must be 48 bytes");
+static_assert(sizeof(FoodStatePayload) == 56, "FoodStatePayload must be 56 bytes");
 static_assert(sizeof(FoodStatePayload) <= 256 - 20 - 8, "FoodStatePayload must fit in one reliable datagram");
 
 // A placed radio or TV (MediaDeviceState).
