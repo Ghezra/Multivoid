@@ -310,4 +310,7 @@ DWORD WINAPI BodyPushThread(LPVOID arg);
 // VOTVCOOP_RUN_NIGHTMARE, both peers -- harness/autotest/autotest_nightmare.cpp
 DWORD WINAPI NightmareThread(LPVOID arg);
 
+// VOTVCOOP_RUN_LEVEL_VISIT, both peers -- harness/autotest/autotest_level_visit.cpp
+DWORD WINAPI LevelVisitThread(LPVOID arg);
+
 }  // namespace harness::autotest
