@@ -263,32 +263,43 @@ bool BackroomsAllowed() {
 }
 
 // VOTVCOOP_LEVEL_VISIT_CLOSED=1: the host closes the backrooms (world.backrooms 0) before the visit. The visitor sees
-// the session's value arrive and its game mode's backroomsEnabled held off; the game's own clip and the clip's travel
-// call each leave it in the world. The host opens them again with a reset; the visitor sees backroomsEnabled given
-// back, then visits as usual. A closed phase that fails fails the visitor's verdict.
+// the session's value (a client: as it arrives) and its game mode's backroomsEnabled held off; the game's own clip and
+// the clip's travel call each leave it in the world. The host opens them again with a reset; the visitor sees
+// backroomsEnabled given back, then visits as usual. A client visitor and the host hand the steps over by files; a
+// host visitor (VOTVCOOP_LEVEL_VISIT_DOER=host) sets and resets the setting itself. A closed phase that fails fails
+// the visitor's verdict.
 std::string g_closedFail;
 
+// The host's set of world.backrooms: closed with "0", opened again with a reset (its ini line removed).
+void HostSetClosed(bool closed) {
+    OnGameThread([closed] {
+        const auto r = closed ? coop::config::SetValue(coop::config_registry::rows::world_backrooms, "0")
+                              : coop::config::ResetValue(coop::config_registry::rows::world_backrooms);
+        UE_LOGI("level-visit: host %hs (result %d)", closed ? "closed the backrooms" : "opened the backrooms again",
+                static_cast<int>(r));
+    });
+}
+
+// The host's side when a client visits.
 void ClosedPhaseHost() {
     if (!Await("client_closed_ready")) return;
-    OnGameThread([] {
-        const auto r = coop::config::SetValue(coop::config_registry::rows::world_backrooms, "0");
-        UE_LOGI("level-visit: host closed the backrooms (set result %d)", static_cast<int>(r));
-    });
+    HostSetClosed(true);
     Write("closed");
     if (!Await("closed_done")) return;
-    OnGameThread([] {
-        const auto r = coop::config::ResetValue(coop::config_registry::rows::world_backrooms);
-        UE_LOGI("level-visit: host opened the backrooms again (reset result %d)", static_cast<int>(r));
-    });
+    HostSetClosed(false);
     Write("reopened");
 }
 
 void ClosedPhaseVisitor(const std::string& map) {
     const int before = GameBackrooms();
-    Write("client_closed_ready");
-    if (!Await("closed")) {
-        g_closedFail = "the host never closed the backrooms";
-        return;
+    if (IsClientRole()) {
+        Write("client_closed_ready");
+        if (!Await("closed")) {
+            g_closedFail = "the host never closed the backrooms";
+            return;
+        }
+    } else {
+        HostSetClosed(true);
     }
     bool seen = false;
     int held = -1;
@@ -315,10 +326,14 @@ void ClosedPhaseVisitor(const std::string& map) {
     }
     UE_LOGI("level-visit: %hs CLOSED the travel call -> visiting=%d", Who(), sent ? 1 : 0);
     if (sent && g_closedFail.empty()) g_closedFail = "the travel call sent the visitor while the backrooms were closed";
-    Write("closed_done");
-    if (!Await("reopened")) {
-        g_closedFail = "the host never opened the backrooms again";
-        return;
+    if (IsClientRole()) {
+        Write("closed_done");
+        if (!Await("reopened")) {
+            g_closedFail = "the host never opened the backrooms again";
+            return;
+        }
+    } else {
+        HostSetClosed(false);
     }
     bool open = false;
     int after = -1;
@@ -518,7 +533,8 @@ void Run() {
     }
     if (IsClientRole() && !Await("spawned")) return;
     ::Sleep(3000);
-    if (!IsClientRole() && coop::config::ReadEnv("VOTVCOOP_LEVEL_VISIT_CLOSED") == "1") ClosedPhaseHost();
+    if (!IsClientRole() && !g_hostVisits && coop::config::ReadEnv("VOTVCOOP_LEVEL_VISIT_CLOSED") == "1")
+        ClosedPhaseHost();
     if (IVisit()) Visitor();
     else Watcher(g_hostVisits ? 0 : 1);
     UE_LOGI("level-visit: DONE %hs", Who());
