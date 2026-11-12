@@ -307,4 +307,7 @@ DWORD WINAPI FillNeedsThread(LPVOID arg);
 // VOTVCOOP_RUN_BODY_PUSH, both peers -- harness/autotest/autotest_body_push.cpp
 DWORD WINAPI BodyPushThread(LPVOID arg);
 
+// VOTVCOOP_RUN_NIGHTMARE, both peers -- harness/autotest/autotest_nightmare.cpp
+DWORD WINAPI NightmareThread(LPVOID arg);
+
 }  // namespace harness::autotest
