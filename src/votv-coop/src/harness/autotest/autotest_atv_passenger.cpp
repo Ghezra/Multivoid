@@ -19,8 +19,10 @@
 #include "coop/dev/spawn_npc.h"
 #include "coop/interactables/atv_passenger.h"
 #include "coop/interactables/atv_sync.h"
+#include "coop/player/level_visit.h"
 #include "coop/player/players_registry.h"
 #include "coop/player/remote_player.h"
+#include "ue_wrap/core/fname_utils.h"
 #include "coop/session/net_pump.h"
 #include "harness/screenshot.h"
 #include "ue_wrap/actors/puppet.h"
@@ -36,6 +38,7 @@
 #include "ue_wrap/engine/engine_component.h"
 #include "ue_wrap/engine/engine_mainplayer.h"
 #include "ue_wrap/engine/engine_pawn.h"
+#include "ue_wrap/engine/screen_state.h"
 
 #include <windows.h>
 
@@ -462,8 +465,313 @@ void J0(const std::string& st, const Seen& v, bool) {
     Check(st, v.occupant == 0 && v.passenger == 0xFF, "the table: the host drives");
 }
 
+// ---- the visit cases (VOTVCOOP_ATV_PASSENGER_VISIT=passenger|driver|map): a clip's visit while the ATV is in use ----
+
+namespace LV = coop::level_visit;
+
+bool Exists(const std::string& name) { return static_cast<bool>(std::ifstream(g_dir + "\\" + name)); }
+
+int AtvCount() {
+    int n = 0;
+    A::ForEachAtv([](void* ctx, void* a, int32_t) { if (a && R::IsLive(a)) ++*static_cast<int*>(ctx); }, &n);
+    return n;
+}
+
+int IndexedCount() {
+    int n = 0;
+    coop::atv_sync::ForEachIndexed([](void* ctx, const std::wstring&, void*) { ++*static_cast<int*>(ctx); }, &n);
+    return n;
+}
+
+struct VSeen {
+    bool visiting = false, riding = false, sitting = false, attached = false, driving = false;
+    float z = 0.f, camZ = 0.f;
+    uint8_t occupant = 0xFF, passenger = 0xFF;
+    int atvs = 0, indexed = 0;
+    std::wstring view;
+    bool possessed = false;
+    int black = 0;
+};
+
+VSeen VLook(const char* tag) {
+    VSeen v;
+    OnGameThread([&] {
+        ue_wrap::FVector at{};
+        if (Me()) E::TryGetActorLocation(Me(), at);
+        v.z = at.Z;
+        v.camZ = E::GetCameraLocation().Z;
+        v.visiting = LV::Visiting();
+        v.riding = coop::atv_passenger::Riding();
+        void* on = nullptr;
+        v.sitting = E::ReadMainPlayerSittingOn(Me(), on) && on;
+        void* parent = nullptr;
+        v.attached = E::GetAttachParentActor(Me(), parent) && parent;
+        if (g_atv && R::IsLive(g_atv)) v.driving = A::IsDriven(g_atv) && A::GetOccupantPlayer(g_atv) == Me();
+        coop::atv_sync::TableView t;
+        if (coop::atv_sync::ReadTable(g_key, t)) { v.occupant = t.occupantSlot; v.passenger = t.passengerSlot; }
+        v.atvs = AtvCount();
+        v.indexed = IndexedCount();
+        const ue_wrap::engine::ScreenState ss = ue_wrap::engine::ReadScreenState();
+        v.view = ss.viewTarget;
+        v.black = ss.blackOnScreen;
+        v.possessed = Me() && E::GetController(Me()) != nullptr;
+    });
+    UE_LOGI("atv-passenger: VSTATE %hs %hs visiting=%d map=%ls z=%.0f camZ=%.0f riding=%d sitting=%d attached=%d "
+            "driving=%d occupant=%u passenger=%u atvs=%d indexed=%d view=%ls possessed=%d black=%d", tag, Who(), v.visiting ? 1 : 0,
+            LV::CurrentMap().c_str(), v.z, v.camZ, v.riding ? 1 : 0, v.sitting ? 1 : 0, v.attached ? 1 : 0,
+            v.driving ? 1 : 0, v.occupant, v.passenger, v.atvs, v.indexed, v.view.c_str(), v.possessed ? 1 : 0, v.black);
+    return v;
+}
+
+void* VisitedScript() {
+    void* level = LV::CurrentLevel();
+    const int32_t off = level ? R::FindPropertyOffset(R::ClassOf(level), L"LevelScriptActor") : -1;
+    return off >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(level) + off) : nullptr;
+}
+
+// The visitor: the game's own clip first (lastLoc under the floor), then, when the game refused it, the clip's own
+// lib_C::loadLevel call; in the map 10 s, then the map's own End, then back in the world.
+void Visit(const std::string& map, bool tryClip) {
+    if (tryClip) {
+        OnGameThread([] {
+            const int32_t off = R::FindPropertyOffset(R::ClassOf(Me()), L"lastLoc");
+            const ue_wrap::FVector cam = E::GetCameraLocation();
+            if (off >= 0)
+                *reinterpret_cast<ue_wrap::FVector*>(static_cast<char*>(Me()) + off) = {cam.X, cam.Y, cam.Z - 400.f};
+        });
+        bool went = false;
+        for (int i = 0; i < 6 && !went; ++i) { ::Sleep(1000); went = VLook("V-clip").visiting; }
+        UE_LOGI("atv-passenger: VISIT %hs the game's own clip while on the ATV -> visit started=%d", Who(), went ? 1 : 0);
+    }
+    if (!VLook("V-precall").visiting)
+        OnGameThread([&map] {
+            void* lib = R::FindClassDefaultObject(L"lib_C");
+            void* fn = lib ? R::FindFunction(R::ClassOf(lib), L"loadLevel") : nullptr;
+            ue_wrap::ParamFrame pf(fn);
+            const std::wstring w(map.begin(), map.end());
+            const bool ran = fn && pf.valid() && pf.Set<R::FName>(L"level", ue_wrap::fname_utils::StringToFName(w)) &&
+                             pf.Set<bool>(L"clearSubArea", true) && pf.Set<void*>(L"__WorldContext", Me()) &&
+                             ue_wrap::Call(lib, pf);
+            UE_LOGI("atv-passenger: VISIT %hs called lib_C::loadLevel('%hs') ran=%d", Who(), map.c_str(), ran ? 1 : 0);
+        });
+    VSeen v;
+    bool in = false;
+    for (int t = 0; t < 60 && !in; ++t) {
+        ::Sleep(1000);
+        v = VLook("V-going");
+        in = v.visiting && v.z < -30000.f;
+    }
+    Check("V-in", in, "the visitor arrived in the map below the world");
+    Check("V-in", !v.riding && !v.sitting && !v.attached && !v.driving, "the visitor left the ATV for the map");
+    Check("V-in", v.camZ < -30000.f, "the visitor's camera is in the map");
+    Check("V-in", v.possessed && v.view == L"mainPlayer_C", "the visitor's controller holds its player");
+    Write("visit_in", "x");
+    for (int i = 0; i < 10; ++i) {
+        ::Sleep(1000);
+        VLook("V-in");
+        if (i == 1 || i == 8) harness::screenshot::Capture(i == 1 ? L"visit-in-a" : L"visit-in-b");
+    }
+    OnGameThread([] {
+        void* script = VisitedScript();
+        void* lib = R::FindClassDefaultObject(L"lib_C");
+        void* fn = lib ? R::FindFunction(R::ClassOf(lib), L"End") : nullptr;
+        ue_wrap::ParamFrame pf(fn);
+        const bool ran = script && fn && pf.valid() && pf.Set<void*>(L"__WorldContext", script) && ue_wrap::Call(lib, pf);
+        UE_LOGI("atv-passenger: VISIT %hs called the map's End ran=%d", Who(), ran ? 1 : 0);
+    });
+    bool back = false;
+    for (int t = 0; t < 60 && !back; ++t) {
+        ::Sleep(1000);
+        v = VLook("V-back");
+        back = !v.visiting && v.z > -30000.f && t >= 15;
+    }
+    Check("V-back", back, "the visitor is back in the world");
+    Check("V-back", !v.riding && !v.sitting && !v.attached && !v.driving, "the visitor stands, off the ATV");
+    Check("V-back", v.camZ > -30000.f && std::fabs(v.camZ - v.z) < 300.f, "the visitor's camera is back with it");
+    Check("V-back", v.possessed && v.view == L"mainPlayer_C", "the visitor's controller holds its player");
+    Write("visit_over", "x");
+}
+
+// A rider (driver or passenger) asks for the trip: the game's own clip, then the clip's call. Neither is taken: the
+// rider stays on the ATV and the table holds.
+void SeatedTry(const std::string& map, bool driver) {
+    OnGameThread([] {
+        const int32_t off = R::FindPropertyOffset(R::ClassOf(Me()), L"lastLoc");
+        const ue_wrap::FVector cam = E::GetCameraLocation();
+        if (off >= 0)
+            *reinterpret_cast<ue_wrap::FVector*>(static_cast<char*>(Me()) + off) = {cam.X, cam.Y, cam.Z - 400.f};
+    });
+    ::Sleep(3000);
+    OnGameThread([&map] {
+        void* lib = R::FindClassDefaultObject(L"lib_C");
+        void* fn = lib ? R::FindFunction(R::ClassOf(lib), L"loadLevel") : nullptr;
+        ue_wrap::ParamFrame pf(fn);
+        const std::wstring w(map.begin(), map.end());
+        const bool ran = fn && pf.valid() && pf.Set<R::FName>(L"level", ue_wrap::fname_utils::StringToFName(w)) &&
+                         pf.Set<bool>(L"clearSubArea", true) && pf.Set<void*>(L"__WorldContext", Me()) &&
+                         ue_wrap::Call(lib, pf);
+        UE_LOGI("atv-passenger: VISIT %hs (seated) called lib_C::loadLevel('%hs') ran=%d", Who(), map.c_str(), ran ? 1 : 0);
+    });
+    VSeen v;
+    bool went = false;
+    for (int i = 0; i < 8; ++i) { ::Sleep(1000); v = VLook("V-seated"); went = went || v.visiting; }
+    Check("V-seated", !went, "no visit starts while the player rides");
+    Check("V-seated", driver ? v.driving : (v.riding && v.sitting), "the rider is still on the ATV");
+    Check("V-seated", v.occupant == 0 && v.passenger == 1, "the table holds: the host drives, the client rides");
+    Check("V-seated", (driver ? v.view == L"ATV_C" : v.possessed) && v.black == 0,
+          "the rider's controller and screen are as they were");
+}
+
+// The other peer: its view each second until the visitor is back, the most ATVs it counted, then a last look.
+VSeen Witness(int& mostAtvs) {
+    mostAtvs = 0;
+    VSeen v;
+    for (int t = 0; t < 200 && !Exists("visit_over"); ++t) {
+        v = VLook("V-witness");
+        mostAtvs = (std::max)(mostAtvs, v.atvs);
+        ::Sleep(1000);
+    }
+    ::Sleep(3000);
+    const VSeen after = VLook("V-witness-after");
+    return after;
+}
+
+// The witness's judgement is in: the visitor's next step may start.
+void WitnessDone() { Write("witness_done", "x"); }
+void AwaitWitness() { Await("witness_done"); }
+
+void Close() {
+    UE_LOGI("atv-passenger: VERDICT %hs %hs -- %d of %d checks failed", Who(), g_failed == 0 ? "PASS" : "FAIL",
+            g_failed, g_checks);
+    UE_LOGI("atv-passenger: DONE");
+}
+
+void JBoardAgain(const std::string& st, const Seen& v, bool actor) {
+    Check(st, v.occupant == 0 && v.passenger == 1, "the table: the host drives, the client rides again");
+    if (actor) Check(st, v.sittingOnAtv && v.attached && coop::atv_passenger::Riding(), "the client sits on the ATV again");
+    else CheckBodyRides(st, v);
+}
+
+void JDriveAgain(const std::string& st, const Seen& v, bool) {
+    Check(st, v.occupant == 0 && v.passenger == 1, "the table: the host drives again, the client still rides");
+}
+
+void ClientBoardsOnly() { Board(); ::Sleep(4000); }
+void ClientDrivesNow() {
+    OnGameThread([] {
+        ue_wrap::FVector at{};
+        ue_wrap::FRotator rot{};
+        if (!A::GetRootTransform(g_atv, at, rot)) return;
+        const float yaw = (rot.Yaw + 90.f) * 0.01745329252f;
+        PlaceMe({at.X + std::cos(yaw) * 200.f, at.Y + std::sin(yaw) * 200.f, at.Z + 120.f}, rot.Yaw - 90.f);
+    });
+    ::Sleep(3000);
+    Settle();
+    Drive();
+}
+
+void RunVisit(const std::string& which) {
+    const bool clip = coop::config::ReadEnv("VOTVCOOP_ATV_PASSENGER_VISIT_CLIP") != "0";
+    std::string map = coop::config::ReadEnv("VOTVCOOP_ATV_PASSENGER_VISIT_MAP");
+    if (map.empty()) map = which == "map" ? "untitled_untitled" : "sl_backroomsObsolete";
+    int most = 0;
+    if (which == "passenger") {
+        // The client rides behind the host and asks for the trip; then gets off and visits standing beside the ATV.
+        Step(true, "1-host-drives", &HostDrives, 3000, &J0);
+        Step(false, "2-client-boards", &ClientBoards, 4000, &J1);
+        if (IsClientRole()) {
+            SeatedTry(map, false);
+            Unsit();
+            ::Sleep(3000);
+            if (coop::config::ReadEnv("VOTVCOOP_ATV_PASSENGER_VISIT_SKIP") == "1") {  // the control: no visit
+                ::Sleep(20000);
+                Write("visit_over", "x");
+            } else {
+                Visit(map, false);
+            }
+            const Seen s = Look("V-after");
+            Check("V-after", s.occupant == 0 && s.passenger == 0xFF, "the table: the host drives, the spot is free");
+            AwaitWitness();
+        } else {
+            const VSeen w = Witness(most);
+            const Seen s = Look("V-after");
+            Check("V-after", w.driving && s.occupant == 0 && s.passenger == 0xFF,
+                  "the host still drives; the spot is free");
+            Check("V-after", s.bodyIsOnAtv == 0, "the client's body is off the ATV on the host");
+            WitnessDone();
+        }
+        Step(false, "V2-client-boards-again", &ClientBoardsOnly, 4000, &JBoardAgain);
+        Step(true, "V3-host-drives-on", &HostPushes, 3000, &J2);
+    } else if (which == "stand") {
+        // No ATV: the visitor (the client, or the host with VOTVCOOP_ATV_PASSENGER_VISIT_HOST=1) visits standing.
+        const bool hostGoes = coop::config::ReadEnv("VOTVCOOP_ATV_PASSENGER_VISIT_HOST") == "1";
+        if (IsClientRole() != hostGoes) {
+            Visit(map, false);
+            ::Sleep(2000);
+            harness::screenshot::Capture(L"visit-back");
+        } else {
+            Witness(most);
+        }
+    } else if (which == "driver") {
+        // The host drives with the client behind it and asks for the trip; then gets off and visits standing.
+        Step(true, "1-host-drives", &HostDrives, 3000, &J0);
+        Step(false, "2-client-boards", &ClientBoards, 4000, &J1);
+        if (!IsClientRole()) {
+            SeatedTry(map, true);
+            DriverOff();
+            ::Sleep(3000);
+            Visit(map, false);
+            const Seen s = Look("V-after");
+            Check("V-after", s.occupant == 0xFF && s.passenger == 1, "the handlebars are free; the client keeps its spot");
+            AwaitWitness();
+        } else {
+            const VSeen w = Witness(most);
+            const Seen s = Look("V-after");
+            Check("V-after", w.riding && s.occupant == 0xFF && s.passenger == 1, "the client still rides; the table agrees");
+            WitnessDone();
+        }
+        Step(true, "V3-host-drives-again", &HostDrives, 3000, &JDriveAgain);
+    } else {
+        // The map that carries its own ATV: the client visits it while the host drives, then the host gets off and
+        // visits it. Each peer counts the ATVs it has throughout.
+        Step(true, "1-host-drives", &HostDrives, 3000, &J0);
+        if (IsClientRole()) {
+            Visit(map, false);
+            Check("V-after", VLook("V-after").atvs == 1, "the client counts one ATV after its visit");
+            AwaitWitness();
+        } else {
+            const VSeen w = Witness(most);
+            Check("V-after", most == 1, "the host never counted a second ATV");
+            Check("V-after", w.driving && w.occupant == 0, "the host still drives");
+            WitnessDone();
+        }
+        ::Sleep(2000);
+        std::remove((g_dir + "\\visit_in").c_str());
+        std::remove((g_dir + "\\visit_over").c_str());
+        std::remove((g_dir + "\\witness_done").c_str());
+        Write(IsClientRole() ? "round2_client" : "round2_host", "x");
+        Await(IsClientRole() ? "round2_host" : "round2_client");
+        if (!IsClientRole()) {
+            DriverOff();
+            ::Sleep(3000);
+            Visit(map, false);
+            ::Sleep(2000);
+            harness::screenshot::Capture(L"visit-host-back");
+            Check("V-after2", VLook("V-after2").atvs == 1, "the host counts one ATV after its visit");
+            AwaitWitness();
+        } else {
+            const VSeen w = Witness(most);
+            Check("V-after2", most == 1, "the client never counted a second ATV");
+            Check("V-after2", w.occupant == 0xFF, "the client sees the ATV empty");
+            WitnessDone();
+        }
+    }
+    Close();
+}
+
 void RunSteps() {
     Look("0-start");
+    if (const std::string v = coop::config::ReadEnv("VOTVCOOP_ATV_PASSENGER_VISIT"); !v.empty()) return RunVisit(v);
     Step(true, "1-host-drives", &HostDrives, 3000, &J0);
     Step(false, "2-client-boards", &ClientBoards, 4000, &J1, L"passenger-client-rides");
     if (coop::config::ReadEnv("VOTVCOOP_ATV_PASSENGER_HOLD") == "1") {
