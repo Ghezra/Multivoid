@@ -199,6 +199,17 @@ this machine, so a false death of the copy reaches the same travel: that one is 
 the revive can do, and this machine's player is not revived for it; only the black screen the
 copy's chain put up is cleared.
 
+The pause menu's own quit needs no event running: its Main Menu and Exit buttons ask the game
+whether an event runs and do nothing when one does, and Save is greyed out. In single player an
+event ends in minutes. In a session the Main Menu button is how a player leaves, and a client's
+count holds the host world's events (a creature's, a story event's) beside its own, so a client
+could not leave until all of them ended. A video camera recording counts as an event too, and a
+dropped camera keeps recording ([ui.md](ui.md), the camera's hint). In a running session the
+question those two buttons ask is answered "no event" at the script-body gate, so they act; Save,
+the blur and the pause keep the game's answer, and solo nothing changes
+(`coop/player/leave_in_event`). `[V]` for a client's Main Menu press during a recording (a
+two-peer run: the press reached the travel and the session ended).
+
 A refused run-ending is answered with a revive in its place: a floor point beside the base's bed (the base gate when no bed or NavMesh point is found, which is open sky `[?]`),
 health, the dead flag, the ragdoll, the pause an ending set, and the screen artifacts the travel
 used to dispose of -- the damage quadrants, the red overlay and the blood-loss effect
@@ -420,6 +431,7 @@ cannot be visited in a session. Every site above and the two placed triggers wer
 | damage and death | `coop/player/player_damage`, `coop/player/death_revive`, `coop/player/run_end_travel`, `coop/player/ragdoll_gate` |
 | no trip to the backrooms | `coop/player/backrooms_guard`, `harness/autotest/autotest_noclip.cpp` (the drill) |
 | no trip to another level | `coop/player/run_end_travel`, `harness/autotest/autotest_level_travel.cpp` (the drill) |
+| leaving during an event | `coop/player/leave_in_event` |
 | sleep | `coop/player/sleep_sync`, `coop/player/sleep_rest` |
 | inventory | `coop/items/player_inventory_sync` |
 | moderation | `coop/moderation/moderation`, `coop/moderation/ban_list`, `coop/moderation/seen_players` |
