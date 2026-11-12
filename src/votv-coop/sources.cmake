@@ -252,7 +252,6 @@ set(VOTVCOOP_SOURCES
     src/ue_wrap/actors/food.cpp
     src/coop/interactables/kitchen_sync.cpp
     src/coop/world/media_device_sync.cpp
-    src/coop/player/backrooms_guard.cpp
     src/coop/world/plant_sync.cpp
     src/coop/props/prop_fire_sync.cpp
     src/coop/world/ground_hose_sync.cpp
@@ -720,7 +719,6 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_body_push.cpp
     src/harness/autotest/autotest_ambient_creature.cpp
     src/harness/autotest/autotest_ambient_field.cpp
-    src/harness/autotest/autotest_noclip.cpp
     src/harness/autotest/autotest_level_travel.cpp
     src/harness/autotest/autotest_plant_state.cpp
     src/harness/autotest/autotest_sus_hole.cpp

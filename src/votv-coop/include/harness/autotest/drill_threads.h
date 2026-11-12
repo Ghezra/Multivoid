@@ -256,9 +256,6 @@ DWORD WINAPI JoinDropThread(LPVOID arg);
 // VOTVCOOP_RUN_LEVEL_TRAVEL, both peers -- harness/autotest/autotest_level_travel.cpp
 DWORD WINAPI LevelTravelThread(LPVOID arg);
 
-// VOTVCOOP_RUN_NOCLIP, both peers -- harness/autotest/autotest_noclip.cpp
-DWORD WINAPI NoclipThread(LPVOID arg);
-
 // VOTVCOOP_RUN_PROP_FIRE, both peers -- harness/autotest/autotest_prop_fire.cpp
 DWORD WINAPI PropFireThread(LPVOID arg);
 

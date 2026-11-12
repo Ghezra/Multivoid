@@ -92,7 +92,6 @@
 #include "coop/props/prop_can_state.h"
 #include "coop/props/prop_settle.h"
 #include "coop/interactables/kitchen_sync.h"
-#include "coop/player/backrooms_guard.h"
 #include "coop/props/prop_fire_sync.h"
 #include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
@@ -328,7 +327,6 @@ void Install(coop::net::Session& session) {
     coop::props::prop_can_state::Install(&session);  // a canned food's lid and contents: its record on a change
     coop::world_sound_sync::Install(&session);  // the sky's two sounds, a faucet's click
     coop::media_device_sync::Install(&session);  // a placed radio's track and play state
-    coop::backrooms_guard::Install(&session);  // no level travel from a clip through a wall
     coop::plant_sync::Install(&session);  // the host runs every plant
     coop::prop_fire_sync::Install(&session);  // the host burns every keyed prop
     coop::ground_hose_sync::Install(&session);  // the host's garden hoses
@@ -541,7 +539,6 @@ DisconnectStats DisconnectAll() {
     coop::prop_settle::OnDisconnect();  // drop the watched releases
     coop::world_sound_sync::OnDisconnect();
     coop::media_device_sync::OnDisconnect();
-    coop::backrooms_guard::OnDisconnect();
     coop::plant_sync::OnDisconnect();
     coop::prop_fire_sync::OnDisconnect();
     coop::ground_hose_sync::OnDisconnect();
@@ -735,7 +732,6 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:prop_drive_host"}; coop::prop_drive_host::Pump(session, isHost); }  // the driven props, both roles: HOST judges a syncing client's rows, publishes the props that moved, closes the streams that rested (after the hook poll that feeds it); then both park + drive what the host streams (an empty set costs one size check)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:prop_settle"}; coop::prop_settle::Tick(session); }  // the props this peer let go of: where each comes to rest goes out (an empty list costs one size check)
     coop::media_device_sync::Tick();  // the radios' poll
-    coop::backrooms_guard::Tick();  // the backrooms flag's poll
     coop::plant_sync::Tick();  // the plants' poll
     coop::prop_fire_sync::Tick();  // the burning props' poll
     coop::ground_hose_sync::Tick();  // the hoses' poll

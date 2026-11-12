@@ -369,6 +369,12 @@ void OnDisconnect() {
     }
 }
 
+bool IsVisitMap(const std::wstring& level) {
+    for (const wchar_t* m : kMaps)
+        if (_wcsicmp(level.c_str(), m) == 0) return true;
+    return false;
+}
+
 bool InVisitedMap(void* actor) {
     if (g_phase == Phase::None || !actor) return false;
     void* me = Local();

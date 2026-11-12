@@ -36,6 +36,10 @@ void Tick();
 // The session ended: a visit in progress is undone and the player put back where it clipped.
 void OnDisconnect();
 
+// One of the maps a clip sends a player to (the case of the name does not matter): the visit's, which no other
+// seam refuses. Any thread.
+bool IsVisitMap(const std::wstring& level);
+
 // True while a visit runs and `actor` belongs to a level other than the world's own: an actor of the visited map,
 // which the prop lanes leave alone (it is this machine's, and goes with the map). Game thread.
 bool InVisitedMap(void* actor);

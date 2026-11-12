@@ -250,7 +250,7 @@ that are mirrored to every client where it was spawned, far outside the map.
 A player's tick traces from last frame's camera to this one, and a hit on static geometry -- a clip
 through a wall or the floor -- saves the game and travels to the backrooms (`sl_backroomsObsolete`),
 or by a roll to one of two secret maps (`untitled_untitled`, `untitled_219`). The game sends no
-player holding something, sitting, ragdolled or asleep. A session holds one world, and that travel
+player who is sitting, ragdolled, noclipping, asleep or dreaming. A session holds one world, and that travel
 took the player out of it, or every player with the host. In a session the travel is refused and the
 map is loaded into the running world instead, far below it, on the clipping player's machine alone
 (`coop/player/level_visit`, `ue_wrap/world/level_instance`): the player goes in, everyone else
@@ -435,15 +435,6 @@ dead peer through the ragdoll bit of its next pose. A prop's nametag comes with 
 | A ban is by player id and, on a direct link, by address: a banned player with a new identity key who comes from a new address or through a relay is a new player, and an address ban refuses whoever shares that address | `[V]` `coop/moderation/ban_list` |
 | The connection cap is by address too, so players behind one router share it; over a relayed internet route it counts by the identity a peer proves, so a peer that rotates its identity there gets a fresh count each time | `[V]` `coop/net/connect_history` on the direct lane; `[RD]` on the internet lane, from the transport's source |
 
-## Clipping through the world
-
-A player's tick traces from last frame's camera to this one, and a hit on static geometry is the game's way into the backrooms: a
-black screen, a save, then a level travel. In a session that travel ended the session for every peer, and a client's clip sent the
-host (measured on the rig; that it runs through the client's puppet on the host is inferred). `coop/player/backrooms_guard` keeps
-`backroomsEnabled` off while a session runs, on both roles, so a player that clips stays where the clip left them. Under the map
-the game lifts them back above the same spot, and a fall that kills them ends in the usual revive. The backrooms cannot be reached
-this way in a session.
-
 ## Other levels
 
 Six sites send a player to a level of their own: the puddle, the biotoilet, the shake, the well, the skull zone and the insomniac
@@ -453,7 +444,8 @@ session runs, on both roles, and tells the player. It clears the site's black sc
 the sites blank. A save or a teleport the site made before its travel stands, and the shake's ragdoll is a death, answered by the
 usual revive. The puddle and the insomniac came for the player, and the level change would have ended them: a puddle left
 standing sinks the player again until a fall under the floor kills them, so the refusal ends either with its trip. Those levels
-cannot be visited in a session. Every site above and the two placed triggers were fired in a session on the rig.
+cannot be visited in a session. Every site above and the two placed triggers were fired in a session on the rig. The
+three maps a clip through the world sends a player to are not refused: they are visited in place (Another map, above).
 
 ## Code map
 

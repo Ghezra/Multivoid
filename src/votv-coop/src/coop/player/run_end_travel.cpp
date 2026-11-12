@@ -13,6 +13,7 @@
 // sent everyone to the menu": to a player they are a black screen and ten seconds, exactly like
 // dying.
 
+#include "coop/player/level_visit.h"
 #include "coop/player/run_end_travel.h"
 
 #include "coop/comms/chat_feed.h"
@@ -232,7 +233,9 @@ sg::Verdict OnLoadLevelPre(const sg::Call& call) {
         // is refused; a load into the main world (a join's, a return with no session) runs. A world
         // still unknown mid-travel is never a refusal.
         coop::net::Session* s = g_session.load(std::memory_order_acquire);
+        // A clip's map is coop/player/level_visit's: it takes the trip and loads the map in place.
         if (s && s->running() && !R::NameEquals(level, kMainMap) &&
+            !coop::level_visit::IsVisitMap(R::ToString(level)) &&
             ue_wrap::world_identity::CurrentWorldKind() == ue_wrap::world_identity::WorldKind::Gameplay) {
             RefuseSubLevelTravel(level, author);
             return sg::Verdict::Cancel;
