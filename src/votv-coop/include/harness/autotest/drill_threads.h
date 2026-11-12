@@ -226,6 +226,15 @@ DWORD WINAPI AtvPassengerThread(LPVOID arg);
 // VOTVCOOP_RUN_CARGO_LIFT, both peers -- harness/autotest/autotest_cargo_lift.cpp
 DWORD WINAPI CargoLiftThread(LPVOID arg);
 
+// VOTVCOOP_RUN_KERFUS_WHEELS, both peers -- harness/autotest/autotest_kerfus_wheels.cpp
+DWORD WINAPI KerfusWheelsThread(LPVOID arg);
+
+// VOTVCOOP_RUN_VIDCAM_DROP, both peers -- harness/autotest/autotest_vidcam_drop.cpp
+DWORD WINAPI VidcamDropThread(LPVOID arg);
+
+// VOTVCOOP_RUN_BACKROOMS_PROBE, host -- harness/autotest/autotest_backrooms_probe.cpp
+DWORD WINAPI BackroomsProbeThread(LPVOID arg);
+
 // VOTVCOOP_RUN_BEAM_SWEEP, both peers -- harness/autotest/autotest_beam_sweep.cpp
 DWORD WINAPI BeamSweepThread(LPVOID arg);
 
@@ -264,6 +273,7 @@ DWORD WINAPI RadioStateThread(LPVOID arg);
 
 // VOTVCOOP_RUN_TV_STATE, both peers -- harness/autotest/autotest_tv_state.cpp
 DWORD WINAPI TvStateThread(LPVOID arg);
+
 
 
 

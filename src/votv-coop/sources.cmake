@@ -738,6 +738,9 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_atv_riders.cpp
     src/harness/autotest/autotest_atv_passenger.cpp
     src/harness/autotest/autotest_cargo_lift.cpp
+    src/harness/autotest/autotest_kerfus_wheels.cpp
+    src/harness/autotest/autotest_vidcam_drop.cpp
+    src/harness/autotest/autotest_backrooms_probe.cpp
     src/harness/autotest/autotest_container_gaps.cpp
     src/harness/autotest/peer_signal.cpp
     src/harness/autotest/meet.cpp
