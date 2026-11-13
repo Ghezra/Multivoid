@@ -317,6 +317,7 @@ inline constexpr RefFn kRefFns[] = {
     {L"mushroomspawner_c", L"spawn", L"mushroomspawner_c.spawn", 0x6a2d5d90ab51fa2dull, 0x9ff39c40f5d54ac3ull},
     {L"mushroomspore_c", L"bndevt__mushroomspore_sphere_k2node_componentboundevent_0_componenthitsignature__delegatesignature", L"mushroomspore_c.bndevt__mushroomspore_sphere_k2node_componentboundevent_0_componenthitsignature__delegatesignature", 0x28c5926c7d6d77e6ull, 0xdb6dc97a7919c231ull},
     {L"newsky_c", L"seteye", L"newsky_c.seteye", 0x28096d4f1cf5d1cbull, 0x68014b6c0ed439e5ull},
+    {L"newsky_c", L"tp", L"newsky_c.tp", 0x6a2d5d90ab51fa2dull, 0xa47d3fa5ec7f5b90ull},
     {L"npc_orborb_c", L"b__finishedfunc", L"npc_orborb_c.b__finishedfunc", 0x6a2d5d90ab51fa2dull, 0x4fa1d2dce7f44206ull},
     {L"npc_orborb_c", L"begin", L"npc_orborb_c.begin", 0x6a2d5d90ab51fa2dull, 0xde5a8c5161f19245ull},
     {L"npc_orborb_c", L"bndevt__blackball_sphere1_k2node_componentboundevent_0_componentbeginoverlapsignature__delegatesignature", L"npc_orborb_c.bndevt__blackball_sphere1_k2node_componentboundevent_0_componentbeginoverlapsignature__delegatesignature", 0x068571522f5f0453ull, 0x064e5906fec9e584ull},

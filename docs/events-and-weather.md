@@ -41,7 +41,12 @@ its sun, sounds, decals and weekday, follow the host's minute for minute `[RD]`;
 sleep (on [players.md](players.md)) one comes about every 80 ms `[RD]`, and a frame longer than
 that on either peer can merge two and skip a minute's pulse `[RD]` -- one night gave 44 of 45
 `[V]`. The star dome's random orientation, the save-derived moon phase and the sky eye stream from
-the host once a second (`coop/world/sky_sync`) `[V]`.
+the host once a second (`coop/world/sky_sync`) `[V]`. So does the earth teleport's black hole: the event's `tp` hides the
+day sky and shows the black hole 20 s in and turns them back 86 s later, unless a game rule keeps the black hole. A
+client refuses its own `tp`, takes the host's flip through the sky's own `skyVisibility` and the black hole's light,
+hears the two sounds as cues and reads the emails from the host's feed; a joiner gets the flip with the sky
+(`coop/dev/sky_tp_probe`) `[V]`: the client's sky flipped and turned back in the same second as the host's, and a
+client that joined mid-flip got the black hole at its join.
 
 ### Weather
 
@@ -261,7 +266,7 @@ ending. Tests:
 
 | Kind | Direction | Carries |
 |---|---|---|
-| `ClockPose` (stream), `SkyState` | the host to all | the clock and the day number; the dome, the moon and the eye |
+| `ClockPose` (stream), `SkyState` | the host to all | the clock and the day number; the dome, the moon, the eye and the black hole |
 | `WeatherState`, `LightningStrike`, `RedSky`, `BadSun` | the host to all | the state fields; a strike location; the red sky's edge; whether a Bad Sun exists |
 | `FireflySpawn` | each peer, relayed | one spawn |
 | `EventFire`, `EventSnapshot`, `EventCue` | the host to all; the host to one joiner; the host to all | a fired row; an in-flight event; an emitter cue |
@@ -289,7 +294,7 @@ edge. A one-shot cue a joiner was not present for is missed, by definition.
 
 | Limit | Evidence |
 |---|---|
-| The sky's earth teleport plays its two sounds on every client (`coop/world/world_sound_sync`, EventCue ids from 100), but its black hole light and its other effects are the host's | `[V]` `harness/autotest/autotest_world_sound.cpp` for the two sounds' cues, not what a peer heard; `[RD]` for the rest |
+| The sky's earth teleport is the host's: its two sounds are cues (`coop/world/world_sound_sync`, EventCue ids from 100) and its flip rides the sky lane, but a joiner mid-event does not hear the sounds, and a client's own count of running events leaves it out | `[V]` `harness/autotest/autotest_world_sound.cpp` for the two sounds' cues, not what a peer heard; `coop/dev/sky_tp_probe` for the flip |
 | The alien sounds are each player's own: the event is replayed, and each peer's three noisers walk around its own player, sound and leave when that player sees one. A player does not hear the noisers around another, and a joiner gets none from an event that began before it joined | `[V]` `harness/autotest/autotest_world_sound.cpp`: three noisers and their noises on each peer, not what a peer heard |
 | A grown plant ended by something other than a harvest, such as its pot's end, plays the harvest sound on the other peers, since the end carries no cause and a harvest is read from the row and its growth | `[RD]` `ue_wrap/actors/growing_plant` `HarvestTakesPlant` |
 | A black fog the host rolls has no wire lane yet; the client's own rolls are suppressed | `[V]` `coop/world/weather_event_births` |
