@@ -130,6 +130,7 @@
 #include "coop/dev/ufo_probe.h"  // [dev] the ambient UFOs fired on the host, refused on the client, placed on both
 #include "coop/dev/roomba_probe.h"  // [dev] a robot cleaner run by the host, pressed by a client, placed on both
 #include "coop/dev/sky_tp_probe.h"  // [dev] the earth teleport fired on the host, refused on a client, its sky on both
+#include "coop/dev/poster_probe.h"  // [dev] a poster put up by the host, one taken down by a client, listed on both
 #include "coop/dev/order_probe.h"  // who writes the order queue, and what the drone delivers, per peer
 #include "coop/dev/bind_wait_selftest.h"  // [dev] the bind wait's rules on stated inputs
 #include "coop/dev/pile_late_load.h"   // [dev] the late-load seam: one save-loaded clump kept aside until its row defers
@@ -449,6 +450,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::ufo_probe::Tick(&session);  // [dev] the ambient UFOs fired and placed on both peers (a latched read when off)
     coop::dev::roomba_probe::Tick(&session);  // [dev] a robot cleaner on both peers (a latched read when off)
     coop::dev::sky_tp_probe::Tick(&session);  // [dev] the earth teleport's sky on both peers (a latched read when off)
+    coop::dev::poster_probe::Tick(&session);  // [dev] the posters on both peers (a latched read when off)
     coop::dev::death_seam_census::Tick();  // [dev] every element end the death seam announces (latched read when off)
     coop::dev::damage_probe::Tick();  // [dev] every player damage verb call: whose body, source, caller (latched read when off)
     coop::dev::grime_drill::Tick(&session);  // [dev] the grime drill's legs (a latched read when off)

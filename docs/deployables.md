@@ -107,6 +107,18 @@ with its one dropped nail item on both, an unfinished wall, its finish, a wet wa
 on its copy within 110 ms and on the host's wall, a log thrown by each peer counted once, the host's break, a client's
 wall builder).
 
+A poster on a wall rides the same lane. A poster item's put spawns a `poster_c` (the treehouse's and the custom poster's
+classes too), a save actor whose record carries its picture (`type`, and `filename` for a custom one); the poster's own
+action 7 takes it down into the taker's hand and destroys it, and the item is a prop the prop lanes carry. Each ran on the
+one machine, so a poster put up or taken down on one peer stayed as it was on the others. The host now sends each
+poster as a piece, a client's put-up goes to it as a new piece and a client's take-down as a removal within 8 m, and a
+record applied to a poster already up repaints it through the poster's own `setPoster` (`coop/world/build_sync`) `[V]`
+(`coop/dev/poster_probe`: before, the host's new poster never reached the client and a poster the client took down stayed
+on the host's wall; after, the host's new poster was made on the client with its picture, the client's take-down took the
+host's down, and the client's new poster was made on the host with its picture, both peers ending with the same six
+posters). A custom poster's image is a file in each player's own posters folder, so another peer shows its own image by
+that name, or none.
+
 ## Who owns what
 
 | State | Owner | Shape |
@@ -117,7 +129,7 @@ wall builder).
 | an anchored hook taken back with the use key | the host | a client's pickup is asked of the host by the hook's save key; the taker's copy runs the game's pickup once the host has taken its hook away |
 | a garden hose being laid | the peer whose player lays it | not sent until it is finished |
 | a finished garden hose, its points and its two ends | the host | the hose's own save record; a client's change is a route the host checks |
-| a nail, and a custom wall in each stage | the host | the piece's own save record; a client's new piece or removal is an intent the host checks |
+| a nail, a custom wall in each stage, and a poster on a wall | the host | the piece's own save record; a client's new piece or removal is an intent the host checks |
 
 ## Wire messages
 
@@ -130,7 +142,7 @@ wall builder).
 | `HookRetrieve` | a client to the host (op 0); the host to all (op 1) | an anchored hook's save key: a client's pickup of it; or that it is gone, and whose pickup it was |
 | `GroundHoseState` | the host to all | a finished hose's own record, or its key when it went; chunked |
 | `GroundHoseIntent` | a client to the host | a hose its player finished or changed, as its record, or took up; chunked |
-| `BuildState` | the host to all | a nail's or a custom wall's own record, or its key when it went; chunked |
+| `BuildState` | the host to all | a nail's, a custom wall's or a poster's own record, or its key when it went; chunked |
 | `BuildIntent` | a client to the host | a piece its player made, as its record, or took away, a wall it hit or repaired, or a nail its pull snapped; chunked |
 
 ## Late join
@@ -167,4 +179,4 @@ only through the save.
 | the props a tie claims for the driven-prop channel | `coop/items/hook_prop_claim` |
 | an anchored hook taken back with the use key | `coop/items/hook_retrieve` |
 | the garden hose lane | `coop/world/ground_hose_sync`; the hose, its faucet and sprinkler `ue_wrap/actors/ground_hose` |
-| nails and custom walls | `coop/world/build_sync`; the pieces `ue_wrap/actors/build_piece` |
+| nails, custom walls and posters | `coop/world/build_sync`; the pieces `ue_wrap/actors/build_piece`; `coop/dev/poster_probe` |
