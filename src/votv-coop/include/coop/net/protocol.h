@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 310;
+inline constexpr uint16_t kProtocolVersion = 311;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1506,6 +1506,14 @@ enum class ReliableKind : uint16_t {
     // still flying and the Midas run while it lasts. Host-authored: a client's copy is refused at the host's receive
     // edge. UfoEventPayload.
     UfoEvent = 258,
+    // HOST->ALL: a robot cleaner (prop_roomba_C) of the host's switched on or off (coop/props/roomba_sync), when its
+    // `active` changes and to a joiner at its ready edge; a client's copy takes it through the cleaner's own `use`. While
+    // it runs, the host's copy drives and its pose rides PropDrivePose. Never relayed; not pre-world. RoombaPayload.
+    RoombaState = 259,
+    // CLIENT->HOST: this client's player pressed a robot cleaner's switch (action 5); `active` is the state it wants.
+    // The host judges the sender's reach and presses its own cleaner, whose RoombaState answers. Never relayed.
+    // RoombaPayload.
+    RoombaIntent = 260,
 };
 
 #pragma pack(push, 1)
@@ -2340,6 +2348,14 @@ struct MediaDeviceStatePayload {
     float    squeezeY;    // 4  -- a TV's
 };
 static_assert(sizeof(MediaDeviceStatePayload) == 72, "MediaDeviceStatePayload must be 72 bytes");
+
+// A robot cleaner's switch (RoombaState, RoombaIntent): the cleaner's prop element id and its `active`.
+struct RoombaPayload {
+    uint32_t eid;     // the cleaner's prop element id
+    uint8_t  active;  // 1 on, 0 off: the state after the press (a state) or the one asked for (an intent)
+    uint8_t  pad[3];  // zero
+};
+static_assert(sizeof(RoombaPayload) == 8, "RoombaPayload must be 8 bytes");
 
 // A burning prop (PropFireState), or a client's light (PropFireRequest).
 struct PropFirePayload {

@@ -21,6 +21,7 @@
 #include "coop/element/registry.h"
 #include "coop/interactables/kitchen_sync.h"  // a microwave's and a mini oven's controls
 #include "coop/props/prop_fire_sync.h"
+#include "coop/props/roomba_sync.h"  // a robot cleaner's switch, the host's
 #include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
 #include "coop/interactables/garbage_bin_sync.h"
@@ -342,6 +343,25 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         if (edit) ::coop::plant_edit_gate::OnEdit(static_cast<uint8_t>(msg.senderPeerSlot), p);
         else ::coop::plant_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::RoombaState:
+    case net::ReliableKind::RoombaIntent: {
+        // RoombaState HOST->ALL, RoombaIntent CLIENT->HOST (coop/props/roomba_sync). Exact length.
+        const bool intent = msg.kind == net::ReliableKind::RoombaIntent;
+        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != sizeof(net::RoombaPayload)) {
+            UE_LOGW("event_feed: a robot cleaner message the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        net::RoombaPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.active > 1) {
+            UE_LOGW("event_feed: a robot cleaner message malformed -- dropping");
+            break;
+        }
+        if (intent) ::coop::roomba_sync::OnIntent(msg.senderPeerSlot, p);
+        else ::coop::roomba_sync::OnState(p);
         break;
     }
     case net::ReliableKind::PropFireState:

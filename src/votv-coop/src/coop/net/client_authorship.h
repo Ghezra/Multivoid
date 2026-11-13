@@ -44,6 +44,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::MediaDeviceState:
     case ReliableKind::PlantEdit:
     case ReliableKind::PropFireRequest:
+    case ReliableKind::RoombaIntent:
     case ReliableKind::GroundHoseIntent:
     case ReliableKind::SpillIntent:
     case ReliableKind::SpillPourIntent:
@@ -262,6 +263,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::AmbientFixtureState:
     case ReliableKind::PlantState:
     case ReliableKind::PropFireState:
+    case ReliableKind::RoombaState:
     case ReliableKind::GroundHoseState:
     case ReliableKind::SpillState:
     case ReliableKind::SpillPour:
