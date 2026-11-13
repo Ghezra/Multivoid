@@ -16,6 +16,7 @@
 #include "ue_wrap/core/reflection_props.h"  // PropertyOffsetAndClass
 #include "ue_wrap/core/sdk_profile_names.h"
 #include "ue_wrap/core/ufunction_hook.h"
+#include "ue_wrap/engine/engine.h"       // TryGetActorLocation
 #include "ue_wrap/engine/engine_pawn.h"  // DestroyActor
 #include "ue_wrap/facts/function_row.h"
 
@@ -38,7 +39,7 @@ namespace OI = ue_wrap::object_index;
 namespace P  = ue_wrap::profile;
 namespace GT = ue_wrap::game_thread;
 
-enum class Mode : unsigned char { Off, Record, Orb };
+enum class Mode : unsigned char { Off, Record, Orb, OrbHost };
 // Verify: the recorded orbs were destroyed and the spawners restored; the next Tick checks the destroy held.
 enum class Orb : unsigned char { Wait, Drive, Verify, Done };
 
@@ -61,7 +62,10 @@ constexpr float    kOrbAngle = 540.f;    // past 360, so the next tick's wrap te
 Mode ModeOf() {
     static const Mode mode = [] {
         const std::string v = coop::config::ResolveEnum(::coop::config_registry::rows::native_spawn_probe);
-        return v == "record" ? Mode::Record : v == "orb" ? Mode::Orb : Mode::Off;
+        return v == "record"  ? Mode::Record
+               : v == "orb"     ? Mode::Orb
+               : v == "orbhost" ? Mode::OrbHost
+                                : Mode::Off;
     }();
     return mode;
 }
@@ -127,7 +131,7 @@ void OnSpawnPost(void*, void* source, void* result) {
     const bool sweep = !IsHost() && coop::npc_adoption::GhostSweepDone();
     const Key probe{R::NameOf(srcCls), R::NameOf(cls), fn, frame.codeOffset, 0, sweep};
 
-    if (g_orb == Orb::Drive && R::NameEquals(probe.src, L"blackballSpawner_C") &&
+    if ((g_orb == Orb::Drive || g_orb == Orb::Verify) && R::NameEquals(probe.src, L"blackballSpawner_C") &&
         R::NameEquals(probe.out, L"npc_orborb_C"))
         g_orbs.emplace_back().Set(result);
     for (int i = 0; i < g_nKeys; ++i) {
@@ -160,7 +164,9 @@ void TryHook() {
     const ue_wrap::facts::Resolved r = ue_wrap::facts::Resolve(kRowNb0Spawn);
     if (g_gsCdo && r && UH::InstallPostHook(r, &OnSpawnPost)) {
         g_hookDone = true;
-        UE_LOGI("[NB-0] record live mode=%s", ModeOf() == Mode::Orb ? "orb" : "record");
+        UE_LOGI("[NB-0] record live mode=%s", ModeOf() == Mode::Orb       ? "orb"
+                                              : ModeOf() == Mode::OrbHost ? "orbhost"
+                                                                          : "record");
     } else if (final) {
         g_hookFailed = true;
         UE_LOGI("[NB-0] BROKEN hook BeginDeferredActorSpawnFromClass");
@@ -264,6 +270,54 @@ void TickOrb() {
     if (cls) g_orbInstances = DriveSpawners(cls);
 }
 
+// orbhost: the HOST drives its spawners once a client has had time to join, keeps the orbs born kOrbHostKeepMs so the
+// clients' copies can arrive (each client logs its own: "npc-sync[client OnSpawn]: materialized mirror ...
+// class='npc_orborb_C'"), then destroys them before the event's own end.
+constexpr uint64_t kOrbHostStartMs = 150000;
+constexpr uint64_t kOrbHostKeepMs = 30000;
+uint64_t g_orbHostBornAt = 0;
+
+void TickOrbHost() {
+    if (g_orb == Orb::Done || !IsHost()) return;
+    if (!g_orbStartAt) g_orbStartAt = Now();
+    if (Now() - g_orbStartAt < kOrbHostStartMs) return;
+    if (g_orb == Orb::Verify) {
+        if (Now() - g_orbHostBornAt < kOrbHostKeepMs) return;
+        int alive = 0;
+        for (const ue_wrap::CachedObjRef& o : g_orbs) alive += o.Alive() ? 1 : 0;
+        UE_LOGI("[NB-0] orbhost kept %zu orb(s) %llu ms, %d alive -- destroyed now", g_orbs.size(),
+                static_cast<unsigned long long>(Now() - g_orbHostBornAt), alive);
+        DestroyOrbs();
+        FinishOrb("host-spawned");
+        return;
+    }
+    void* const cls = OI::ClassByName(L"blackballSpawner_C");
+    if (cls && g_orb == Orb::Wait) {
+        if (!ResolveOrbOffsets(cls)) {
+            FinishOrb(nullptr);
+            return;
+        }
+        g_orb = Orb::Drive;
+        UE_LOGI("[NB-0] orbhost drive start");
+    }
+    if (!g_orbs.empty()) {
+        RestoreSpawners();
+        g_orbHostBornAt = Now();
+        ue_wrap::FVector at{};
+        if (void* o = g_orbs.front().Get()) ue_wrap::engine::TryGetActorLocation(o, at);
+        UE_LOGI("[NB-0] orbhost an orb was born at (%.0f,%.0f,%.0f); kept %llu ms for the clients", at.X, at.Y, at.Z,
+                static_cast<unsigned long long>(kOrbHostKeepMs));
+        g_orb = Orb::Verify;
+        return;
+    }
+    if (Now() - g_orbStartAt >= kOrbHostStartMs + kOrbBoundMs) {
+        RestoreSpawners();
+        FinishOrb("not-spawned");
+        return;
+    }
+    if (cls) g_orbInstances = DriveSpawners(cls);
+}
+
 }  // namespace
 
 void Install(coop::net::Session* session) {
@@ -273,9 +327,10 @@ void Install(coop::net::Session* session) {
 }
 
 void Tick(coop::net::Session* session) {
-    if (ModeOf() != Mode::Orb || !g_hookDone) return;
+    if ((ModeOf() != Mode::Orb && ModeOf() != Mode::OrbHost) || !g_hookDone) return;
     g_session = session;
-    TickOrb();
+    if (ModeOf() == Mode::OrbHost) TickOrbHost();
+    else TickOrb();
 }
 
 void OnDisconnect() {
