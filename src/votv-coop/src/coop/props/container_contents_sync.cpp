@@ -155,11 +155,10 @@ Ingest ApplyContents(uint32_t eid, const std::vector<SR::SaveRecord>& recs, uint
             return Ingest::Applied;
         }
     }
-    // The HOST applies a CLIENT's contents with its world up, so it resolves each record's class
-    // names through object_index (an attacker's unknown name is an O(1) miss, not a whole-array walk);
-    // a CLIENT applying the host's broadcast may be mid-load, so it keeps FindClass (its index can trail).
-    const SR::ClassResolver resolve = IsHost() ? &ue_wrap::object_index::ClassByName : nullptr;
-    switch (cio::WriteRecords(eid, inv, recs, resolve)) {
+    // The HOST applies a CLIENT's contents from the classes it holds: a client's class name never makes it load
+    // (LookupOnly). A CLIENT applying the host's broadcast loads a class it has not loaded, as the host named it.
+    const SR::ClassLoad load = IsHost() ? SR::ClassLoad::LookupOnly : SR::ClassLoad::Immediate;
+    switch (cio::WriteRecords(eid, inv, recs, load)) {
         case cio::WriteResult::Refused:  return Ingest::Handled;
         case cio::WriteResult::NotReady: return Ingest::Park;
         case cio::WriteResult::Written:  break;
@@ -227,6 +226,15 @@ Ingest ParseAndApply(const std::vector<uint8_t>& blob, uint32_t& outEid, uint8_t
     // sender to be this build. Written through unchanged, prop_container::loadData reads ints[0][0]
     // unguarded and the nested container would bind whatever sits in that slot on THIS machine --
     // another container's contents, or a player's inventory.
+    //
+    // A client resolves every class the records name first, inside the per-tick load budget: past it the apply waits
+    // (Park, asked again next slice), so a container of many cold classes never loads them all in one frame, and the
+    // judgement below sees a nested container's class loaded. The write then finds every class loaded, which is why it
+    // may be Immediate.
+    if (!IsHost()) {
+        for (const SR::SaveRecord& r : recs)
+            if (!SR::ClassesReady(r, SR::ClassLoad::Budgeted)) return Ingest::Park;
+    }
     size_t foreignIndices = 0;
     for (auto& r : recs) {
         if (!ci::IsContainerRecord(r)) continue;

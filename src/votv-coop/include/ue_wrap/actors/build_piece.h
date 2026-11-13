@@ -45,8 +45,8 @@ void* Spawn(const save_record::SaveRecord& r);
 // Hand `r` to the piece (loadData, which runs a wall's Init). A nail then takes `endA` and `endB`, the actors its record's
 // keys name in this world (NailKeys; either may be null), and its `aea` attaches and ties it, as the save's load does a
 // frame after processKeys; a broken record's `aea` only attaches it, so a tie the nail still has is broken first.
-bool Apply(void* piece, const save_record::SaveRecord& r, void* endA, void* endB,
-           save_record::ClassResolver resolve = nullptr);
+// `load` governs how the record's classes resolve (see save_record::ClassLoad).
+bool Apply(void* piece, const save_record::SaveRecord& r, void* endA, void* endB, save_record::ClassLoad load);
 
 // A nail's two end keys (names[0]); false when the record does not carry them.
 bool NailKeys(const save_record::SaveRecord& r, std::wstring& a, std::wstring& b);

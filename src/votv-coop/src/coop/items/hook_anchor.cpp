@@ -264,7 +264,7 @@ CommitResult SendCommit(uint16_t seq, H::Kind kind, void* hookActor) {
         // The host's hook IS the canonical one already -- it is not respawned, only named. The
         // record carries the minted key into it, and the two attached flags are re-asserted for
         // the same reason a client's adoption needs them.
-        if (!H::AdoptRecord(hookActor, applied, &ue_wrap::object_index::ClassByName)) {
+        if (!H::AdoptRecord(hookActor, applied, ue_wrap::save_record::ClassLoad::LookupOnly)) {
             UE_LOGW("hook_anchor: loadData refused on the host's own hook seq %u", (unsigned)seq);
             return CommitResult::Failed;
         }
@@ -335,7 +335,7 @@ void OnCommitChunk(const coop::net::BlobChunkPayload& p, uint8_t senderSlot) {
         return;
     }
     const SaveRecord applied = Arbitrate(rec, senderSlot, seq, kind, H::MaxDistOf(actor));
-    if (!H::AdoptRecord(actor, applied, &ue_wrap::object_index::ClassByName)) {
+    if (!H::AdoptRecord(actor, applied, ue_wrap::save_record::ClassLoad::LookupOnly)) {
         UE_LOGW("hook_anchor: loadData refused on the canonical hook for slot %u seq %u",
                 (unsigned)senderSlot, (unsigned)seq);
         E::DestroyActor(actor);
@@ -406,7 +406,8 @@ void OnAnchoredChunk(const coop::net::BlobChunkPayload& p, uint8_t senderSlot) {
     // world and re-attach, so it rides this peer's copy of whatever the original was tied to and
     // never needs a pose on the wire. The two attached flags are deliberately NOT restored here --
     // see ue_wrap/actors/hook.h.
-    H::AdoptRecord(m, rec);
+    // Immediate: the adoption builds this mirror in place and answers at once; the host named the hook's class.
+    H::AdoptRecord(m, rec, ue_wrap::save_record::ClassLoad::Immediate);
     // loadData leaves both of the hook's spheres query-only, as the game's own anchored hook has them: the player's look
     // takes the copy and offers the pickup, which coop/items/hook_retrieve takes to the host, and nothing is pushed.
     coop::hook_retrieve::PrepareAnchoredCopy(m);

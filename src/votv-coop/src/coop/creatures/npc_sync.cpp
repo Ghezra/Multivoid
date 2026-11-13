@@ -404,6 +404,12 @@ bool IsAllowlistedClass(void* cls) {
     return IsClassOrDerivedFromAnyAllowlisted(cls);
 }
 
+const ue_wrap::class_resolve::Family& NpcFamily() {
+    static const ue_wrap::class_resolve::Family family{L"NPC", ue_wrap::profile::name::kNpcAllowlist,
+                                                       ue_wrap::profile::name::kNpcAllowlistSize, &IsAllowlistedClass};
+    return family;
+}
+
 void ClearIncomingNpcSpawn() {
     g_incomingNpcSpawnClass.store(nullptr, std::memory_order_release);
 }

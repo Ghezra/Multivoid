@@ -207,7 +207,8 @@ void HostRoute(coop::net::Session& s, const Intent& in) {
         hose = H::Spawn({pts.front()[0], pts.front()[1], pts.front()[2]});
         if (!hose) return;
     }
-    if (!H::Apply(hose, in.rec, faucet, sprinkler)) {
+    // LookupOnly: a client named these classes, so they cost an index lookup and never a load.
+    if (!H::Apply(hose, in.rec, faucet, sprinkler, ue_wrap::save_record::ClassLoad::LookupOnly)) {
         if (made) E::DestroyActor(hose);
         UE_LOGW("ground_hose: slot %d's hose '%ls' would not load", in.slot, in.key.c_str());
         return;
@@ -317,7 +318,7 @@ bool Lay(const std::wstring& key, const SaveRecord& rec, bool lastTry, Clock::ti
         hose = H::Spawn({p[0], p[1], p[2]});
         if (!hose) return false;
     }
-    if (!H::Apply(hose, rec, faucet, sprinkler)) {
+    if (!H::Apply(hose, rec, faucet, sprinkler, ue_wrap::save_record::ClassLoad::Immediate)) {
         if (made) E::DestroyActor(hose);
         return false;
     }

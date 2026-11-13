@@ -281,6 +281,8 @@ DWORD WINAPI TvStateThread(LPVOID arg);
 DWORD WINAPI WorldSoundThread(LPVOID arg);
 // VOTVCOOP_RUN_FARM_HARVEST, both peers -- harness/autotest/autotest_farm_harvest.cpp
 DWORD WINAPI FarmHarvestThread(LPVOID arg);
+// class_resolve_drill, both peers -- harness/autotest/autotest_class_resolve.cpp
+DWORD WINAPI ClassResolveDrillThread(LPVOID arg);
 
 // woodchipper_drill, both peers -- harness/autotest/autotest_woodchipper.cpp
 DWORD WINAPI WoodchipperThread(LPVOID arg);
@@ -308,8 +310,6 @@ DWORD WINAPI HacksawThread(LPVOID arg);
 // VOTVCOOP_RUN_CHIPPER_FEED, both peers -- harness/autotest/autotest_chipper_feed.cpp
 DWORD WINAPI ChipperFeedThread(LPVOID arg);
 
-// VOTVCOOP_FILL_NEEDS, both peers -- harness/autotest/autotest_fill_needs.cpp
-DWORD WINAPI FillNeedsThread(LPVOID arg);
 
 // VOTVCOOP_RUN_BODY_PUSH, both peers -- harness/autotest/autotest_body_push.cpp
 DWORD WINAPI BodyPushThread(LPVOID arg);

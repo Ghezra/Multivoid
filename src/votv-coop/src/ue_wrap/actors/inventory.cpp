@@ -6,13 +6,16 @@
 
 #include "ue_wrap/actors/inventory.h"
 
+#include "ue_wrap/actors/prop.h"            // PropFamily
 #include "ue_wrap/actors/save_record.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
+#include "ue_wrap/engine/world_identity.h"
 #include "ue_wrap/world/world_singleton.h"
 
 #include <cstdint>
 #include <cstring>
+#include <unordered_map>
 
 namespace ue_wrap::inventory {
 namespace {
@@ -45,7 +48,7 @@ constexpr int32_t kPersonalSlot    = 0;
 
 int32_t g_offSave = -1;
 
-// ---- live personal store: reflected offsets (resolved once; -1 = looked and failed) ----------
+// ---- live personal store: reflected offsets (resolved once per world; -1 = looked and failed) ----------
 // -2 = not looked at yet. Never guessed: an unresolvable offset makes the reader inert, it does
 // not fall back to a hardcoded number.
 int32_t g_offPlayerContainer  = -2;  // mainGamemode_C.playerContainer  -> Aprop_inventoryContainer_player_C*
@@ -54,11 +57,21 @@ int32_t g_offInvPlayer        = -2;  // propInventory_C.Player          -> the p
 int32_t g_offInvIndex         = -2;  // propInventory_C.Index           -> the GObjStack slot
 int32_t g_offGObjStack        = -2;  // saveSlot_C.GObjStack
 
+// A miss is remembered only for the world it was made in (a class may not be loaded yet, as at the menu): the next world
+// looks again, and says so again. The world is stamped per offset, so one slot's miss in a world does not hide another's.
+uint32_t& MissWorldOf(const int32_t& slot) {
+    static std::unordered_map<const int32_t*, uint32_t> sMiss;
+    return sMiss[&slot];
+}
+
 int32_t CachedOffset(int32_t& slot, void* cls, const wchar_t* name) {
+    if (slot == -1 && MissWorldOf(slot) != world_identity::Generation()) slot = -2;
     if (slot == -2) {
         slot = cls ? R::FindPropertyOffset(cls, name) : -1;
-        if (slot < 0)
-            UE_LOGW("inventory: could not resolve %ls -- the live-store reader is inert", name);
+        if (slot < 0) {
+            MissWorldOf(slot) = world_identity::Generation();
+            UE_LOGW("inventory: could not resolve %ls -- what reads it stays off until the next world", name);
+        }
     }
     return slot;
 }
@@ -96,29 +109,35 @@ SR::SaveRecord Flat(const SR::SaveRecord& r) {
     return c;
 }
 
-// An empty equipment slot: no item named and no class in its record. The game's own empty slot is a default
-// Fstruct_equipment, and AddEquipment finds a free slot by comparing whole structs against one (Array_Find), so a blank
-// has to be byte-for-byte that default: its record's transform the identity, not the zeroed one a blank C++ record holds.
-// A blank written with zeros is never free, and a player whose slots were padded that way could wear nothing new.
+// An empty equipment slot: no item named and no class in its record. The game finds a free slot by comparing whole
+// structs against the struct's default (AddEquipment: Array_Find), so a blank has to be that default, not the zeroed
+// transform a blank C++ record holds: a blank written with zeros is never free, and a player whose slots were padded
+// that way could wear nothing new. Writing the game's own blank also heals a profile that stored a zeroed one.
 bool IsBlankEquip(const EquipRecord& r) {
     return (r.propName.empty() || r.propName == L"None") && r.data.className.empty();
 }
 
-void WriteEquipRecord(uint8_t* base, const EquipRecord& r) {
-    if (IsBlankEquip(r)) {
-        // The default the game compares against; this also heals a profile that stored a zeroed blank before.
-        EquipRecord blank;
-        blank.data.xform = {0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f};   // quat (0,0,0,1), origin, scale 1
-        SR::WriteFNameField(base + kEquip_propName, blank.propName);
-        SR::WriteFNameField(base + kEquip_propKey, blank.propKey);
-        SR::WriteSaveRecord(base + kEquip_data, blank.data);
-        SR::WriteFNameField(base + kEquip_tag, blank.tag);
-        return;
-    }
-    SR::WriteFNameField(base + kEquip_propName, r.propName);
-    SR::WriteFNameField(base + kEquip_propKey, r.propKey);
-    SR::WriteSaveRecord(base + kEquip_data, Flat(r.data));  // embedded Fstruct_save (0x100 slot)
-    SR::WriteFNameField(base + kEquip_tag, r.tag);
+// The game's own empty slot, read from the save object being written: element 0 of its `equipment_def` / `hold_def`
+// arrays, the defaults saveSlot's reset_player_equipment copies back (`equipment = equipment_def`). Never typed here.
+int32_t g_offEquipmentDef = -2;
+int32_t g_offHoldDef      = -2;
+
+bool ReadGameBlank(void* save, int32_t& offSlot, const wchar_t* name, EquipRecord& out) {
+    const int32_t off = CachedOffset(offSlot, R::ClassOf(save), name);
+    if (off < 0) return false;
+    const SR::Arr def = SR::ReadArr(save, off);
+    if (!def.data || def.num < 1) return false;
+    ReadEquipRecord(def.data, out);
+    return true;
+}
+
+void WriteEquipRecord(uint8_t* base, const EquipRecord& r, const EquipRecord& gameBlank) {
+    const EquipRecord& w = IsBlankEquip(r) ? gameBlank : r;
+    SR::WriteFNameField(base + kEquip_propName, w.propName);
+    SR::WriteFNameField(base + kEquip_propKey, w.propKey);
+    // Immediate: this peer's own inventory, written from its own save data in place; no peer names the classes.
+    SR::WriteSaveRecord(base + kEquip_data, Flat(w.data), SR::ClassLoad::Immediate);  // embedded Fstruct_save (0x100 slot)
+    SR::WriteFNameField(base + kEquip_tag, w.tag);
 }
 
 // Build one engine TArray<RecordT> from `recs` and overwrite the header at base+off. The
@@ -221,7 +240,10 @@ bool WriteHeldItem(const std::wstring& name, const wchar_t* classLeaf, const flo
     if (!save) return false;
     const SR::Arr hd = SR::ReadArr(save, kOff_hold);
     if (!hd.data || hd.num < 1) return false;
-    if (classLeaf && !R::FindClass(classLeaf)) return false;
+    // Immediate: a drill's own held item, written in place; the class loads if this peer has not loaded it.
+    if (classLeaf && !ue_wrap::class_resolve::ResolveClass(classLeaf, ue_wrap::prop::PropFamily(),
+                                                          ue_wrap::class_resolve::Load::Immediate).cls)
+        return false;
     auto* slot = const_cast<uint8_t*>(hd.data);
     // The record as the game's own pickup leaves it, as far as the hand reads it: the class updateHold
     // spawns, and the name the spawned actor's loadData takes, its first names entry, which
@@ -237,7 +259,8 @@ bool WriteHeldItem(const std::wstring& name, const wchar_t* classLeaf, const flo
         rec.floats[1].assign(1, *fuel);
     }
     std::memset(slot + kEquip_data, 0, SR::kSaveStride);
-    SR::WriteSaveRecord(slot + kEquip_data, rec);
+    // Immediate: the held item of this peer's own hand, written in place from its own state; nothing to wait for.
+    SR::WriteSaveRecord(slot + kEquip_data, rec, SR::ClassLoad::Immediate);
     SR::WriteFNameField(slot + kEquip_propName, name);
     return true;
 }
@@ -305,8 +328,16 @@ bool ApplyToSaveObject(void* saveSlot, const PlayerInventory& inv) {
                 "write a partial inventory", saveSlot, kPersonalSlot);
         return false;
     }
+    EquipRecord equipBlank, holdBlank;
+    if (!ReadGameBlank(saveSlot, g_offEquipmentDef, L"equipment_def", equipBlank) ||
+        !ReadGameBlank(saveSlot, g_offHoldDef, L"hold_def", holdBlank)) {
+        UE_LOGE("inventory: ApplyToSaveObject -- save object %p has no equipment_def / hold_def to take the empty slot "
+                "from; refusing, since a zeroed blank is a slot the game never sees as free", saveSlot);
+        return false;
+    }
+    // Immediate: the player's own inventory, written from its own save data in place; no peer names the classes.
     BuildAndSwapArray(carried, 0, SR::kSaveStride, inv.inventory,
-                      [](uint8_t* e, const SR::SaveRecord& r) { SR::WriteSaveRecord(e, Flat(r)); });
+                      [](uint8_t* e, const SR::SaveRecord& r) { SR::WriteSaveRecord(e, Flat(r), SR::ClassLoad::Immediate); });
     // equipment and hold are FIXED-SHAPE slot arrays: the game finds an empty slot to equip into
     // (AddEquipment: Array_Find, "Not enough space" on -1) and writes hold[0] in place, and
     // nothing in it ever grows them. A profile with fewer slots than the save object -- an empty
@@ -318,11 +349,30 @@ bool ApplyToSaveObject(void* saveSlot, const PlayerInventory& inv) {
         return out;
     };
     BuildAndSwapArray(saveSlot, kOff_equipment, kEquipStride, slotsOf(kOff_equipment, inv.equipment),
-                      [](uint8_t* e, const EquipRecord& r) { WriteEquipRecord(e, r); });
+                      [&equipBlank](uint8_t* e, const EquipRecord& r) { WriteEquipRecord(e, r, equipBlank); });
     BuildAndSwapArray(saveSlot, kOff_hold, kEquipStride, slotsOf(kOff_hold, inv.hold),
-                      [](uint8_t* e, const EquipRecord& r) { WriteEquipRecord(e, r); });
+                      [&holdBlank](uint8_t* e, const EquipRecord& r) { WriteEquipRecord(e, r, holdBlank); });
     UE_LOGI("inventory: ApplyToSaveObject(%p) wrote carried=%zu equipment=%zu hold=%zu",
             saveSlot, inv.inventory.size(), inv.equipment.size(), inv.hold.size());
+    return true;
+}
+
+bool ZeroEmptyEquipment(void* saveSlot) {
+    if (!saveSlot || !R::IsLive(saveSlot)) return false;
+    void* probe = R::EngineAlloc(16);  // as the apply: no allocator, no rewrite of arrays that would come back empty
+    if (!probe) return false;
+    R::EngineFree(probe);
+    const EquipRecord zeroed;  // a blank C++ record: the transform zeroed, not the game's identity
+    for (const int32_t off : {kOff_equipment, kOff_hold}) {
+        const SR::Arr arr = SR::ReadArr(saveSlot, off);
+        std::vector<EquipRecord> recs;
+        for (int32_t i = 0; i < arr.num; ++i) {
+            recs.emplace_back();
+            ReadEquipRecord(arr.data + static_cast<size_t>(i) * kEquipStride, recs.back());
+        }
+        BuildAndSwapArray(saveSlot, off, kEquipStride, recs,
+                          [&zeroed](uint8_t* e, const EquipRecord& r) { WriteEquipRecord(e, r, zeroed); });
+    }
     return true;
 }
 

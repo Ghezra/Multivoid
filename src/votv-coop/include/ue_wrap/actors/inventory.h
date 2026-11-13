@@ -104,9 +104,15 @@ int32_t LivePersonalStoreCount();
 // The PREVIOUS buffers are orphaned on purpose, a bounded few kilobytes once per join: freeing
 // the old nested sub-arrays and FString buffers recursively is far more crash-prone than leaking
 // them, and the engine never double-frees a buffer it has lost. Ours are GMalloc-owned, so a
-// later engine realloc or free is allocator-matched. False, having written nothing, if
-// `saveSlot` is null or dead, GMalloc is unresolved, or there is no player slot. Game thread.
+// later engine realloc or free is allocator-matched. False, having written nothing, if `saveSlot` is null or
+// dead, GMalloc is unresolved, there is no player slot, or it holds no `equipment_def` / `hold_def` to take the
+// game's own blank slot from. A blank slot is written as that default, the one AddEquipment sees as free. Game thread.
 bool ApplyToSaveObject(void* saveSlot, const PlayerInventory& inv);
+
+// For the equipment drill's red (equip_blank_zeroed), called by its caller after the apply: every empty equipment and
+// hold slot of `saveSlot` rewritten as a blank C++ record, the zeroed transform the game never sees as free. False,
+// having written nothing, when `saveSlot` is dead or GMalloc is unresolved. Game thread.
+bool ZeroEmptyEquipment(void* saveSlot);
 
 // Writes the live save slot's first hold slot, the hand, for a dev drill that takes an item into the
 // hand: the item's name (list_props' row), and in its record the class the player's updateHold

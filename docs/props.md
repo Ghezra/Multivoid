@@ -95,9 +95,8 @@ prop census leaves out of its own walk.
 
 ### Who authors a prop
 
-At rest, the host. A client never authors the existence of a shared-world prop: its own fresh
-spawn of a keyed prop is not broadcast. Instead a client's actions become intents the host
-performs (`coop/props/prop_drop_intent`):
+At rest, the host. A client never authors the existence of a shared-world prop: its own fresh spawn of a keyed prop is
+not broadcast. Instead a client's actions become intents the host performs (`coop/props/prop_drop_intent`):
 
 - **Pick up.** The client's pickup destroys the world actor; that destroy crosses the seam, the
   host destroys its copy, and the key is parked, which records that the host holds no copy now.
@@ -293,37 +292,36 @@ a receiver runs the same unstick with the tool and lets its copy go.
 
 ### Containers
 
-A container's contents are not on the container: every container reads them from one global
-per-peer array in the save object, addressed by an index the container holds, and every mutating
-verb runs inside the Blueprint, below the two dispatch seams a hook can intercept. The
-script-body gate does see it -- that is how this lane learns a container changed -- but it runs on
-the presser's own machine, and no local body can wait for an answer from across the network. So
-the host publishes the contents (`coop/props/container_contents_sync`): one slice of its
-array per live container is sent at a joiner's ready edge and on change, and a client's mirror is
-display only. A client's only slice is a thrown container's birth, bounded by its arrival rate;
-the host refuses every other client slice and answers the author with its own truth
-(`coop/props/container_truth`). A change a client makes to a shared container is an act the host
-judges, and an extraction on a client is a container-extract birth through the intent door above. The game arms a
-container's overlap box (the trigger a thrown prop enters to be filed) when a record leaves the container by a player's
-take, through the container's own `dingus`; the host's raw record edit never runs it, so the host calls `dingus` once a
+A container's contents are not on the container: every container reads them from one global per-peer array in the save
+object, addressed by an index the container holds, and every mutating verb runs inside the Blueprint, below the two
+dispatch seams a hook can intercept. The script-body gate does see it -- that is how this lane learns a container
+changed -- but it runs on the presser's own machine, and no local body can wait for an answer from across the network.
+So the host publishes the contents (`coop/props/container_contents_sync`): one slice of its array per live container is
+sent at a joiner's ready edge and on change, and a client's mirror is display only. A client's only slice is a thrown
+container's birth, bounded by its arrival rate; the host refuses every other client slice and answers the author with
+its own truth (`coop/props/container_truth`). A change a client makes to a shared container is an act the host judges,
+and an extraction on a client is a container-extract birth through the intent door above. The game arms a container's
+overlap box (the trigger a thrown prop enters to be filed) when a record leaves the container by a player's take,
+through the container's own `dingus`; the host's raw record edit never runs it, so the host calls `dingus` once a
 client's take is final (`container_act_host`) `[?]`. Whether that box is armed is the host's own physical state: every
-slice the host publishes carries it in a flags byte (`coop/props/container_arming`, `container_slice_wire`), a native hook
-on `SetCollisionEnabled` marks the container for publication when the box changes (a host take, a broken container, a
-roomba's own writes included), and a client's mirror takes its box from the byte and cancels its own `dingus` on a shared
-container, so a mirror's trigger is never armed by a client alone `[?]`. A prop a client drives into an armed box is
-judged by the host at the host's own overlap, with no client message: the host's copy is kinematic there, so the box's
-own body would refuse it, and a PRE on `putObjectIn_overlap` judges it instead (the box is armed, a held or claimed
-driver is within reach, no client holds the container, the body's silent gates pass, the prop fits), ends the driver's
-row or drive so the copy simulates, and lets the game's body file it. Every such put is filed, refused with its reason, or
-dropped and counted. A put that cannot be judged yet waits for the edge it needs: a client's hold ending, the prop's id
-binding, or the container changing (the last two for at most 2 s, then it is refused as unread); the host's own put on a
-held container waits too. A prop still in the box by then with no driver is pre-checked the same way and the game's body
-runs on it, since it fires no second overlap, and the game's own body may still refuse it. A refusal stands while the
-same drive does, until the container changes. A client's own copy of the call on a shared mirror is cancelled when it
-comes from the container's own overlap graph. A joiner needs no replay: the put is one host step, so a joiner seeded
-before it receives the prop's destroy and the container's publication, and one seeded after receives the container with
-the record `[?]`. The open and closed state is a keyed-device channel like a
-door's ([devices.md](devices.md)). The single-slot verbs are reverse-engineered and designed and not built.
+slice the host publishes carries it in a flags byte (`coop/props/container_arming`, `container_slice_wire`), a native
+hook on `SetCollisionEnabled` marks the container for publication when the box changes (a host take, a broken container,
+a roomba's own writes included), and a client's mirror takes its box from the byte and cancels its own `dingus` on a
+shared container, so a mirror's trigger is never armed by a client alone `[?]`. A prop a client drives into an armed box
+is judged by the host at the host's own overlap, with no client message: the host's copy is kinematic there, so the
+box's own body would refuse it, and a PRE on `putObjectIn_overlap` judges it instead (the box is armed, a held or
+claimed driver is within reach, no client holds the container, the body's silent gates pass, the prop fits), ends the
+driver's row or drive so the copy simulates, and lets the game's body file it. Every such put is filed, refused with its
+reason, or dropped and counted. A put that cannot be judged yet waits for the edge it needs: a client's hold ending, the
+prop's id binding, or the container changing (the last two for at most 2 s, then it is refused as unread); the host's
+own put on a held container waits too. A prop still in the box by then with no driver is pre-checked the same way and
+the game's body runs on it, since it fires no second overlap, and the game's own body may still refuse it. A refusal
+stands while the same drive does, until the container changes. A client's own copy of the call on a shared mirror is
+cancelled whoever calls it (the container's own overlap graph, a drone sack's trigger), since the mirror is display
+only; only a roomba's own graph runs, because its put files a prop that graph just spawned. A joiner needs no replay:
+the put is one host step, so a joiner seeded before it receives the prop's destroy and the container's publication, and
+one seeded after receives the container with the record `[?]`. The open and closed state is a keyed-device channel like
+a door's ([devices.md](devices.md)). The single-slot verbs are reverse-engineered and designed and not built.
 
 A container that breaks spills its records (its own `broken`), then is destroyed. A client's lethal hit on a container it
 authors is cancelled and sent to the host (`ContainerBreakRequest`), which breaks its own copy by the same call, and a

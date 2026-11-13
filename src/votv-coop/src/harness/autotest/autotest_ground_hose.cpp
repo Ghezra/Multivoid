@@ -168,7 +168,7 @@ void* LayHose(const std::wstring& key, void* faucet, void* sprinkler, bool layin
     rec.key = key;
     rec.vectors = {{{f.X, f.Y, f.Z - 70.f}, {(f.X + s.X) / 2, (f.Y + s.Y) / 2, s.Z}, {s.X, s.Y, s.Z}}};
     rec.names = {{A::GetKeyString(faucet), ue_wrap::prop::GetInteractableKeyString(sprinkler)}};
-    return H::Apply(hose, rec, faucet, sprinkler) ? hose : nullptr;
+    return H::Apply(hose, rec, faucet, sprinkler, ue_wrap::save_record::ClassLoad::Immediate) ? hose : nullptr;
 }
 
 void* Faucet(const std::wstring& key) { return H::FindFaucet(key); }
@@ -279,7 +279,7 @@ void RunClient() {
         rec.key = kClientHose;
         rec.vectors = {{{fa.X, fa.Y, fa.Z - 70.f}, {(fa.X + sa.X) / 2, (fa.Y + sa.Y) / 2, sa.Z}, {sa.X, sa.Y, sa.Z}}};
         rec.names = {{fk, s2}};
-        laid = H::Apply(hose, rec, f, s);
+        laid = H::Apply(hose, rec, f, s, ue_wrap::save_record::ClassLoad::Immediate);
     });
     Check(laid, "this player's hose is laid and finished");
     Mark("h2");

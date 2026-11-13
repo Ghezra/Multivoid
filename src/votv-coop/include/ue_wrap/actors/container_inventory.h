@@ -86,7 +86,7 @@ void ClearInventoryIndex(save_record::SaveRecord& r);
 // writes into a save object before the world stands. Game thread.
 inline constexpr int kMaxNestDepth = 3;
 void AttachNested(save_record::SaveRecord& r);
-bool PlaceNested(save_record::SaveRecord& r, save_record::ClassResolver resolve = nullptr);
+bool PlaceNested(save_record::SaveRecord& r, save_record::ClassLoad load);
 
 // Re-derive what the container shows -- currVol, Mass, the display names -- through the game's own
 // verbs (updateVolumesAndMass on the container, recalculateNames on the inventory), never by raw

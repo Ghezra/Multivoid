@@ -4,11 +4,14 @@
 
 #include "coop/comms/peer_action_feed.h"  // the busy-notice chat line (AnnounceDirect)
 #include "coop/interactables/atv_passenger.h"  // the passenger spot: the ask, and the use key while riding
+#include "coop/config/config.h"
+#include "coop/config/config_registry.h"
 #include "coop/interactables/atv_sync.h"  // IsOccupiedByOther -> ATV seating deny gate
 #include "coop/interactables/desk_input_sync.h"  // PingActiveSlot, the desk FSM-hold
 #include "coop/net/session.h"
 #include "coop/net/wire_key_util.h"
 #include "coop/player/players_registry.h"
+#include "coop/player/puppet_events.h"   // AddLifeListener: a client pinger dead
 #include "coop/player/remote_player.h"  // IsRagdollDisplayed: a client pinger knocked down
 #include "coop/props/prop_sound.h"
 #include "coop/session/net_pump.h"  // TickSerial: the aim memo's freshness clock
@@ -131,13 +134,32 @@ void ClaimEnded(const std::wstring& key) {
 // that run: its ragdoll left the desk as any exit does, and the machine runs on for the next player.
 const wchar_t* const kDeskClaim = L"desk";
 bool g_deskFsmHold = false;
-bool g_pingerDown = false;  // latched for the current ping run, cleared when no ping runs
+uint8_t g_pingerDownSlot = 0xFF;  // the pinger latched down for the current ping run; cleared when no ping runs or another slot pings
 std::chrono::steady_clock::time_point g_nextFsmHoldPoll{};
+uint32_t g_reconcilePasses = 0;  // passes the host's reconcile has run (a drill's no-change point)
 
 void SendClaim(coop::net::Session* s, const std::wstring& key, uint8_t slot, bool busy);  // fwd
 uint8_t LocalSlot();                                                                     // fwd
 
-// HOST: the player of `slot` lies in its ragdoll: the host's own by its flag, a client's by its puppet's display.
+// The clients that lie dead, recorded by the pose stream's death edge (puppet_events: a listener only records). The
+// ragdoll bit leaves a death out (`isRagdoll && !dead`), so a client dying mid-ping is read from here. Cleared when
+// its slot leaves, so the next occupant of the slot starts alive. Written by the life edge: a first pose raises one only
+// when dead (a join mid-death), so a revive is the only other writer.
+bool g_deadSlot[coop::players::kMaxPeers] = {};
+void OnPuppetLife(uint8_t slot, bool alive) {
+    if (slot >= coop::players::kMaxPeers) return;
+    g_deadSlot[slot] = !alive;
+    UE_LOGI("device_occupancy: slot %u %s (the pose stream's life edge)", static_cast<unsigned>(slot), alive ? "revived" : "died");
+}
+
+// HOST: the player of `slot` lies in its ragdoll or is dead. Read at the decision, inside the reconcile poll, which
+// stays a poll: the ping attribution it runs on (PingActiveSlot) is itself polled off the desk machine's flag, so a
+// faint that lands before that attribution does must still be seen, which an edge cannot give. What is read is state
+// the announcements already wrote: a client's from its puppet, whose display the pose stream's ragdoll bit drives
+// (RemotePlayer::IsRagdollDisplayed), and from the death edge recorded above; the host's from its own flags.
+// ragdollMode announces the host's fall, and no watchable function announces its stand-up: the Blueprint dump of
+// mainPlayer_C clears isRagdoll inside its ExecuteUbergraph, so a flag fed by that watch would stay down after a
+// recovery.
 bool PlayerDown(uint8_t slot) {
     if (slot == LocalSlot()) {
         void* local = coop::players::Registry::Get().Local();
@@ -145,7 +167,7 @@ bool PlayerDown(uint8_t slot) {
         return local && ue_wrap::engine::ReadMainPlayerRagdollState(local, ragdoll, dead) && (ragdoll || dead);
     }
     coop::RemotePlayer* rp = coop::players::Registry::Get().Puppet(slot);
-    return rp && rp->valid() && rp->IsRagdollDisplayed();
+    return (slot < coop::players::kMaxPeers && g_deadSlot[slot]) || (rp && rp->valid() && rp->IsRagdollDisplayed());
 }
 
 void ReconcileDeskFsmHold(coop::net::Session* s) {
@@ -153,16 +175,19 @@ void ReconcileDeskFsmHold(coop::net::Session* s) {
     const auto now = std::chrono::steady_clock::now();
     if (now < g_nextFsmHoldPoll) return;
     g_nextFsmHoldPoll = now + std::chrono::milliseconds(250);
+    ++g_reconcilePasses;
 
+    // The drill's red: a knocked-down pinger keeps the desk, as before the lane.
+    static const bool s_pingerDownOff =
+        coop::config::ResolveFlag(coop::config_registry::rows::occupancy_pinger_down_off);
     uint8_t pinger = coop::desk_input_sync::PingActiveSlot();
-    if (pinger == 0xFF) {
-        g_pingerDown = false;
-    } else if (!g_pingerDown && PlayerDown(pinger)) {
-        g_pingerDown = true;
+    if (pinger == 0xFF || pinger != g_pingerDownSlot) g_pingerDownSlot = 0xFF;
+    if (pinger != 0xFF && g_pingerDownSlot == 0xFF && !s_pingerDownOff && PlayerDown(pinger)) {
+        g_pingerDownSlot = pinger;
         UE_LOGI("device_occupancy: pinging slot %u is knocked down -- its ping holds the desk no longer",
                 static_cast<unsigned>(pinger));
     }
-    if (g_pingerDown) pinger = 0xFF;  // the branch below frees a machine-held entry
+    if (g_pingerDownSlot != 0xFF) pinger = 0xFF;  // the branch below frees a machine-held entry
     if (pinger != 0xFF) {
         bool inserted = false;
         {
@@ -353,6 +378,8 @@ void InstallObservers() {
 void Install(coop::net::Session* session) {
     g_session.store(session, std::memory_order_release);
     InstallObservers();
+    if (!coop::puppet_events::AddLifeListener(&OnPuppetLife))
+        UE_LOGW("device_occupancy: the life listener list is full -- a client that dies mid-ping keeps the desk");
 }
 
 void Tick() {
@@ -583,6 +610,10 @@ uint8_t HolderOf(const wchar_t* key) {
     return it == g_busy.end() ? 0xFF : it->second;
 }
 
+bool KnockedDown(uint8_t slot) { return PlayerDown(slot); }
+
+uint32_t ReconcilePasses() { return g_reconcilePasses; }
+
 void QueueConnectBroadcastForSlot(int peerSlot) {
     auto* s = g_session.load(std::memory_order_acquire);
     if (!s || s->role() != coop::net::Role::Host) return;
@@ -606,6 +637,7 @@ void QueueConnectBroadcastForSlot(int peerSlot) {
 
 void OnDisconnectForSlot(int slot) {
     auto* s = g_session.load(std::memory_order_acquire);
+    if (slot >= 0 && slot < coop::players::kMaxPeers) g_deadSlot[slot] = false;
     std::vector<std::wstring> dropped;
     {
         std::lock_guard<std::mutex> lk(g_mutex);
@@ -626,6 +658,7 @@ void OnDisconnectForSlot(int slot) {
 }
 
 void OnDisconnect() {
+    for (bool& dead : g_deadSlot) dead = false;
     {
         std::lock_guard<std::mutex> lk(g_mutex);
         g_busy.clear();

@@ -5,6 +5,8 @@
 #include "coop/creatures/npc_mirror.h"
 
 #include "coop/element/mirror_manager.h"
+#include "coop/element/bind_wait.h"       // GiveUp: a spawn cancelled while its class loads
+#include "coop/element/class_load_wait.h"  // ParkSpawn / Cancel: a spawn waiting on its class load
 #include "coop/element/mirror_managers.h"  // PropMirrors/NpcMirrors/WaMirrors
 #include "coop/element/npc.h"
 #include "coop/element/registry.h"
@@ -21,6 +23,7 @@
 #include "coop/creatures/npc_sync.h"
 #include "coop/world/creature_event_relay.h"  // OnMirrorBound: the host's event count for a new mirror
 #include "ue_wrap/core/call.h"
+#include "ue_wrap/core/class_resolve.h"
 #include "ue_wrap/core/fname_utils.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/actors/kerfur.h"  // NeutralizeAiTimers
@@ -213,17 +216,28 @@ void OnEntitySpawn(const coop::net::EntitySpawnPayload& payload) {
                 payload.elementId);
         return;
     }
-    // The actor class. NPC classes load with the level; unloaded, the packet is dropped and this
-    // spawn is gone.
-    void* actorClass = R::FindClass(classW.c_str());
+    // The actor class: loaded from its asset when this client has not loaded it, inside the per-tick load
+    // budget (past it the spawn is parked and runs again next tick). The allowlist is the family: a class the
+    // resolver loads must be an NPC; one that exists nowhere here drops the packet.
+    const ue_wrap::class_resolve::Resolved resolved = ue_wrap::class_resolve::ResolveClass(
+        classW.c_str(), coop::npc_sync::NpcFamily(), ue_wrap::class_resolve::Load::Budgeted);
+    if (resolved.state == ue_wrap::class_resolve::ClassState::Pending) {
+        // The spawn waits for its class (coop/element/class_load_wait, which marks the eid in bind_wait): it ends bound
+        // (the mirror stands), given up, or cancelled by this eid's EntityDestroy.
+        const uint32_t eid = payload.elementId;
+        coop::element::class_load_wait::ParkSpawn(
+            "EntitySpawn", classW, eid, [payload] { OnEntitySpawn(payload); },
+            [eid] { return NpcMirrors().Get(eid) != nullptr; });
+        return;
+    }
+    void* actorClass = resolved.cls;
     if (!actorClass) {
-        UE_LOGW("npc-sync[client OnSpawn]: class '%ls' not found in GUObjectArray -- dropping "
-                "(BP class not loaded? eid=%u)",
+        UE_LOGW("npc-sync[client OnSpawn]: class '%ls' is not resolvable on this peer -- dropping (eid=%u)",
                 classW.c_str(), payload.elementId);
         return;
     }
     // The allowlist gate: a peer could send any className, so only subclasses of the NPC bases
-    // materialise.
+    // materialise. A class already loaded here is judged by it as well.
     if (!coop::npc_sync::IsAllowlistedClass(actorClass)) {
         UE_LOGW("npc-sync[client OnSpawn]: class '%ls' is NOT on NPC allowlist -- "
                 "rejecting (eid=%u; peer is broadcasting non-NPC EntitySpawn?)",
@@ -467,6 +481,13 @@ void OnEntityDestroy(const coop::net::EntityDestroyPayload& payload) {
     }
     const coop::element::ElementId eid =
         static_cast<coop::element::ElementId>(payload.elementId);
+    // A spawn still waiting on its class's load for this eid ends here: it is never spawned.
+    if (coop::element::class_load_wait::Cancel("EntitySpawn", payload.elementId)) {
+        UE_LOGI("npc-sync[client OnDestroy]: eid=%u -- its spawn was waiting on a class load and is cancelled; it "
+                "will never spawn", payload.elementId);
+        coop::element::bind_wait::GiveUp(payload.elementId, "destroyed while its class was loading");
+        return;
+    }
     // The mirror is drained from the table under the manager's mutex (released before Take
     // returns), then K2_DestroyActor runs, then the unique_ptr destructor unregisters from the
     // Registry under its own mutex: never both mutexes at once.

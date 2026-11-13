@@ -446,7 +446,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::death_seam_census::Tick();  // [dev] every element end the death seam announces (latched read when off)
     coop::dev::damage_probe::Tick();  // [dev] every player damage verb call: whose body, source, caller (latched read when off)
     coop::dev::grime_drill::Tick(&session);  // [dev] the grime drill's legs (a latched read when off)
-    coop::dev::vitals_keepalive::Tick();  // [dev] long-exposure keepalive (single latched read when off)
+    coop::dev::vitals_keepalive::Tick();  // [dev] long-exposure keepalive: the host's broadcast refill and each peer's own food and sleep (latched reads when off)
 }
 
 void TickInventory(coop::net::Session& session) {

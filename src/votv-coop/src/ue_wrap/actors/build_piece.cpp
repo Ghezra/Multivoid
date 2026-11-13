@@ -181,9 +181,9 @@ void* Spawn(const SR::SaveRecord& r) {
     return actor;
 }
 
-bool Apply(void* piece, const SR::SaveRecord& r, void* endA, void* endB, SR::ClassResolver resolve) {
-    void* load = piece ? R::FindDispatchFunctionCached(R::ClassOf(piece), L"loadData") : nullptr;
-    if (!load || !SR::ApplyRecordVia(piece, load, r, resolve)) return false;
+bool Apply(void* piece, const SR::SaveRecord& r, void* endA, void* endB, SR::ClassLoad load) {
+    void* loadFn = piece ? R::FindDispatchFunctionCached(R::ClassOf(piece), L"loadData") : nullptr;
+    if (!loadFn || !SR::ApplyRecordVia(piece, loadFn, r, load)) return false;
     if (KindOf(piece) != Kind::Nail) return true;
     // A broken record's aea only attaches the nail, so a tie this copy still has is broken here.
     if (NailBroken(piece))

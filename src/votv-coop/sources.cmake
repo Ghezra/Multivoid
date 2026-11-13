@@ -184,6 +184,7 @@ set(VOTVCOOP_SOURCES
     src/coop/player/player_damage.cpp
     src/coop/player/puppet_cremation.cpp
     src/coop/player/puppet_events.cpp
+    src/coop/player/puppet_events_selftest.cpp
     src/coop/player/player_hit.cpp
     src/coop/player/cremator_hit.cpp
     src/coop/player/hit_intent.cpp
@@ -361,6 +362,7 @@ set(VOTVCOOP_SOURCES
     src/coop/element/quiescence_drain_selftest.cpp
     src/coop/element/identity_create.cpp
     src/coop/element/bind_wait.cpp
+    src/coop/element/class_load_wait.cpp
     src/coop/element/identity_destroy.cpp
     src/coop/element/portable_identity.cpp
     src/ue_wrap/core/component_calls.cpp
@@ -699,6 +701,9 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_flash_battery.cpp
     src/harness/autotest/autotest_upgrade_buy.cpp
     src/harness/autotest/autotest_info_hint.cpp
+    src/harness/autotest/peer_signal.cpp
+    src/harness/autotest/meet.cpp
+    src/harness/autotest/autotest_seat_ragdoll.cpp
     src/harness/autotest/autotest_move_osc.cpp
     src/harness/autotest/autotest_save_notice.cpp
     src/harness/autotest/autotest_beam_sweep.cpp
@@ -719,7 +724,6 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_drone_hover.cpp
     src/harness/autotest/autotest_hacksaw.cpp
     src/harness/autotest/autotest_chipper_feed.cpp
-    src/harness/autotest/autotest_fill_needs.cpp
     src/harness/autotest/autotest_body_push.cpp
     src/harness/autotest/autotest_ambient_creature.cpp
     src/harness/autotest/autotest_ambient_field.cpp
@@ -752,6 +756,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_plant_gate.cpp
     src/harness/autotest/autotest_saveui.cpp
     src/harness/autotest/autotest_woodchipper.cpp
+    src/harness/autotest/autotest_class_resolve.cpp
     src/harness/autotest/autotest_prop_props.cpp
     src/harness/autotest/autotest_nightmare.cpp
     src/harness/autotest/autotest_level_visit.cpp

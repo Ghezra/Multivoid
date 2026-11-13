@@ -108,9 +108,9 @@ void* Spawn(const FVector& loc) {
     return actor;
 }
 
-bool Apply(void* hose, const SR::SaveRecord& r, void* faucet, void* sprinkler) {
-    void* load = hose ? R::FindDispatchFunctionCached(R::ClassOf(hose), L"loadData") : nullptr;
-    if (!load || !SR::ApplyRecordVia(hose, load, r)) return false;
+bool Apply(void* hose, const SR::SaveRecord& r, void* faucet, void* sprinkler, SR::ClassLoad load) {
+    void* loadFn = hose ? R::FindDispatchFunctionCached(R::ClassOf(hose), L"loadData") : nullptr;
+    if (!loadFn || !SR::ApplyRecordVia(hose, loadFn, r, load)) return false;
     void* had = SprinklerOf(hose);
     if (had && had != sprinkler) CallDetachSprinkler(hose);
     WriteField(hose, L"faucet", faucet);

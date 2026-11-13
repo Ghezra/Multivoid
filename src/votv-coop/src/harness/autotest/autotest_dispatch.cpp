@@ -257,7 +257,6 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIf("VOTVCOOP_RUN_DRONE_HOVER", "drone hover drill", &DroneHoverThread, role);
     SpawnIf("VOTVCOOP_RUN_HACKSAW", "hacksaw drill", &HacksawThread, role);
     SpawnIf("VOTVCOOP_RUN_CHIPPER_FEED", "chipper feed drill", &ChipperFeedThread, role);
-    SpawnIf("VOTVCOOP_FILL_NEEDS", "food and sleep kept full", &FillNeedsThread, role);
     SpawnIf("VOTVCOOP_RUN_BODY_PUSH", "body push drill", &BodyPushThread, role);
     // The base computer's short circuit on both peers.
     SpawnIf("VOTVCOOP_RUN_DESK_SHORT", "desk short drill", &DeskShortThread, role);
@@ -310,6 +309,9 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // The cremator drill: the host pulls its lever and the client's copy must show the run, then show it again after a
     // rejoin (1); a client sent into the running machine must die by it (g3).
     SpawnIfEnum(coop::config_registry::rows::cremator_drill, "cremator drill", &coop::dev::cremator_drill::Thread, role);
+    // The class-resolve drill: the host spawns prop classes the client has not loaded, and the client must load and
+    // mirror each.
+    SpawnIfRow(coop::config_registry::rows::class_resolve_drill, "class-resolve drill", &ClassResolveDrillThread, role);
     // The woodchipper drill: the client pours a gas can and presses the button (1), or feeds a paper to the running
     // chipper (feed); the host judges each.
     SpawnIfEnum(coop::config_registry::rows::woodchipper_drill, "woodchipper drill", &WoodchipperThread, role);

@@ -415,7 +415,7 @@ void RunHost() {
             return;
         rec.vectors[0][1] = {at.X, at.Y, at.Z};
         rec.rotators[0][1] = {rot.Pitch, rot.Yaw, rot.Roll};
-        if (B::Apply(p, rec, B::NailEndA(n), nullptr)) pin = p;
+        if (B::Apply(p, rec, B::NailEndA(n), nullptr, ue_wrap::save_record::ClassLoad::Immediate)) pin = p;
     });
     Check(WaitFor([&] { return pin && R::IsLive(pin) && B::NailEndA(pin) == boardB && !B::NailBroken(pin); }, 3),
           "the host's pin ties its board to the world");

@@ -5,6 +5,7 @@
 #include "ue_wrap/actors/inventory.h"      // ResolveSaveSlot
 #include "ue_wrap/actors/prop.h"           // WalksToBase
 #include "ue_wrap/core/cached_obj_ref.h"
+#include "ue_wrap/core/class_resolve.h"
 #include "ue_wrap/core/component_calls.h"  // CallParamless
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
@@ -195,11 +196,15 @@ bool ReadContents(void* inventory, std::vector<SR::SaveRecord>& out, size_t maxR
     return true;
 }
 
+// Lookup only: the classes a record names are resolved, and loaded when this peer has not loaded them, by the write
+// path (save_record::ClassesReady) before a received record is judged here, so a class that is still absent is not a
+// container this peer holds.
 bool IsContainerRecord(const SR::SaveRecord& r) {
     if (r.className.empty()) return false;
     void* const base = ContainerClass();
     if (!base) return false;
-    void* const cls = ue_wrap::object_index::ClassByName(r.className.c_str());
+    void* const cls = ue_wrap::class_resolve::ResolveClass(r.className.c_str(), ue_wrap::class_resolve::AnyFamily(),
+                                                           ue_wrap::class_resolve::Load::LookupOnly).cls;
     return cls && ue_wrap::prop::WalksToBase(cls, base);
 }
 
@@ -261,7 +266,7 @@ int32_t AppendStackSlot(void* save) {
 
 void AttachNested(SR::SaveRecord& r) { AttachAt(r, 0); }
 
-bool PlaceNested(SR::SaveRecord& r, SR::ClassResolver resolve) {
+bool PlaceNested(SR::SaveRecord& r, SR::ClassLoad load) {
     if (!r.nestedCarried) return false;
     void* save = ue_wrap::inventory::ResolveSaveSlot();
     if (!save || CachedOffset(g_offGObjStack, R::ClassOf(save), L"GObjStack") < 0) return false;
@@ -273,7 +278,7 @@ bool PlaceNested(SR::SaveRecord& r, SR::ClassResolver resolve) {
     // slot is held across one. They are then written flat, naming the slots they were given.
     std::vector<SR::SaveRecord> children = r.nested;
     for (auto& c : children) {
-        if (c.nestedCarried) PlaceNested(c, resolve);
+        if (c.nestedCarried) PlaceNested(c, load);
         c.nestedCarried = false;
         c.nested.clear();
     }
@@ -289,7 +294,7 @@ bool PlaceNested(SR::SaveRecord& r, SR::ClassResolver resolve) {
     void* buf = n ? SR::AllocZeroed(n, static_cast<size_t>(SR::kSaveStride)) : nullptr;
     if (n && !buf) return false;
     for (size_t i = 0; i < n; ++i)
-        SR::WriteSaveRecord(static_cast<uint8_t*>(buf) + i * static_cast<size_t>(SR::kSaveStride), children[i], resolve);
+        SR::WriteSaveRecord(static_cast<uint8_t*>(buf) + i * static_cast<size_t>(SR::kSaveStride), children[i], load);
     uint8_t* const slot = StackSlotAt(idx);   // taken now, after every placement
     if (!slot) return false;
     SR::WriteArrHeader(slot, 0, buf, static_cast<int32_t>(n));

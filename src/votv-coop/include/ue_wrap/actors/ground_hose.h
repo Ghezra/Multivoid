@@ -45,8 +45,9 @@ void* FindFaucet(const std::wstring& key);
 void* Spawn(const FVector& loc);
 
 // Hand `r` to the hose (loadData), tie it to `faucet` and `sprinkler` both ways (either may be null; a sprinkler tied
-// before and not now is detached by the hose's own detachSprinkler), then finish it as the coil does.
-bool Apply(void* hose, const save_record::SaveRecord& r, void* faucet, void* sprinkler);
+// before and not now is detached by the hose's own detachSprinkler), then finish it as the coil does. `load` governs how
+// the record's classes resolve (see save_record::ClassLoad).
+bool Apply(void* hose, const save_record::SaveRecord& r, void* faucet, void* sprinkler, save_record::ClassLoad load);
 
 // The hose's own detachSprinkler.
 bool CallDetachSprinkler(void* hose);

@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "ue_wrap/core/class_resolve.h"    // Load
 #include "ue_wrap/desk/signal_dynamic.h"  // Row -- the 0x70 signal sub-element (reused, not reinvented)
 
 #include <array>
@@ -25,15 +26,12 @@
 
 namespace ue_wrap::save_record {
 
-// How a class leaf name on a record resolves to a UClass as the record is written. A null resolver
-// means reflection::FindClass, the authoritative walk-the-array-on-a-miss that is correct everywhere
-// but costs a whole-array walk per unresolved name. A peer applying data IT RECEIVED FROM AN
-// ATTACKER (the host taking a client's record) passes ue_wrap::object_index::ClassByName instead: a
-// one-step lookup that answers a loaded class and a miss alike, so an attacker's unknown name costs a
-// hash probe, not a 250k-object walk. A client applying the host's own
-// record keeps the default: its object index can trail during a blocking world load, where the walk
-// still finds a class the index does not list yet, and a cheating host is out of scope here.
-using ClassResolver = void* (*)(const wchar_t*);
+// How a class leaf name on a record resolves to a UClass as the record is written: through
+// class_resolve::ResolveClass under a `Load`. A peer applying data IT RECEIVED FROM AN ATTACKER (the host
+// taking a client's record) passes Load::LookupOnly: the object index alone, so an attacker's unknown name
+// costs a hash probe, never a load. A client applying the host's own record (and every local write) passes
+// Load::Immediate: a class it has not loaded loads from its asset, since the record cannot wait.
+using ClassLoad = ue_wrap::class_resolve::Load;
 
 // One Fstruct_save record as engine-agnostic POD (the wire layer serializes this).
 struct SaveRecord {
@@ -120,10 +118,15 @@ void ReadSaveRecord(const void* base, SaveRecord& rec);
 // FString buffers is far more crash-prone than a bounded leak, and the engine never double-frees
 // a buffer it has lost the pointer to. Buffers WE allocate are GMalloc-owned (EngineAlloc), so
 // the engine's later Array realloc / GC free of them is allocator-matched.
-// `resolve` governs how every class leaf (the record's own class and its `classes` group) resolves;
-// null = reflection::FindClass (see ClassResolver). A record that carries its container's contents
-// (SaveRecord::nestedCarried) has them written into a slot of this machine's GObjStack first, and its index set to it.
-void WriteSaveRecord(uint8_t* base, const SaveRecord& r, ClassResolver resolve = nullptr);
+// `load` governs how every class leaf (the record's own class and its `classes` group) resolves
+// (see ClassLoad). A record that carries its container's contents (SaveRecord::nestedCarried) has them written into
+// a slot of this machine's GObjStack first, and its index set to it.
+void WriteSaveRecord(uint8_t* base, const SaveRecord& r, ClassLoad load);
+
+// Resolves every class the record names (its own class and its `classes` leaves, and a carried container's contents')
+// under `load`, the loads a write would make. False when one answered Pending (the load budget of this tick is spent): a
+// caller that can wait does so and writes once this answers true, when the write finds every class loaded. Game thread.
+bool ClassesReady(const SaveRecord& r, ClassLoad load);
 
 // A signal's photo (its `image`, the PNG the laptop shows) rides its record both ways: ReadSaveRecord reads it and
 // WriteSaveRecord writes it into engine memory. A record past a transport's ceiling travels with fewer photos rather
@@ -184,8 +187,8 @@ inline bool RecordName(const SaveRecord& r, std::wstring& out) {
 // only thing this pair exists to move -- including the TAIL of a group the base also writes, which
 // is where a food keeps its temperature. Which elements those are is read off the base class at
 // runtime, never listed here. Two dispatches: the base capture and the apply.
-// `resolve` is forwarded to the write of the merged record (null = FindClass; see ClassResolver).
-bool ApplyRecord(void* actor, const SaveRecord& r, ClassResolver resolve = nullptr);
+// `load` is forwarded to the write of the merged record (see ClassLoad).
+bool ApplyRecord(void* actor, const SaveRecord& r, ClassLoad load);
 
 // True while ApplyRecord runs: what a prop's own bodies do then is a record arriving, not a change to report.
 // Game thread.
@@ -211,8 +214,8 @@ bool CaptureRecordVia(void* actor, void* recordFn, SaveRecord& out);
 // Write `r` into `loadFn`'s `data` parameter and call it. THE RECORD IS APPLIED AS GIVEN: there is
 // no splice here, so a caller handing this a record that came off the wire has already decided,
 // field by field, which parts it is willing to take from the sender.
-// `resolve` is forwarded to the record write (null = FindClass; see ClassResolver).
-bool ApplyRecordVia(void* actor, void* loadFn, const SaveRecord& r, ClassResolver resolve = nullptr);
+// `load` is forwarded to the record write (see ClassLoad); a record naming the actor's own class takes it from the actor.
+bool ApplyRecordVia(void* actor, void* loadFn, const SaveRecord& r, ClassLoad load);
 
 // Drop the cached class lookups (level change / disconnect).
 void ResetCodecCache();
