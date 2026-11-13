@@ -180,10 +180,10 @@ void SendCommit(uint8_t committed, uint8_t flags = 0) {
             static_cast<unsigned>(flags));
 }
 
-// A granted unpack (an MRE, a first aid kit): the host rolls the contents on its own copy and they reach this peer as its spawns, so this copy
-// is only removed. Opening it here too would roll a second, client-only set. Replay plays the opening once the destroy
-// has happened.
-bool OpenMreOnHost(void* target) { return E::DestroyActor(target); }
+// A granted unpack (an MRE, a first aid kit): the host rolls the contents on its own copy and they reach this peer as
+// its spawns, so this copy is only removed. Opening it here too would roll a second, client-only set. Replay plays the
+// opening (the MRE's, for both) once the destroy has happened.
+bool UnpackOnHost(void* target) { return E::DestroyActor(target); }
 
 // The record's verb, as the player's press runs it, on the target. False when the verb could not run at all (a
 // function that does not resolve, a player or target that is not live), as distinct from a verb that ran and bailed.
@@ -198,7 +198,7 @@ bool RunVerb(void* target, void* local) {
         return E::CallMainPlayerHoldObject(local, target, collected);
     }
     case kUnpack:
-        return OpenMreOnHost(target);
+        return UnpackOnHost(target);
     case kFood:
     case kPills:
     case kSnack:
@@ -228,8 +228,8 @@ void Replay() {
     void* const local = coop::players::Registry::Get().Local();
     bool destroyed = false;
     bool ran = false;
-    ue_wrap::FVector mreAt{};   // an MRE's place, read while it stands: its opening is heard there after the destroy
-    const bool hearsMre = g_rec.row == kMre && E::TryGetActorLocation(target, mreAt);
+    ue_wrap::FVector unpackAt{};   // an unpack's place, read while it stands: its opening is heard there after the destroy
+    const bool hearsUnpack = g_rec.row == kUnpack && E::TryGetActorLocation(target, unpackAt);
     const bool snack = g_rec.row == kSnack;
     coop::snack_act::CopyState before, after;   // a snack's copy around the replay, read inside the latch
     {
@@ -259,7 +259,7 @@ void Replay() {
     if (destroyed) {
         SendCommit(1);
         coop::remote_prop::UnregisterPropMirror(g_rec.eid);
-        if (hearsMre) coop::prop_sound::PlayMreOpenAt(local, mreAt);
+        if (hearsUnpack) coop::prop_sound::PlayMreOpenAt(local, unpackAt);
     } else {
         if (!ran) UE_LOGW("prop_act: the replay of row %u could not run -- aborted", static_cast<unsigned>(g_rec.row));
         SendCommit(0);
@@ -290,11 +290,11 @@ UE_FACT_FN(kRowFood,   "prop_act", L"prop_food_C",       L"actionOptionIndex",  
 UE_FACT_FN(kRowMre,    "prop_act", L"prop_food_mre_C",   L"actionOptionIndex",   Declared);
 UE_FACT_FN(kRowPills,  "prop_act", L"prop_sleeppills_C", L"actionOptionIndex",   Declared);
 UE_FACT_FN(kRowSoap,   "prop_act", L"prop_food_soap_C",  L"playerUsedOn",        Declared);
-UE_FACT_FN(kRowKit,    "prop_act", L"prop_medkit_pack_C", L"actionOptionIndex",  Declared);
 // The snack family: prop_snack_C's body is the candy, chips, milk, sushi and soda's; the beer's own body (the wine
 // inherits it) calls the parent's first.
 UE_FACT_FN(kRowSnack,  "prop_act", L"prop_snack_C",      L"actionOptionIndex",   Declared);
 UE_FACT_FN(kRowBeer,   "prop_act", L"prop_snack_beer_C", L"actionOptionIndex",   Declared);
+UE_FACT_FN(kRowKit,    "prop_act", L"prop_medkit_pack_C", L"actionOptionIndex",  Declared);
 constexpr int kTagPocket = 0x50414331, kTagHold = 0x50414332, kTagFood = 0x50414333,
               kTagMre = 0x50414334, kTagPills = 0x50414335, kTagSoap = 0x50414336,
               kTagSnack = 0x50414337, kTagBeer = 0x50414338, kTagKit = 0x50414339;   // "PAC1".."PAC9"
@@ -326,7 +326,7 @@ struct ActionParams {
     R::ParamOffset action{L"action"};
     R::ParamOffset lookAt{L"lookAtComponent"};
 };
-ActionParams g_foodParams, g_mreParams, g_pillsParams, g_kitParams, g_snackParams, g_beerParams;
+ActionParams g_foodParams, g_mreParams, g_pillsParams, g_snackParams, g_beerParams, g_kitParams;
 
 struct SoapParams {
     R::ParamOffset holdObject{L"holdObject"};
@@ -418,7 +418,7 @@ struct HitParam {
     ue_wrap::CachedObjRef sizeFn;
     int32_t size = -1;
 };
-HitParam g_foodHit, g_mreHit, g_pillsHit, g_soapHit, g_kitHit, g_snackHit, g_beerHit;
+HitParam g_foodHit, g_mreHit, g_pillsHit, g_soapHit, g_snackHit, g_beerHit, g_kitHit;
 
 // The hit of a use, as the replay writes it back: only its component and place matter.
 void CaptureHit(const sg::Call& c, HitParam& param, Pending& p) {
@@ -596,9 +596,9 @@ Watch g_watches[] = {
     {kRowMre,    kTagMre,    &PreMre,    "use",  WatchState::Pending},
     {kRowPills,  kTagPills,  &PrePills,  "use",  WatchState::Pending},
     {kRowSoap,   kTagSoap,   &PreSoap,   "use",  WatchState::Pending},
-    {kRowKit,    kTagKit,    &PreKit,    "use",  WatchState::Pending},
     {kRowSnack,  kTagSnack,  &PreSnack,  "use",  WatchState::Pending, &PostSnack, kSnackDead},
     {kRowBeer,   kTagBeer,   &PreBeer,   "use",  WatchState::Pending, &PostBeer,  kSnackDead},
+    {kRowKit,    kTagKit,    &PreKit,    "use",  WatchState::Pending},
 };
 bool g_watchesSettled = false;
 

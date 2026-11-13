@@ -20,9 +20,14 @@ bool CallActionOptionIndex(void* prop, void* player, void* hitComponent, const F
 bool CallPlayerUsedOn(void* prop, void* player, void* hitComponent, const FVector& hitLocation, void* lookAtComponent,
                       void* holdObject, ue_wrap::reflection::FName holdPropName);
 
-// prop_food_mre_C's own `spawn()` (no parameters; it rolls the MRE's contents and reads nothing of a player), resolved
-// on the MRE's own class (FindDispatchFunctionCached). False when it does not resolve or the MRE is not live. Game thread.
-bool CallMreSpawn(void* mre);
+// An unpackable prop's own `spawn()` (no parameters; it rolls the contents of an MRE or a first aid kit and reads nothing
+// of a player), resolved on the prop's own class (FindDispatchFunctionCached), since each class has its own. False when
+// it does not resolve or the prop is not live. Game thread.
+bool CallUnpackSpawn(void* prop);
+
+// prop_medkit_pack_C's `drop` (a TArray of the props its `spawn` rolls): its Num on this live instance, read through the
+// property's reflected offset. False when the prop is not live or its class has no `drop`. Game thread.
+bool ReadUnpackDropCount(void* prop, int32_t& num);
 
 // prop_food_C's `uses` (int32) and `notEdible` (a bitfield bool); false when either is unreadable. Game thread.
 bool ReadFoodUse(void* prop, int32_t& uses, bool& notEdible);

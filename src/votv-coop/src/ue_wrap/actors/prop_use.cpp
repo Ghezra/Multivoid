@@ -4,6 +4,7 @@
 
 #include "ue_wrap/core/cached_obj_ref.h"
 #include "ue_wrap/core/call.h"
+#include "ue_wrap/core/field_io.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/engine/hit_result.h"
@@ -69,12 +70,21 @@ bool CallPlayerUsedOn(void* prop, void* player, void* hitComponent, const FVecto
            f.SetRaw(L"holdPropName", &holdPropName, static_cast<int32_t>(sizeof(holdPropName))) && Call(prop, f);
 }
 
-bool CallMreSpawn(void* mre) {
-    if (!mre || !R::IsLive(mre)) return false;
-    void* fn = R::FindDispatchFunctionCached(R::ClassOf(mre), L"spawn");
+bool CallUnpackSpawn(void* prop) {
+    if (!prop || !R::IsLive(prop)) return false;
+    void* fn = R::FindDispatchFunctionCached(R::ClassOf(prop), L"spawn");
     if (!fn) return false;
     ParamFrame f(fn);
-    return f.valid() && Call(mre, f);
+    return f.valid() && Call(prop, f);
+}
+
+bool ReadUnpackDropCount(void* prop, int32_t& num) {
+    static R::InstanceOffset sDrop{L"drop"};
+    if (!prop || !R::IsLive(prop)) return false;
+    const int32_t o = sDrop.Of(prop);
+    if (o < 0) return false;
+    num = reinterpret_cast<const field_io::TArrayView*>(static_cast<const uint8_t*>(prop) + o)->num;
+    return true;
 }
 
 bool ReadFoodUse(void* prop, int32_t& uses, bool& notEdible) {

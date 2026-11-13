@@ -1,11 +1,12 @@
 // coop/dev/prop_act_drill_client_steps.cpp -- the act drill's client steps that wait on the host's word after the act: an
-// opened MRE's contents and the poison bite, and a snack arm's copies. Split from prop_act_drill_client.cpp (the step
-// machine) with no change of behaviour. See coop/dev/prop_act_drill.h.
+// unpacked MRE's or first aid kit's contents and the poison bite, and a snack arm's copies. Split from
+// prop_act_drill_client.cpp (the step machine) with no change of behaviour. See coop/dev/prop_act_drill.h.
 
 #include "coop/dev/prop_act_drill.h"
 #include "prop_act_drill_client_steps.h"
 
 #include "coop/dev/drill_chat_pace.h"
+#include "coop/element/bind_wait.h"
 #include "coop/element/registry.h"
 
 #include "ue_wrap/actors/effects.h"
@@ -22,10 +23,13 @@ using namespace detail;
 namespace EL = coop::element;
 
 void StepAwaitContents(const Row& row, void* player, uint64_t now) {
-        // The host rolled the contents on its copy and says, behind their births and FoodStates on the same ordered
-        // lane, how many there are and how many it poisoned: the line is the event this step decides on, and what this
-        // client holds when it reads it is final. The host set the MRE's poisonChance to 1, so one content is poisoned, and
-        // its poison rides the FoodState that follows its spawn.
+        // The host rolled the contents on its copy and says how many there are, how many it poisoned and their eids: the
+        // line is the event this step decides on. The host says it only once every listed eid's PropSpawn has gone out
+        // (host_spawn_watcher::dev::SpawnSent, recorded at Session::SendPropSpawn), on the same ordered Default lane, so every
+        // PropSpawn is handled here before the line is. A mirror then
+        // missing is either parked on a deferred bind (its eid is marked in bind_wait: a class still loading, a position
+        // wait; the wait ends on that event) or lost: no mark means nothing will make it, a FAIL at once. The host set the
+        // MRE's poisonChance to 1, so one content is poisoned, and its poison rides the FoodState that follows its spawn.
         if (now < g_cNextMs) return;
         g_cNextMs = now + kPollEveryMs;
         std::string said;
@@ -35,9 +39,47 @@ void StepAwaitContents(const Row& row, void* player, uint64_t now) {
         }
         const size_t sentN = static_cast<size_t>(std::strtoul(said.c_str() + (said.find("n=") == std::string::npos ? 0 : said.find("n=") + 2), nullptr, 10));
         const size_t hostPoisoned = static_cast<size_t>(std::strtoul(said.c_str() + (said.find("poisoned=") == std::string::npos ? 0 : said.find("poisoned=") + 9), nullptr, 10));
+        if (sentN == 0) {
+            // The roll is over (its births are fixed when its spawn returned): nothing will arrive, so this is no pass.
+            ClientInvalid(row, row.foodContents ? "the MRE rolled no food contents"
+                                                : "the first aid kit rolled nothing: its drop list is empty here");
+            return;
+        }
+        std::unordered_set<EL::ElementId> held;
+        PropMirrorsNotIn(g_mirrorsBefore, &held);
+        size_t missing = 0, parked = 0;
+        const size_t listAt = said.find("eids=");
+        for (const char* p = listAt == std::string::npos ? "" : said.c_str() + listAt + 5; *p;) {
+            char* end = nullptr;
+            const EL::ElementId id = static_cast<EL::ElementId>(std::strtoul(p, &end, 10));
+            if (end == p) break;
+            if (!held.count(id)) {
+                ++missing;
+                if (coop::element::bind_wait::IsDeferred(id)) ++parked;
+            }
+            p = *end == ',' ? end + 1 : end;
+        }
+        if (missing != parked) {
+            ClientFail(row, std::to_string(missing - parked) + " of the host's " + std::to_string(sentN) +
+                                " contents have no mirror here and no bind is waiting to make one");
+            return;
+        }
+        if (missing != 0) {
+            if (CExpired(kContentsBoundMs))
+                ClientInvalid(row, std::to_string(missing) + " of the host's " + std::to_string(sentN) +
+                                       " contents stayed on a deferred bind that never ended");
+            return;
+        }
+        if (!row.foodContents) {
+            g_freshContents = sentN;
+            const std::string what = "asked, granted, replayed; the mirror is gone and the host's " + std::to_string(sentN) +
+                                     " rolled content(s) have mirrors here";
+            ClientPass(row, what.c_str());
+            return;
+        }
         void* poisoned = nullptr;
         bool waiting = false;
-        g_freshContents = FoodMirrorsNotIn(g_foodsBefore, nullptr, &poisoned, &waiting);
+        g_freshContents = FoodMirrorsNotIn(g_mirrorsBefore, nullptr, &poisoned, &waiting);
         // A FoodState that still waits for its copy has not been applied: what the contents show is not final until it has.
         if (waiting) {
             if (CExpired(kContentsBoundMs)) ClientInvalid(row, "a FoodState for a content never drained from the pending set");
