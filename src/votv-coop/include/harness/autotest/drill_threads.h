@@ -320,4 +320,13 @@ DWORD WINAPI NightmareThread(LPVOID arg);
 // VOTVCOOP_RUN_LEVEL_VISIT, both peers -- harness/autotest/autotest_level_visit.cpp
 DWORD WINAPI LevelVisitThread(LPVOID arg);
 
+// VOTVCOOP_RUN_UPGRADE_BUY, both peers -- harness/autotest/autotest_upgrade_buy.cpp
+DWORD WINAPI UpgradeBuyThread(LPVOID arg);
+
+// VOTVCOOP_RUN_INFO_HINT, both peers -- harness/autotest/autotest_info_hint.cpp
+DWORD WINAPI InfoHintThread(LPVOID arg);
+
+// VOTVCOOP_RUN_DATA_CASE, both peers -- harness/autotest/autotest_data_case.cpp
+DWORD WINAPI DataCaseThread(LPVOID arg);
+
 }  // namespace harness::autotest

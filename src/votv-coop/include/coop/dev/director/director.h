@@ -207,4 +207,8 @@ DWORD WINAPI ContainerRaceThread(LPVOID arg);
 void RunGrabRace();
 DWORD WINAPI GrabRaceThread(LPVOID arg);
 
+// Where a dropped prop rests and a toolgun's flags, each peer in turn: see rest_tool_probe.cpp. Env:
+// VOTVCOOP_RUN_REST_TOOL=1, VOTVCOOP_CAN_DIR.
+DWORD WINAPI RestToolThread(LPVOID arg);
+
 }  // namespace coop::director

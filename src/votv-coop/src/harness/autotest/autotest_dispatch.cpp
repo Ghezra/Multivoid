@@ -202,6 +202,10 @@ void SpawnEnvGatedTests(coop::net::Role role) {
 
     // The flashlight battery: each peer's runs out in turn and the other reads its puppet's light.
     SpawnIf("VOTVCOOP_RUN_FLASH_BATTERY", "flashlight battery drill", &FlashBatteryThread, role);
+    SpawnIf("VOTVCOOP_RUN_UPGRADE_BUY", "laptop upgrades bought by both peers", &UpgradeBuyThread, role);
+
+    // The info tip: each peer runs the game's addHint and both capture their windows.
+    SpawnIf("VOTVCOOP_RUN_INFO_HINT", "info tip drill", &InfoHintThread, role);
 
     // The beam sweep: the client sweeps a lit flashlight; the host records its puppet's beam each tick.
     SpawnIf("VOTVCOOP_RUN_BEAM_SWEEP", "flashlight beam sweep", &BeamSweepThread, role);
@@ -230,6 +234,8 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIf("VOTVCOOP_RUN_CAP_LABEL", "refiner cap label drill", &CapLabelThread, role);
     SpawnIf("VOTVCOOP_RUN_MUSHROOM", "mushroom drill", &MushroomThread, role);
     SpawnIf("VOTVCOOP_RUN_CROWBAR", "crowbar drill", &CrowbarThread, role);
+    // The data case: a client fills a drive box; its record's size and the host's copy of it.
+    SpawnIf("VOTVCOOP_RUN_DATA_CASE", "data case drill", &DataCaseThread, role);
     // The ATV: what of it the host owns, from a client's refuel to its horn.
     SpawnIf("VOTVCOOP_RUN_ATV_HOST", "ATV host-owned state drill", &AtvHostThread, role);
     // The ATV's riders: the driver's body and the kerfur, on both peers.
@@ -275,6 +281,7 @@ void SpawnEnvGatedTests(coop::net::Role role) {
 
     // The grab race: two peers aim at the same keyed prop and grab it at a barrier; each logs who holds it after.
     SpawnIf("VOTVCOOP_RUN_GRAB_RACE", "prop grab race (one holder)", &coop::director::GrabRaceThread, role);
+    SpawnIf("VOTVCOOP_RUN_REST_TOOL", "dropped prop rest and toolgun flags", &coop::director::RestToolThread, role);
 
     // The after-join end-reason drill: the host kicks slot 1 once it is seated and in the world;
     // the client's log must carry the DISCONNECTED notice with the moderation code.
