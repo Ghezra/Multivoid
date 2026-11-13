@@ -3,6 +3,9 @@
 #include "coop/dev/native_spawn_probe.h"
 
 #include "coop/config/config.h"
+#include "coop/element/registry.h"
+#include "coop/player/players_registry.h"
+#include "coop/session/teleport_client.h"
 #include "coop/config/config_registry.h"
 #include "coop/creatures/npc_adoption.h"
 #include "coop/creatures/npc_sync.h"
@@ -275,13 +278,36 @@ void TickOrb() {
 // class='npc_orborb_C'"), then destroys them before the event's own end.
 constexpr uint64_t kOrbHostStartMs = 150000;
 constexpr uint64_t kOrbHostKeepMs = 30000;
+// VOTVCOOP_ORB_TOUCH=away|toward: a client walks into the host's orb and holds its view away from it or toward it
+// until the encounter ends; the host then waits for the orb's own verdict (its destroy) instead of destroying it.
+constexpr uint64_t kOrbTouchKeepMs = 90000;
 uint64_t g_orbHostBornAt = 0;
+
+const std::string& TouchMode() {
+    static const std::string m = coop::config::ReadEnv("VOTVCOOP_ORB_TOUCH");
+    return m;
+}
 
 void TickOrbHost() {
     if (g_orb == Orb::Done || !IsHost()) return;
     if (!g_orbStartAt) g_orbStartAt = Now();
     if (Now() - g_orbStartAt < kOrbHostStartMs) return;
     if (g_orb == Orb::Verify) {
+        if (!TouchMode().empty()) {
+            bool alive = false;
+            for (const ue_wrap::CachedObjRef& o : g_orbs) alive = alive || o.Alive();
+            if (!alive) {
+                UE_LOGI("[NB-0] orbhost the orb is gone %llu ms after its birth -- its encounter ended",
+                        static_cast<unsigned long long>(Now() - g_orbHostBornAt));
+                FinishOrb("judged");
+                return;
+            }
+            if (Now() - g_orbHostBornAt < kOrbTouchKeepMs) return;
+            UE_LOGI("[NB-0] orbhost the orb outlived the touch window -- destroyed now");
+            DestroyOrbs();
+            FinishOrb("unjudged");
+            return;
+        }
         if (Now() - g_orbHostBornAt < kOrbHostKeepMs) return;
         int alive = 0;
         for (const ue_wrap::CachedObjRef& o : g_orbs) alive += o.Alive() ? 1 : 0;
@@ -318,6 +344,51 @@ void TickOrbHost() {
     if (cls) g_orbInstances = DriveSpawners(cls);
 }
 
+// CLIENT, VOTVCOOP_ORB_TOUCH: once a copy of the host's orb exists, walk into it and hold the view.
+ue_wrap::CachedObjRef g_touchOrb;
+bool g_touchPlaced = false;
+uint64_t g_touchSaidAt = 0;
+
+void FindOrbCopy(void*, void* obj, int32_t) {
+    if (g_touchOrb.Alive() || !obj || !R::IsLive(obj) || R::NameStartsWith(R::NameOf(obj), L"Default__")) return;
+    if (coop::element::Registry::Get().EidForActor(obj) == coop::element::kInvalidId) return;  // the host's copy only
+    g_touchOrb.Set(obj);
+}
+
+void TickOrbTouchClient() {
+    if (TouchMode().empty() || IsHost()) return;
+    if (!g_touchOrb.Alive()) {
+        if (g_touchPlaced) {
+            g_touchPlaced = false;
+            UE_LOGI("[NB-0] orbtouch the orb's copy is gone");
+        }
+        if (void* cls = OI::ClassByName(L"npc_orborb_C")) OI::ForEachInstance(cls, &FindOrbCopy, nullptr);
+        return;
+    }
+    void* const orb = g_touchOrb.Get();
+    void* const me = coop::players::Registry::Get().Local();
+    ue_wrap::FVector at{}, mine{};
+    if (!me || !ue_wrap::engine::TryGetActorLocation(orb, at) || !ue_wrap::engine::TryGetActorLocation(me, mine)) return;
+    const bool toward = TouchMode() == "toward";
+    if (!g_touchPlaced) {
+        g_touchPlaced = true;
+        coop::teleport_client::ApplyLocally({at.X, at.Y, at.Z + 20.f, 0.f, 0.f, 0.f});
+        UE_LOGI("[NB-0] orbtouch walked into the orb's copy at (%.0f,%.0f,%.0f), view %hs", at.X, at.Y, at.Z,
+                toward ? "toward it" : "away from it");
+        return;
+    }
+    // Face it from 3 m off its centre so the view is defined, toward or away.
+    const ue_wrap::FVector cam = ue_wrap::engine::GetCameraLocation();
+    const float dx = at.X - cam.X, dy = at.Y - cam.Y, dz = at.Z - cam.Z;
+    const float yaw = std::atan2(dy, dx) * 57.2958f + (toward ? 0.f : 180.f);
+    const float pitch = (toward ? 1.f : -1.f) * std::atan2(dz, std::sqrt(dx * dx + dy * dy)) * 57.2958f;
+    ue_wrap::engine::SetControlRotation(ue_wrap::engine::GetController(me), {pitch, yaw, 0.f});
+    if (Now() - g_touchSaidAt > 2000) {
+        g_touchSaidAt = Now();
+        UE_LOGI("[NB-0] orbtouch holding the view %hs (yaw %.0f)", toward ? "toward the orb" : "away from the orb", yaw);
+    }
+}
+
 }  // namespace
 
 void Install(coop::net::Session* session) {
@@ -329,7 +400,10 @@ void Install(coop::net::Session* session) {
 void Tick(coop::net::Session* session) {
     if ((ModeOf() != Mode::Orb && ModeOf() != Mode::OrbHost) || !g_hookDone) return;
     g_session = session;
-    if (ModeOf() == Mode::OrbHost) TickOrbHost();
+    if (ModeOf() == Mode::OrbHost) {
+        TickOrbHost();
+        TickOrbTouchClient();
+    }
     else TickOrb();
 }
 
