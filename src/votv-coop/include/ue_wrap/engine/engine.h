@@ -62,9 +62,14 @@ void* SpawnActor(void* actorClass, const FVector& location, bool inertPawn = fal
 // The split form: BeginDeferredSpawn, write class-specific fields before Init and BeginPlay,
 // FinishDeferredSpawn with the same transform (the engine re-applies it). A wire-spawned entity
 // gets its variant state stamped in the window. Game thread.
-void* BeginDeferredSpawn(void* actorClass, const FVector& location, const FRotator& rotation);
+// `collision` is the game's ESpawnActorCollisionHandlingMethod byte: 0 the actor class's own default, 1 always spawn
+// (the default here, as SpawnActor's), 2 adjust where possible but always spawn.
+// `scale`, when given, is the transform's Scale3D (unit otherwise); Finish takes the same one.
+void* BeginDeferredSpawn(void* actorClass, const FVector& location, const FRotator& rotation, uint8_t collision = 1,
+                         const FVector* scale = nullptr);
 
-bool  FinishDeferredSpawn(void* actor, const FVector& location, const FRotator& rotation);
+bool  FinishDeferredSpawn(void* actor, const FVector& location, const FRotator& rotation,
+                          const FVector* scale = nullptr);
 
 // AActor::K2_GetActorLocation, the one location read: false when the location could not be
 // obtained, a read that faulted inside the engine and was absorbed included

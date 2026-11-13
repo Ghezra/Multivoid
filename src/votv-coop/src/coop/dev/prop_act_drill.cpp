@@ -19,6 +19,7 @@
 #include "coop/props/prop_drive_stream.h"
 #include "coop/props/prop_snapshot.h"
 #include "coop/props/remote_prop.h"
+#include "coop/session/rig_verdict.h"
 #include "coop/save/join_window_baseline.h"
 
 #include "ue_wrap/actors/prop_flags.h"
@@ -34,6 +35,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 namespace coop::dev::prop_act_drill {
@@ -51,11 +53,27 @@ const std::string& PhaseName() {
 // The lines the two peers say to each other in the lobby chat.
 std::string ReadyHead(const Row& r) { return std::string(kTag) + " host " + r.name + " ready eid="; }
 std::string DoneHead(const Row& r, int slot) { return std::string(kTag) + " c" + std::to_string(slot) + " " + r.name + " done "; }
+std::string UprightHead(const Row& r) { return std::string(kTag) + " c" + std::to_string(kClientSlot) + " " + r.name + " upright"; }
 std::string DragHead(const Row& r, bool fromHost) {
     return std::string(kTag) + (fromHost ? " host " : " c" + std::to_string(kClientSlot) + " ") + r.name + " dragged: ";
 }
 
 void Say(const std::string& line) { coop::chat_sync::QueueSend(line); }
+
+void RigSay(End e, const std::string& why) {
+    using O = coop::rig_verdict::Outcome;
+    const std::string tag = "act-" + PhaseName();
+    coop::rig_verdict::Say(tag.c_str(), e == End::Pass ? O::Pass : e == End::Fail ? O::Fail : O::Invalid, "%s", why.c_str());
+}
+
+std::string EndedHead() { return std::string(kTag) + " host " + PhaseName() + " ended"; }
+
+void HostEnds(End e, const std::string& why) {
+    RigSay(e, why);
+    if (e != End::Pass) Say(EndedHead());
+}
+
+bool HostEnded() { return HostSaidLive(EndedHead(), nullptr); }
 
 }  // namespace detail
 
@@ -86,7 +104,7 @@ constexpr float kMinColumnCm = 20.f;     // a column whose floor is nearer than 
 constexpr float kNpcLiftCm = 60.f;       // a kerfur NPC is placed above the floor so its capsule clears it
 
 const Phase* ActivePhase() {
-    static const Phase* const p = PhaseName() == "honest" ? &Honest() : nullptr;
+    static const Phase* const p = PhaseName() == "honest" ? &Honest() : PhaseName() == "snack" ? &Snack() : nullptr;
     return p;
 }
 
@@ -126,7 +144,24 @@ bool HExpired(uint64_t bound) { return NowMs() - g_hStepMs > bound; }
 
 void HostFail(const Row* row, const std::string& why) {
     UE_LOGW("%s host %s FAIL -- %s%s%s", kTag, PhaseName().c_str(), row ? row->name : "", row ? ": " : "", why.c_str());
+    HostEnds(End::Fail, std::string(row ? row->name : "") + ": " + why);
     g_hstep = HStep::Done;
+    SnackRestoreTilt();   // a beer tilted for the spill arm is put back as it was
+}
+
+// A bound ran out with no event to decide on: the run measured nothing, so it is INVALID, never a verdict on the lane. The
+// phase stops as it does on a FAIL.
+void HostInvalid(const Row* row, const std::string& why) {
+    UE_LOGW("%s host %s INVALID -- %s%s%s", kTag, PhaseName().c_str(), row ? row->name : "", row ? ": " : "", why.c_str());
+    HostEnds(End::Invalid, std::string(row ? row->name : "") + ": " + why);
+    g_hstep = HStep::Done;
+    SnackRestoreTilt();
+}
+
+// What the client said when its step ended other than ok: its FAIL stays a FAIL, its INVALID stays INVALID.
+void HostReported(const Row* row, const std::string& said) {
+    if (said.compare(0, 8, "invalid ") == 0) HostInvalid(row, "the client reported: " + said.substr(8));
+    else HostFail(row, "the client reported: " + said);
 }
 
 // The counters of the client's slot as the step begins, and the watch on its raw PropDestroy messages naming
@@ -142,6 +177,8 @@ Baseline TakeBaseline(const Row& row, EL::ElementId eid, EL::ElementId eid2) {
     b.wrongFamily = PAH::AnsweredFor(kClientSlot, coop::net::PropActReason::WrongFamily);
     b.fit = PAH::TallyOf(row.fitTally);
     b.kerfurBound = eid != EL::kInvalidId && KE::GetKerfurIdForEid(eid) != EL::kInvalidId;
+    b.snackApplied = PAH::CommitsOf(kClientSlot, PAH::internal::CommitStep::SnackApplied);
+    b.snackEnded = PAH::CommitsOf(kClientSlot, PAH::internal::CommitStep::SnackEnded);
     return b;
 }
 
@@ -156,7 +193,7 @@ bool TargetAnnounced(const Row& row, ue_wrap::CachedObjRef& ref, EL::ElementId* 
     }
     *eid = EL::Registry::Get().EidForActor(actor);
     if (*eid != EL::kInvalidId) return true;
-    if (HExpired(kAnnounceBoundMs)) HostFail(&row, "the spawned prop was never announced");
+    if (HExpired(kAnnounceBoundMs)) HostInvalid(&row, "the spawned prop was never announced");
     return false;
 }
 
@@ -172,7 +209,7 @@ bool KerfurPropReady(const Row& row) {
         const EL::ElementId npcEid = EL::Registry::Get().EidForActor(npc);
         g_kerfurId = npcEid != EL::kInvalidId ? KE::GetKerfurIdForEid(npcEid) : EL::kInvalidId;
         if (g_kerfurId == EL::kInvalidId) {
-            if (HExpired(kAnnounceBoundMs)) HostFail(&row, "the kerfur NPC never got a kerfur record");
+            if (HExpired(kAnnounceBoundMs)) HostInvalid(&row, "the kerfur NPC never got a kerfur record");
             return false;
         }
         if (!DP::TurnOffKerfur(npc)) {
@@ -185,7 +222,7 @@ bool KerfurPropReady(const Row& row) {
     }
     void* const prop = FindKerfurProp(g_kerfurId);
     if (!prop) {
-        if (HExpired(kAnnounceBoundMs)) HostFail(&row, "the turned-off kerfur's prop was never found");
+        if (HExpired(kAnnounceBoundMs)) HostInvalid(&row, "the turned-off kerfur's prop was never found");
         return false;
     }
     g_target.Set(prop);
@@ -197,6 +234,8 @@ void SayReady(const Row& row) {
     g_base = TakeBaseline(row, g_eid, g_eid2);
     std::string line = ReadyHead(row) + std::to_string(Wire(g_eid));
     if (g_eid2 != EL::kInvalidId) line += " eid2=" + std::to_string(Wire(g_eid2));
+    if (row.snack) line += SnackReadyTail(g_target.Get());
+    if (row.ends == Ends::Opened) MreHostReady();
     Say(line);
     UE_LOGI("%s host %s said ready: eid %u", kTag, row.name, Wire(g_eid));
     HEnter(row.grab ? HStep::AwaitGrab : HStep::AwaitDone);
@@ -253,6 +292,7 @@ void ResetStep() {
     g_eid = g_eid2 = g_kerfurId = EL::kInvalidId;
     g_turnedOff = false;
     g_prepMs = 0;
+    SnackStepReset();
 }
 
 void HostTick(coop::net::Session* s, const Phase& ph) {
@@ -276,6 +316,12 @@ void HostTick(coop::net::Session* s, const Phase& ph) {
         HEnter(HStep::Spawn);
         return;
     case HStep::Spawn: {
+        // A row's target is placed by slot 1's puppet, so the next row waits for the line that says the client stands (a
+        // ragdolled puppet lies at floor level): an event, with a bound that only says INVALID. The first row has none.
+        if (g_hrow > 0 && !ClientSaid(kClientSlot, UprightHead(ph.rows[g_hrow - 1]), nullptr)) {
+            if (HExpired(kDoneBoundMs)) HostInvalid(&row, "the client never said its player stood after the step before");
+            return;
+        }
         if (row.target == Target::Client) {
             // The client makes this step's target; the counters are taken now and the client acts on the line.
             SayReady(row);
@@ -283,14 +329,14 @@ void HostTick(coop::net::Session* s, const Phase& ph) {
         }
         void* actor = nullptr;
         if (const char* why = SpawnTarget(row, 0.f, &actor)) {
-            HostFail(&row, why);
+            if (const char* bad = InvalidText(why)) HostInvalid(&row, bad); else HostFail(&row, why);
             return;
         }
         g_target.Set(actor);
         if (row.target == Target::HostTwo) {
             void* second = nullptr;
             if (const char* why = SpawnTarget(row, kPairGapCm, &second)) {
-                HostFail(&row, why);
+                if (const char* bad = InvalidText(why)) HostInvalid(&row, bad); else HostFail(&row, why);
                 return;
             }
             g_target2.Set(second);
@@ -315,7 +361,8 @@ void HostTick(coop::net::Session* s, const Phase& ph) {
             if (!g_prepMs) g_prepMs = now;
             bool done = false;
             if (const char* why = row.hostPrep(actor, since, &done)) {
-                HostFail(&row, why);
+                if (const char* bad = InvalidText(why)) HostInvalid(&row, bad);   // a bound, not a verdict
+                else HostFail(&row, why);
                 return;
             }
             if (!done) return;
@@ -332,10 +379,10 @@ void HostTick(coop::net::Session* s, const Phase& ph) {
         if (!ClientSaid(kClientSlot, DragHead(row, false) + "grabbed", nullptr)) {
             std::string failed;
             if (ClientSaid(kClientSlot, DoneHead(row), &failed)) {
-                HostFail(&row, "the client reported: " + failed);
+                HostReported(&row, failed);
                 return;
             }
-            if (HExpired(kDoneBoundMs)) HostFail(&row, "the client never grabbed the prop");
+            if (HExpired(kDoneBoundMs)) HostInvalid(&row, "the client never grabbed the prop");
             return;
         }
         HEnter(HStep::AwaitDrive);
@@ -347,7 +394,7 @@ void HostTick(coop::net::Session* s, const Phase& ph) {
             return;
         }
         if (!PRP::IsActorDrivenByOtherThan(actor, -1)) {
-            if (HExpired(kDragBoundMs)) HostFail(&row, "the host never saw the drag");
+            if (HExpired(kDragBoundMs)) HostInvalid(&row, "the host never saw the drag");
             return;
         }
         UE_LOGI("%s host %s: the dragged prop is driven by another peer (host copy simulating=%d)", kTag, row.name,
@@ -357,13 +404,22 @@ void HostTick(coop::net::Session* s, const Phase& ph) {
         return;
     }
     case HStep::AwaitDone: {
+        // The host's own events first: a snack's `settled` and an MRE's contents line, which the client decides on, and the
+        // MRE's commit processed with no open, which ends the phase here.
+        if (row.snack) SnackHostMarker(row, g_eid, g_base);
+        if (row.ends == Ends::Opened) {
+            if (const char* why = MreHostWatch(row, g_eid, g_base)) {
+                HostFail(&row, why);
+                return;
+            }
+        }
         std::string rest;
         if (!ClientSaid(kClientSlot, DoneHead(row), &rest)) {
-            if (HExpired(kDoneBoundMs)) HostFail(&row, "the client never said it was done");
+            if (HExpired(kDoneBoundMs)) HostInvalid(&row, "the client never said it was done");
             return;
         }
         if (rest != "ok") {
-            HostFail(&row, "the client reported: " + rest);
+            HostReported(&row, rest);
             return;
         }
         HEnter(HStep::Judge);
@@ -373,7 +429,7 @@ void HostTick(coop::net::Session* s, const Phase& ph) {
         std::string why;
         switch (ph.judge(row, g_eid, g_base, &why)) {
         case Judged::Wait:
-            if (HExpired(kJudgeBoundMs)) HostFail(&row, "still waiting: " + why);
+            if (HExpired(kJudgeBoundMs)) HostInvalid(&row, "still waiting: " + why);
             return;
         case Judged::Fail:
             HostFail(&row, why);
@@ -385,6 +441,7 @@ void HostTick(coop::net::Session* s, const Phase& ph) {
                 HEnter(HStep::Spawn);
                 return;
             }
+            HostEnds(End::Pass, "all steps held");
             UE_LOGI("%s host %s PASS -- all %u steps held", kTag, ph.name, static_cast<unsigned>(ph.count));
             g_hstep = HStep::Done;
             return;
@@ -481,11 +538,12 @@ const char* SpawnTarget(const Row& row, float extraCm, void** out) {
     static const char* const kMiss[] = {"floor", "trace did not run", "no hit", "starts inside geometry"};
     DP::FloorMiss facing = DP::FloorMiss::None, own = DP::FloorMiss::None;
     float z = 0.f;
-    DP::FloorAt(player, at.X + fwd.X / len * kAheadCm[0], at.Y + fwd.Y / len * kAheadCm[0], at.Z, kFloorDownCm,
+    DP::FloorAt(player, at.X + fwd.X / len * kAheadCm[0], at.Y + fwd.Y / len * kAheadCm[0], at.Z,
+                kFloorDownCm,
                 kMinColumnCm, &z, &facing);
     DP::FloorAt(player, at.X, at.Y, at.Z, kFloorDownCm, kMinColumnCm, &z, &own);
-    static char why[200];
-    std::snprintf(why, sizeof why, "no floor a route reaches was found round slot 1's puppet (puppet at %.0f %.0f "
+    static char why[220];
+    std::snprintf(why, sizeof why, "INVALID: no floor a route reaches was found round slot 1's puppet (puppet at %.0f %.0f "
                   "%.0f; facing column: %s; own column: %s)", at.X, at.Y, at.Z, kMiss[static_cast<int>(facing)],
                   kMiss[static_cast<int>(own)]);
     return why;

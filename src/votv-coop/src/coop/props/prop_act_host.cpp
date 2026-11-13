@@ -14,13 +14,16 @@
 #include "coop/net/session.h"
 #include "coop/player/players_registry.h"
 #include "coop/player/roster_ledger.h"
+#include "coop/props/host_spawn_watcher.h"
 #include "coop/props/prop_hold.h"
 #include "coop/props/prop_sound.h"
 #include "coop/props/remote_prop.h"
+#include "coop/props/snack_act.h"
 
 #include "ue_wrap/actors/prop.h"
 #include "ue_wrap/actors/prop_gather.h"
 #include "ue_wrap/actors/prop_use.h"
+#include "ue_wrap/actors/snack.h"
 #include "ue_wrap/core/cached_obj_ref.h"
 #include "ue_wrap/core/hot_path_guard.h"
 #include "ue_wrap/core/log.h"
@@ -60,7 +63,7 @@ struct Queued {
 };
 
 constexpr int kWaitCauses = static_cast<int>(WaitCause::kCount);
-constexpr int kCommitSteps = 4;
+constexpr int kCommitSteps = 6;
 
 struct Slot {
     coop::net::IntentQueue<Queued> queue;
@@ -77,7 +80,10 @@ uint32_t g_tally[static_cast<int>(Tally::kCount)] = {};
 coop::net::RefusalTally g_refusals{"prop_act"};
 
 bool InRoster(int slot) { return slot >= 1 && slot < coop::net::kMaxPeers; }
-bool IsHost() { return g_session && g_session->running() && g_session->role() == coop::net::Role::Host; }
+// Role only for the departure: a stopped session (a teardown) still owes its reservations their release and their tally, as
+// container_act_host's departure does; IsHost also needs the session running.
+bool IsHostRole() { return g_session && g_session->role() == coop::net::Role::Host; }
+bool IsHost() { return IsHostRole() && g_session->running(); }
 coop::net::RefusalTally::Clock::time_point Now() { return coop::net::RefusalTally::Clock::now(); }
 
 // A class by name, re-resolved when the cached one is no longer alive: a world reload can re-create a class.
@@ -87,7 +93,8 @@ void* ResolveClass(ue_wrap::CachedObjRef& ref, const wchar_t* name) {
     return ref.Raw();
 }
 
-// The use family's classes: the ones whose eat the player is offered and whose destroy this lane carries.
+// The use family's classes: the ones whose eat the player is offered and whose use this lane carries (a snack's is
+// applied by coop/props/snack_act, the others destroyed).
 // `foodBody` marks prop_food_C's own row, the one whose `notEdible` the game tests before it eats.
 struct UseClass {
     const wchar_t* name;
@@ -95,13 +102,15 @@ struct UseClass {
     ue_wrap::CachedObjRef cls;
 };
 UseClass g_useClasses[] = {{L"prop_food_C", true, {}}, {L"prop_food_mre_C", false, {}},
-                           {L"prop_sleeppills_C", false, {}}, {L"prop_medkit_pack_C", false, {}}};
+                           {L"prop_sleeppills_C", false, {}}, {L"prop_medkit_pack_C", false, {}},
+                           {L"prop_snack_C", false, {}}};
 
 // An MRE's open and a first aid kit's unpack roll their contents with the game's own `spawn`, which reads nothing of the
 // player. The host runs it on its copy before the destroy, so the contents are host-born and reach every peer; the
 // opener only removes its copy. Both play the MRE's opening.
 ue_wrap::CachedObjRef g_mreClass, g_kitClass;
 uint32_t g_mreOpens = 0;
+void (*g_onHeldAtDeparture)(uint8_t slot, uint32_t eid) = nullptr;   // dev seam, null by default
 
 bool IsMre(void* actor) {
     void* const mre = ResolveClass(g_mreClass, L"prop_food_mre_C");
@@ -130,7 +139,10 @@ ue_wrap::script_gate::Verdict OnMreAchievementPre(const ue_wrap::script_gate::Ca
 // True when the contents were rolled. A roll that cannot run still lets the destroy proceed, so it is tallied.
 bool OpenMre(void* actor, uint8_t slot, uint32_t eid) {
     g_rollingMre = true;
+    // The births of this call are named exactly: the act drill's MRE step says its contents from them.
+    coop::host_spawn_watcher::dev::CaptureBirths(true);
     const bool rolled = ue_wrap::prop_use::CallMreSpawn(actor);
+    coop::host_spawn_watcher::dev::CaptureBirths(false);
     g_rollingMre = false;
     if (!rolled) {
         ++g_tally[static_cast<int>(Tally::MreRollFailed)];
@@ -422,12 +434,15 @@ std::optional<coop::net::PropActReplyPayload> ReplyFor(ActVerdict v, uint16_t id
     return std::nullopt;
 }
 
-CommitStep DecideCommit(bool matched, uint8_t committed, bool liveAndSame) {
+CommitStep DecideCommit(bool matched, uint8_t committed, bool liveAndSame, bool snack, uint8_t flags) {
     if (!matched) return CommitStep::BadCommit;
     if (committed == 0) return CommitStep::Abort;
-    if (committed != 1) return CommitStep::BadCommit;
+    if (committed != 1 && committed != coop::snack_act::kCommitApplied) return CommitStep::BadCommit;
     if (!liveAndSame) return CommitStep::TargetGone;
-    return CommitStep::Destroy;
+    // The flags are a snack's: a commit of the prop's other families carries none and never a 2.
+    if (!snack) return committed == 1 && flags == 0 ? CommitStep::Destroy : CommitStep::BadCommit;
+    if (!coop::snack_act::internal::WellFormedSnackCommit(committed, flags)) return CommitStep::BadCommit;
+    return committed == 1 ? CommitStep::SnackEnded : CommitStep::SnackApplied;
 }
 
 AfterStep AfterDestroy(bool destroyed) { return destroyed ? AfterStep::FanOut : AfterStep::DestroyFailed; }
@@ -450,6 +465,8 @@ const char* CommitName(CommitStep s) {
     case CommitStep::Abort:      return "abort";
     case CommitStep::TargetGone: return "target-gone";
     case CommitStep::Destroy:    return "destroy";
+    case CommitStep::SnackEnded:   return "snack-ended";
+    case CommitStep::SnackApplied: return "snack-applied";
     }
     return "";
 }
@@ -512,7 +529,10 @@ void OnCommit(const coop::net::PropActCommitPayload& p, uint8_t senderSlot) {
     void* actor = nullptr;
     const bool matched = coop::prop_hold::Match(senderSlot, p.id, p.eid, &actor);
     const bool liveAndSame = actor && actor == coop::element::LivePropActor(p.eid);
-    const internal::CommitStep step = internal::DecideCommit(matched, p.committed, liveAndSame);
+    // A snack's own commit words are for a USE grant alone: the pocket and the hold of a snack keep the destroy path.
+    const bool snackUse = liveAndSame && g_slots[senderSlot].grantedFamily == static_cast<uint8_t>(PropActFamily::Use) &&
+                          ue_wrap::snack::IsSnack(actor);
+    const internal::CommitStep step = internal::DecideCommit(matched, p.committed, liveAndSame, snackUse, p.flags);
     ++g_slots[senderSlot].commits[static_cast<int>(step)];
     if (step == internal::CommitStep::BadCommit) {
         // An unmatched commit owns nothing; a matched one with a bad byte keeps its reservation for the real commit.
@@ -524,11 +544,21 @@ void OnCommit(const coop::net::PropActCommitPayload& p, uint8_t senderSlot) {
     case internal::CommitStep::BadCommit:
         return;
     case internal::CommitStep::Abort:
+        // A snack's use that aborted may have run the eater on the client's copy (an unreadable copy aborts): the host's
+        // state is published so that copy is put back.
+        if (snackUse) coop::snack_act::NoteAborted(actor);
         ReleaseFor(senderSlot);
         LogCommit(senderSlot, p, internal::CommitName(step));
         return;
     case internal::CommitStep::TargetGone:
         ++g_tally[static_cast<int>(Tally::TargetGone)];
+        ReleaseFor(senderSlot);
+        LogCommit(senderSlot, p, internal::CommitName(step));
+        return;
+    case internal::CommitStep::SnackEnded:
+    case internal::CommitStep::SnackApplied:
+        // The reservation is released after the apply, which may end the host's copy; the apply never reads it.
+        coop::snack_act::OnCommit(g_session, actor, p, senderSlot);
         ReleaseFor(senderSlot);
         LogCommit(senderSlot, p, internal::CommitName(step));
         return;
@@ -565,13 +595,14 @@ void OnCommit(const coop::net::PropActCommitPayload& p, uint8_t senderSlot) {
 // MTA releases a departed ped's vehicle in the element's destructor (CPed.cpp:92-127); the roster's departure is the
 // destructor here.
 void OnPeerGone(uint8_t slot) {
-    if (!IsHost() || !InRoster(slot)) return;
+    if (!IsHostRole() || !InRoster(slot)) return;
     if (!coop::prop_hold::ReservationCount(slot)) return;
     const uint32_t eid = coop::prop_hold::ReservedEid(slot);
     ++g_tally[static_cast<int>(Tally::HeldAtDisconnect)];
     UE_LOGI("prop_act: slot %u left holding a reservation (eid %u) -- released", static_cast<unsigned>(slot),
             static_cast<unsigned>(eid));
     ReleaseFor(slot);
+    if (g_onHeldAtDeparture) g_onHeldAtDeparture(slot, eid);
 }
 
 const char* TallyName(Tally t) {
@@ -616,6 +647,8 @@ uint32_t TallyOf(Tally t) { return t < Tally::kCount ? g_tally[static_cast<int>(
 uint32_t MreOpens() { return g_mreOpens; }
 
 namespace dev {
+
+void SetOnHeldAtDeparture(void (*fn)(uint8_t slot, uint32_t eid)) { g_onHeldAtDeparture = fn; }
 
 bool CensusFits(void* actor, uint8_t family, Tally* first) {
     std::optional<Tally> why;

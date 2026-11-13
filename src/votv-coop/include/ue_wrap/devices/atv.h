@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "ue_wrap/core/reflection.h"  // FName (ModuleByName)
 #include "ue_wrap/core/types.h"  // FVector, FRotator
 
 #include <cstddef>
@@ -59,6 +60,52 @@ bool IsDriven(void* atv);
 float GetFuel(void* atv);    // fuel, 0..100
 float GetHealth(void* atv);  // health, 0..100
 bool  GetBrake(void* atv);   // the handbrake
+
+// The seated driver's controls on this copy: the lights (`lights`) and the turbo (`turbo`), as the brake above. False on
+// null, an unresolved ATV_C or a class without the property. Game thread.
+bool  GetLights(void* atv);
+bool  GetTurbo(void* atv);
+
+// The ATV's own bodies for those three on a copy nobody drives, each a write of the field and then the game's function
+// that acts on it: `lights` then `Upd Lights` (which clears it again on a flat battery), `Brake` then `setBrake`, and the
+// turbo as the key sets it (`turbo` true, `Speed` := `speed_turbo`) or `unturbo` for off. False, and nothing written, on
+// null, an unresolved field or a function that did not dispatch. Game thread.
+bool  SetLights(void* atv, bool on);
+bool  SetBrake(void* atv, bool on);
+bool  SetTurbo(void* atv, bool on);
+
+// The ATV's vitals as the game keeps them: `fuel` and `health` (floats), and the `empty` and `brokenn` marks (bool bits).
+// The writers write the field alone: the game's own `fuelUp` and `toolboxFix` also clear the mark, so a caller that
+// mirrors them clears it itself, and `CallUpdHealth` is the game's repaint of a health written (smoke, the -1 floor).
+// False on null, an unresolved ATV_C or a class without the property (said once at the resolve). Game thread.
+bool  SetFuel(void* atv, float v);
+bool  SetHealth(void* atv, float v);
+bool  GetEmpty(void* atv);
+bool  SetEmpty(void* atv, bool v);
+bool  GetBroken(void* atv);
+bool  SetBroken(void* atv, bool v);
+bool  CallUpdHealth(void* atv);
+
+// The fitted modules: the live `Modules` array, one byte per module VALUE (the game's enum_physicalModules; each is the
+// value `physModToActor` maps to the module's prop class). ReadModules copies at most `cap` into `out` and returns how
+// many the ATV holds (it may exceed `cap`), or -1 when unreadable. WriteModules writes the array into its own buffer when
+// the capacity holds it, else into a new engine buffer with the replaced one freed (save_record::ReplaceByteArray), and then
+// runs the ATV's own `updUpgrades`, which fits or takes off every part to match. ModuleByName maps a module's prop name, the FName
+// `upgradeTake` is called with, to its value through the ATV's own `upgradesNames`, which parallels `Modules`; false when
+// the ATV holds no part of that name. Game thread.
+int   ReadModules(void* atv, uint8_t* out, int cap);
+bool  WriteModules(void* atv, const uint8_t* mods, int count);
+bool  ModuleByName(void* atv, const reflection::FName& name, uint8_t& value);
+
+// The ATV's own horn on this copy: the honk key's press or release event, which also writes `input_alt` and, with the Fly
+// module fitted, Fly's `fly` flag (measured on a copy nobody drives). Both are put back as they were in the same frame, so
+// the replay sounds the horn and leaves the copy's own controls alone. False when the event did not dispatch. Game thread.
+bool  ReplayHorn(void* atv, bool press);
+
+// The ATV's own `checkIfRunout`: it calls `runout` when the tank or the health is down. The guard after fuel or health
+// is lowered from outside the game's own tick. False on null, an unresolved function or a call that did not dispatch.
+// Game thread.
+bool  CheckIfRunout(void* atv);
 
 // The story event's flag: while it is set the ATV's own tick explodes it (health to 0, then `explode`) once its driver
 // has moved. Resolved by name with no fallback; both return false, and touch nothing, on null, an unresolved ATV_C or a

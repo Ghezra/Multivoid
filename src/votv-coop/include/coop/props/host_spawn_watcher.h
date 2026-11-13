@@ -16,7 +16,10 @@
 
 #pragma once
 
+#include "ue_wrap/core/cached_obj_ref.h"
+
 #include <cstddef>
+#include <vector>
 
 namespace coop::net { class Session; }
 
@@ -70,5 +73,12 @@ size_t PendingCapDrops();
 // mirror-spawn scope, which is all it needs, since every connected peer broadcasts its own
 // ambient spawns. Net disconnect.
 void OnDisconnect();
+
+namespace dev {   // the act drill's MRE step reads this
+// While on, every spawn finished on the game thread is recorded, whatever the filters after it decide; turning it on
+// clears the record. prop_act_host brackets the MRE's roll with it, so the record is exactly the actors that call made.
+void CaptureBirths(bool on);
+const std::vector<ue_wrap::CachedObjRef>& CapturedBirths();
+}  // namespace dev
 
 }  // namespace coop::host_spawn_watcher

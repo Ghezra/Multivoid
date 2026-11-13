@@ -183,12 +183,15 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/drill_props.cpp
     src/coop/dev/prop_act_drill.cpp
     src/coop/dev/prop_act_drill_client.cpp
+    src/coop/dev/prop_act_drill_client_steps.cpp
     src/coop/dev/prop_act_drill_depart.cpp
     src/coop/dev/prop_act_drill_edge.cpp
     src/coop/dev/prop_act_drill_edge_client.cpp
     src/coop/dev/prop_act_drill_honest.cpp
+    src/coop/dev/prop_act_drill_mre.cpp
     src/coop/dev/prop_act_drill_race.cpp
     src/coop/dev/prop_act_drill_race_client.cpp
+    src/coop/dev/prop_act_drill_snack.cpp
     src/coop/dev/prop_syncer_drill.cpp
     src/coop/dev/prop_syncer_drill_host.cpp
     src/coop/dev/prop_syncer_drill_observer.cpp
@@ -319,6 +322,11 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/pile_defer_drill_host.cpp
     src/coop/dev/client_model_probe.cpp
     src/coop/dev/atv_eject_drill.cpp
+    src/coop/dev/atv_gate_drill.cpp
+    src/coop/dev/atv_gate_drill_forged.cpp
+    src/coop/dev/atv_gate_drill_joiner.cpp
+    src/coop/dev/atv_gate_drill_acts.cpp
+    src/coop/dev/atv_gate_drill_steps.cpp
     src/coop/dev/atv_probe.cpp
     src/coop/dev/atv_seat.cpp
     src/coop/dev/atv_tire_probe.cpp

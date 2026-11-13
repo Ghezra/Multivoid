@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 308;
+inline constexpr uint16_t kProtocolVersion = 309;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -756,7 +756,7 @@ enum class ReliableKind : uint16_t {
     // copy, so the item lands in that player's inventory and nowhere else. A refused op 0 is not
     // answered: the copy stays and the player may use it again. Never relayed; not pre-world. Late join:
     // none, the save carries the hooks that stand. HookRetrievePayload.
-    HookRetrieve = 252,
+    HookRetrieve = 254,
 
     // Host to all: the driven prop at eid has come to rest, or a hand took it -- its final pose and
     // velocity, and the claim generation its stream carried. A receiver hands the prop its physics
@@ -1258,7 +1258,7 @@ enum class ReliableKind : uint16_t {
     // a ten-second bound cancels it. A client's copy is relayed to the other clients, on the lane of the release it
     // follows by at least the rest time; a settle that still passes its release is dropped as no released hold.
     // Not pre-world. Late join: none, the snapshot carries the host's pose. PropSettlePayload.
-    PropSettle = 237,
+    PropSettle = 241,
     // HOST->ALL: a world food's temperature, ripeness and use count, sent when they move, and its poison (the two floats a
     // bite adds as an effect), which every send carries. A client's food is refused its tick at the gate, so these are its
     // values. Not pre-world. Late join: every food again at the joiner's ready edge, on the poll's budget, poison included.
@@ -1277,12 +1277,12 @@ enum class ReliableKind : uint16_t {
     // ANY->ALL: this peer's player changed a microwave's or a mini oven's setting, started or stopped it, opened or
     // closed a microwave's door, or changed a grill's coals, fire
     // or lid; the host's burn of a grill's coals goes the same way. A client's copy is relayed. Not pre-world. Late join: every machine not at its defaults, at the ready edge. KitchenStatePayload.
-    KitchenState = 238,
+    KitchenState = 242,
     // HOST->ALL: a placed radio's or TV's track, time, play state and mode, and a TV's channel and picture, on a change and
     // every few seconds while it plays. A track is a hash a peer looks up in its own catalog. CLIENT->HOST: what this
     // client's player changed through its interface; never relayed, the host's next state answers. Not pre-world. Late join: every device again at
     // the ready edge. MediaDeviceStatePayload.
-    MediaDeviceState = 239,
+    MediaDeviceState = 243,
     // HOST->ALL: a plant's identity, place and values, at once on an edge a viewer sees and every few seconds while it changes,
     // or its end. Not relayed, not pre-world. Late join: every plant again at the ready edge. PlantStatePayload.
     PlantState = 224,
@@ -1294,44 +1294,35 @@ enum class ReliableKind : uint16_t {
     // HOST->ALL: a keyed prop of the host's burns, with its flame's fuel and speed, at the edge, on a refuel and every 2 s while
     // it burns, or it stopped. A client's copy shows that flame and burns nothing down. Not relayed, not pre-world. Late join:
     // every burning prop again at the ready edge. PropFirePayload.
-    PropFireState = 240,
+    PropFireState = 244,
     // CLIENT->HOST: this client's player lit a keyed prop with a lighter or a torch, with the fuel the light gives. Never relayed;
     // the host lights its own copy and its next PropFireState answers. PropFirePayload.
-    PropFireRequest = 241,
+    PropFireRequest = 245,
     // HOST->ALL: a finished garden hose of the host's, as its own save record, when it is new or changed, or its key once
     // when it went. A client lays it on its copy, tied to its faucet and sprinkler. Not relayed, not pre-world. Late
     // join: every hose again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
-    GroundHoseState = 242,
+    GroundHoseState = 246,
     // CLIENT->HOST: a hose this client's player finished laying or changed (op 1, its record), or took up (op 2). Never
     // relayed; the host lays or takes up its own and its next GroundHoseState answers. BlobChunkPayload, as above.
-    GroundHoseIntent = 243,
+    GroundHoseIntent = 247,
     // HOST->ALL: a piece of the host's a player built -- a nail, or a custom wall unfinished, wet or finished -- as its own
     // save record, when it is new or changed, or its key once when it went. A client makes it on its copy, or applies the
     // record to its piece of that key, a nail tied to the actors its keys name there. Not relayed, not pre-world. Late join:
     // every piece again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
-    BuildState = 244,
+    BuildState = 248,
     // CLIENT->HOST: a piece this client's player made (op 1, its record), took away (op 2), a wall it hit or repaired
     // (op 3, [f32] the health it lost, negative, or gained), or a nail its pull snapped (op 4). Never relayed; the host
     // makes, destroys, hits, repairs or snaps its own and its BuildState answers. BlobChunkPayload, as above.
-    BuildIntent = 245,
-    // HOST->ALL: an ATV of the host's beyond its rig -- its fuel and health with the count of gains the host applied, its
-    // modules, lights, brake and turbo, and whether it is empty or broken -- when any changes, every 2 s, and every ATV
-    // again at the ready edge (op 0); or its horn pressed or released by a driver, to every peer but that driver (op 1,
-    // 2). A client's copy takes it. Not relayed, not pre-world. AtvHostPayload.
-    AtvHostState = 246,
-    // CLIENT->HOST: this client's player refuelled or repaired an ATV (op 1, 2, the gain), fitted or took off a module
-    // (op 3, 4), or, seated, changed its lights, brake or turbo (op 5) or pressed or released its horn (op 6, 7). Never
-    // relayed; the host does it on its own copy, and its AtvHostState answers. AtvHostPayload.
-    AtvRequest = 247,
+    BuildIntent = 249,
     // HOST->ALL: a garbage container's contents (the keys of the props its itemsInside lists, the first
     // kGarbageBinKeys of them) and whether it can be held and collected, when any changes, and every container again
     // at the ready edge. A client's copy writes the flags and glues the props as the container's own glue does. Not
     // relayed, not pre-world. GarbageBinPayload.
-    GarbageBinState = 248,
+    GarbageBinState = 250,
     // CLIENT->HOST: a container this client authors (it holds it, threw it or syncs it) took a lethal impact or fire
     // here, which the client cancelled, or its hacksaw cut it (sawn). The host breaks its own copy by the same lethal
     // call, or as the saw does, so the spill is the host's. Never relayed. ContainerBreakPayload.
-    ContainerBreakRequest = 249,
+    ContainerBreakRequest = 251,
     // CLIENT->HOST: this client's player pressed the toolgun's prop-properties tool on a keyed prop, with the tool's
     // own static, frozen, active and sleep, seen from this camera point at this hit point. The host judges the sender's
     // right, a toolgun in its hand, who holds the prop and the sight, applies the tool's values through the game's
@@ -1370,6 +1361,16 @@ enum class ReliableKind : uint16_t {
     // tank; for a feed, its own chipper running and its own copy of the prop near the box), does it on its chipper, and
     // its WoodchipperState answers, to the sender alone when it refused. WoodchipperPayload.
     WoodchipperIntent = 233,
+    // HOST->ALL: an ATV of the host's beyond its rig -- its fuel and health, its modules, whether it is empty or broken
+    // and its state sequence (op 16) -- when one of them changed, and every ATV again at a joiner's ready edge, to that
+    // slot alone; the answer to a client's request, to its sender alone (op 17, the request's id, the verdict and the
+    // host copy's state). A client's copy takes it. Not relayed, not pre-world. AtvHostPayload.
+    AtvHostState = 240,
+    // CLIENT->HOST: this client's player refuelled or repaired an ATV (op 1, 2, the gain), fitted or took off a module
+    // (op 3, 4, the module's value), each with a request id, or adopted a copy holding no state of the host's and asks
+    // for it (op 6, with a request id). Never relayed, never relayable; the host judges it on the game thread, writes its
+    // own copy and answers every request. AtvHostPayload. The syncer's horn is no message: it rides AtvState's stateBits.
+    AtvRequest = 239,
 
     // CLIENT->HOST: this client pressed a coffee vending machine or a coffee maker (action 4), which its own copy
     // refused to run. The host resolves the device by its key, judges the sender's reach and that the key is
@@ -1476,27 +1477,27 @@ enum class ReliableKind : uint16_t {
     // HOST->ALL: the host's base computer shorted (a liquid on it, the host's own or a client's it judged): every client
     // runs its own copy's shortCircuit, which sparks and then puts the base on solar power. Never relayed, not pre-world,
     // nothing at late join (the short is over in ten seconds). DeskShortPayload.
-    DeskShortState = 250,
+    DeskShortState = 252,
     // CLIENT->HOST: this client's liquid shorted its copy of the base computer. The host checks the sender's world and
     // reach and runs its own desk's shortCircuit, whose DeskShortState answers. Never relayed. DeskShortPayload.
-    DeskShortRequest = 251,
+    DeskShortRequest = 253,
     // HOST->ALL: the cargo lift's direction (cargoLift_C's `dir`, the base's elevator) after a press, keyed by the lift's
     // level-export name. Host-authored: a client's copy is refused at the host's receive edge; never relayed; not
     // pre-world (a pre-world copy waits for its index). A client presses its own copy to the direction, once that copy
     // has stopped. Late join: the connect snapshot sends every indexed lift's direction at the joiner's world-ready edge.
     // KeyedTogglePayload; its action is the direction (1 up, 0 down).
-    CargoLiftState = 253,
+    CargoLiftState = 255,
     // CLIENT->HOST: a client pressed the cargo lift's call button; its action is the direction the press wants. The host
     // resolves the lift by its key, judges the sender's reach and that its own lift is not moving, and presses it; the
     // run reaches every peer as CargoLiftState. Never relayed; not pre-world; a press whose sender has no body on the
     // host yet waits in its queue. Late join: none, a press is an act. KeyedTogglePayload.
-    CargoLiftIntent = 254,
+    CargoLiftIntent = 256,
     // HOST->CLIENT: the black orb's encounter (npc_orborb_C), which the host judges (coop/creatures/orb_authority).
     // Begin, to every client: the host's orb began its encounter, and each client's copy runs its own begin. Death, to
     // the toucher alone: the orb caught that player, whose machine answers the run's end as a death. Never relayed; not
     // pre-world (a Begin for a copy not yet made is dropped). Late join: none, an encounter is ten seconds. Host-
     // authored: a client's copy is refused at the host's receive edge. OrbEventPayload.
-    OrbEvent = 255,
+    OrbEvent = 257,
     // HOST->CLIENT: the gamemode's ambient UFOs (coop/world/ufo_sync). A path, to every client after the UFO's
     // WorldActorSpawn: what the host's copy rolled at its birth (a ball's turn and two ends, a boo's flight spline in
     // chunks of 16 points), written over the client copy's own roll so every copy flies one path. MidasRun, to every
@@ -1504,7 +1505,7 @@ enum class ReliableKind : uint16_t {
     // pre-world (a path for a copy not yet made waits ten seconds). Late join: the host sends the path of every UFO
     // still flying and the Midas run while it lasts. Host-authored: a client's copy is refused at the host's receive
     // edge. UfoEventPayload.
-    UfoEvent = 256,
+    UfoEvent = 258,
 };
 
 #pragma pack(push, 1)
@@ -2350,28 +2351,6 @@ struct PropFirePayload {
 };
 static_assert(sizeof(PropFirePayload) == 44, "PropFirePayload must be 44 bytes");
 
-// An ATV's host state (AtvHostState), or a client's request (AtvRequest).
-namespace atv_host_op {
-inline constexpr uint8_t kState = 0, kStateHornPress = 1, kStateHornRelease = 2;   // AtvHostState
-inline constexpr uint8_t kFuelGain = 1, kHealthGain = 2, kModuleAdd = 3, kModuleRemove = 4, kControls = 5,
-                         kHornPress = 6, kHornRelease = 7;                         // AtvRequest
-}  // namespace atv_host_op
-inline constexpr uint8_t kAtvHostLights = 0x01, kAtvHostBrake = 0x02, kAtvHostTurbo = 0x04, kAtvHostEmpty = 0x08,
-                         kAtvHostBroken = 0x10;
-struct AtvHostPayload {
-    WireKey  key;          // 32 -- the ATV's Key
-    float    fuel;         // 4 -- the host's fuel (state)
-    float    health;       // 4 -- the host's health (state)
-    float    amount;       // 4 -- a refuel's or a repair's gain (request)
-    uint32_t gen;          // 4 -- the gains the host applied to this ATV (state)
-    uint8_t  op;           // 1 -- atv_host_op
-    uint8_t  flags;        // 1 -- kAtvHost*: the state's, or the controls a driver asks for
-    uint8_t  module;       // 1 -- a fitted or taken-off module (request)
-    uint8_t  moduleCount;  // 1 -- how many of `modules` are fitted (state)
-    uint8_t  modules[16];  // 16 -- the fitted modules, in the ATV's order (state)
-};
-static_assert(sizeof(AtvHostPayload) == 68, "AtvHostPayload must be 68 bytes");
-
 // A garbage container's state (GarbageBinState).
 inline constexpr size_t kGarbageBinKeys = 5;
 inline constexpr uint8_t kGarbageBinCanHold = 0x01, kGarbageBinCanCollect = 0x02;
@@ -3001,10 +2980,14 @@ struct PropActReplyPayload {
 };
 static_assert(sizeof(PropActReplyPayload) == 4, "PropActReplyPayload must be 4 bytes");
 
+// `committed` 1 means the verb ran and the prop is gone on the client, 0 that it aborted, and 2 (a snack only) that the
+// eater ran and the client's copy lives. `flags` is a snack's report of what the replay changed on its copy: bit 0 a use
+// was spent, bit 1 a bottle was opened; a snack's commit of 1 carries exactly bit 0, of 2 any of the two, and every
+// other prop's commit carries none (a snack's commit outside this, or a 2 on another prop, is malformed and kept as one).
 struct PropActCommitPayload {
     uint16_t id;         // 2 -- the granted request's id
-    uint8_t  committed;  // 1 -- 1 the verb ran and the prop is gone on the client, 0 aborted
-    uint8_t  pad;        // 1 -- zeroed
+    uint8_t  committed;  // 1 -- 0 aborted, 1 the prop is gone on the client, 2 a snack's copy lives
+    uint8_t  flags;      // 1 -- a snack's changes (bit 0 spent, bit 1 opened); zeroed for any other prop
     uint32_t eid;        // 4 -- the prop's Element id
 };
 static_assert(sizeof(PropActCommitPayload) == 8, "PropActCommitPayload must be 8 bytes");
@@ -3494,14 +3477,15 @@ struct AtvStatePayload {
                            //      it, so a peer merely GRABBING the ATV must not appear here.
     uint8_t  syncerSlot;   // 1  -- who writes this ATV's pose and condition, assigned by the host: 0 = the
                            //      host itself, k = client slot k
-    uint8_t  stateBits;    // 1  -- bit0=isDriven, bit1=brake, bit2=grabbed (the sender's grav hand holds it),
-                           //      bit3=kAtvFromSyncer, bit4=kAtvTrap
+    uint8_t  stateBits;    // 1  -- bit0=isDriven, bit1=kAtvBrake, bit2=grabbed (the sender's grav hand holds it),
+                           //      bit3=kAtvFromSyncer, bit4=kAtvTrap, bit5=kAtvLights, bit6=kAtvTurbo, bit7=kAtvHorn
     uint8_t  adopt;        // 1  -- 1 = host connect-snapshot (warp as is), 0 = live stream
     uint8_t  passengerSlot; // 1 -- the host's stamp: the peer slot in the passenger spot (0xFF = free), the seat
                            //      behind the driver a riding kerfur takes
     uint8_t  pad[3];       // 3  -- zero
-    // The condition block: the syncer's accumulators travel; a mirror's own accrual is held at zero,
-    // so overwriting never races an irreversible act. Presence (tiresMask, hasSpare) is consumed
+    // The condition block: the tires' and dirt's accumulators travel from the syncer (fuel and health are the host
+    // copy's absolute, a client syncer's burn taken only under its ack, see ackSeq); a mirror's own accrual is held at
+    // zero, so overwriting never races an irreversible act. Presence (tiresMask, hasSpare) is consumed
     // from the host's own copy only: a client's eject ships a mask bit whose wheel-prop birth
     // cannot travel, and applying it would turn a divergence into persisted item loss.
     float    tiresDurability[4];  // 16 -- 0..100 per wheel (order: the game's tires[] index order)
@@ -3510,7 +3494,7 @@ struct AtvStatePayload {
     float    spareDurability;     // 4  -- spareTire_durability (no visual consumer; value truth)
     float    spareDirt;           // 4  -- spareTire_dirt
     float    fuel;                // 4  -- 0..100
-    float    health;              // 4  -- -1..100 as a client syncer may send it; the syncer's own, a mirror's stale
+    float    health;              // 4  -- -1..100 as a client syncer may send it; the host copy's own is the truth
     uint8_t  tiresMask;           // 1  -- bit i = tires[i] (PRESENCE -- the host's own copy only)
     uint8_t  tiresValid;          // 1  -- 0 = the producer could not read the arrays; the receiver touches nothing (mask 0
                                   //      is a legal state, all four ejected, so absence needs its own bit)
@@ -3520,8 +3504,12 @@ struct AtvStatePayload {
     int8_t   tiresFixes[4];       // 4  -- per-wheel repair countdown (int32 in-game, int8 on wire)
     uint8_t  tiresTypes[4];       // 4  -- setWheelsType input (zero runtime writers measured; kept
                                   //      because it IS reducer input and 4 B closes the class)
+    uint32_t ackSeq;              // 4  -- a client syncer: the newest AtvHostState stateSeq whose vitals it APPLIED for this
+                                  //      ATV (0 until the first). The host: its own copy's current stateSeq, on its re-send
+                                  //      of a syncer's block and on every block of its own copy. The host takes a client
+                                  //      syncer's fuel and health only from a block whose ackSeq is its current stateSeq.
 };
-static_assert(sizeof(AtvStatePayload) == 152, "AtvStatePayload must be 152 bytes");
+static_assert(sizeof(AtvStatePayload) == 156, "AtvStatePayload must be 156 bytes");
 
 // stateBits bit 3: the block is the syncer's, re-sent by the host (a client syncer's pose and condition), not the
 // host's own copy. A receiver applies the pose and condition of such a block to an ATV it does not sync; the host's
@@ -3531,6 +3519,19 @@ constexpr uint8_t kAtvFromSyncer = 0x08;
 // stateBits bit 4: the host's own copy has its `trap` set (the story event's explosion). The host writes it in every
 // block it sends and ignores a client's bit; a client copy takes it from the stamp (atv_sync.cpp).
 constexpr uint8_t kAtvTrap = 0x10;
+
+// stateBits bits 1, 5, 6 and 7: the syncer's own copy's brake, lights, turbo and horn, written at each block build. The host
+// takes them from an admitted block and applies a change to its copy; its re-send carries exactly these four to the others
+// (bits 0 and 2 are the syncer's own, read by the host's judgement only). The horn is a LEVEL, as MTA's full keysync
+// carries it (the pad's ShockButtonL, reference/mtasa-blue/Shared/mods/deathmatch/logic/Utils.cpp:798 read, :815 write):
+// the syncer latches a press until one block has carried it and the block clears the latch, so a tap between two blocks
+// is still sent, and a change of any of these bits makes the syncer's next block due at once, once per change. This
+// replaces our earlier edge request. A receiver replays the horn on a change of the level (atv_stream_gates.cpp).
+constexpr uint8_t kAtvBrake = 0x02;
+constexpr uint8_t kAtvLights = 0x20;
+constexpr uint8_t kAtvTurbo = 0x40;
+constexpr uint8_t kAtvHorn = 0x80;
+constexpr uint8_t kAtvControlBits = kAtvBrake | kAtvLights | kAtvTurbo | kAtvHorn;
 
 // An ATV (AtvSpawn): the host ATV's own game Key and its class, so the receiver spawns the exact skin
 // under that Key. The Key is at most 31 chars (an ATV's is 22, or "ATV"); a receiver drops a longer one.
@@ -4146,6 +4147,38 @@ struct WoodchipperFeedTail {
     WireKey prop;      // 32 -- the fed prop's key
 };
 static_assert(sizeof(WoodchipperFeedTail) == 32, "WoodchipperFeedTail must be 32 bytes");
+// An ATV's host state (AtvHostState), or a client's request (AtvRequest). One payload, told apart by `op`: a request's
+// is 1..4 or 6, a state's 16 or 17. The syncer's horn is neither: it is a bit of AtvState's stateBits (kAtvHorn).
+namespace atv_host_op {
+// AtvRequest (client -> host): the four acts of a player's item on an ATV, and a copy's ask for the host's state (kSync: sent
+// when a copy is adopted holding none; the host answers with its state and applies nothing).
+inline constexpr uint8_t kRefuel = 1, kRepair = 2, kFit = 3, kTakeoff = 4, kSync = 6;
+// AtvHostState (host -> clients): the host copy's vitals, and the answer to a request.
+inline constexpr uint8_t kState = 16, kAnswer = 17;
+}  // namespace atv_host_op
+// An answer's verdict, carried in `module`: 0 is a request the host applied, the rest refused it. kDuplicate is a module
+// the ATV already holds; kFull a tank or health that is already full. `kGone` carries no state.
+namespace atv_host_reason {
+inline constexpr uint8_t kOk = 0, kNotReady = 1, kGone = 2, kReach = 3, kNoItem = 4, kRate = 5, kDuplicate = 6,
+                         kNotHeld = 7, kNotSyncer = 8, kMalformed = 9, kFull = 10;
+}  // namespace atv_host_reason
+// `flags`: the host copy's empty and broken marks (a state, an answer);
+// kAtvHostNoState, on an answer that carries no state (the fuel, health, marks and modules are zero and mean nothing).
+inline constexpr uint8_t kAtvHostEmpty = 0x08, kAtvHostBroken = 0x10, kAtvHostNoState = 0x20;
+struct AtvHostPayload {
+    WireKey  key;          // 32 -- the ATV's Key
+    float    fuel;         // 4 -- the host copy's fuel (a state, an answer)
+    float    health;       // 4 -- the host copy's health (a state, an answer)
+    float    amount;       // 4 -- a refuel's gain (request)
+    uint32_t reqId;        // 4 -- a request's id, per client, from 1; an answer echoes it
+    uint32_t stateSeq;     // 4 -- the state's sequence, per ATV, the host's (a state, an answer)
+    uint8_t  op;           // 1 -- atv_host_op
+    uint8_t  flags;        // 1 -- kAtvHost*
+    uint8_t  module;       // 1 -- a fitted or taken-off module's value (request); an answer's atv_host_reason
+    uint8_t  moduleCount;  // 1 -- how many of `modules` are fitted (a state, an answer)
+    uint8_t  modules[16];  // 16 -- the host copy's fitted module values, in the ATV's order (a state, an answer)
+};
+static_assert(sizeof(AtvHostPayload) == 72, "AtvHostPayload must be 72 bytes");
 
 // The edge a PropConvert re-skins.
 namespace propconvert_kind {

@@ -7,9 +7,10 @@
 #include "ue_wrap/devices/atv.h"
 
 #include "ue_wrap/actors/kerfur.h"   // the kerfur's own ATV functions (InviteKerfurs, ReleaseKerfurs)
-#include "ue_wrap/actors/save_record.h"  // allKerfuros, a new array in engine memory
+#include "ue_wrap/actors/save_record.h"  // ReadArr / WriteArrHeader / AllocZeroed -- the Modules array
 #include "ue_wrap/core/call.h"      // ParamFrame / Call -- the GameplayStatics spawn (SpawnMirror)
 #include "ue_wrap/core/class_resolve.h"
+#include "ue_wrap/core/component_calls.h"  // CallParamlessNamed -- the ATV's own parameterless functions
 #include "ue_wrap/core/fname_utils.h"  // StringToFName -- SpawnMirror's key
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_component.h"
@@ -20,8 +21,8 @@
 
 #include <atomic>
 #include <cmath>
-#include <cstdint>
 #include <cstring>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -37,9 +38,30 @@ int32_t g_isDrivenOff = -1;       // isDriven (0x05F7, bool)
 int32_t g_fuelOff     = -1;       // fuel     (0x05D4, float)
 int32_t g_healthOff   = -1;       // health   (0x05E4, float)
 int32_t g_brakeOff    = -1;       // Brake    (0x05D9, bool)
+uint8_t g_brakeMask   = 0xFF;     // its bit; the whole byte when the bit could not be resolved
+int32_t g_lightsOff   = -1;       // lights, turbo: bool bits, byte and mask each
+uint8_t g_lightsMask  = 0;
+int32_t g_turboOff    = -1;
+uint8_t g_turboMask   = 0;
+int32_t g_speedOff    = -1;       // speed, speed_turbo: floats; the turbo key copies the second onto the first
+int32_t g_speedTurboOff = -1;
 int32_t g_trapOff     = -1;       // trap     (a bool bit: the byte, with its mask below)
 uint8_t g_trapMask    = 0;
 int32_t g_tpOff       = -1;       // tp       (a UBillboardComponent*: where `explode` places its blast)
+int32_t g_emptyOff    = -1;       // empty, brokenn, input_alt, fly: bool bits, byte and mask each
+uint8_t g_emptyMask   = 0;
+int32_t g_brokenOff   = -1;
+uint8_t g_brokenMask  = 0;
+int32_t g_inputAltOff = -1;
+uint8_t g_inputAltMask = 0;
+int32_t g_flyOff      = -1;
+uint8_t g_flyMask     = 0;
+int32_t g_modulesOff  = -1;       // Modules (TArray<byte>), upgradesNames (TArray<FName>)
+int32_t g_namesOff    = -1;
+
+constexpr const wchar_t* kHonkPress = L"InpActEvt_atv_honk_K2Node_InputActionEvent_14";
+constexpr const wchar_t* kHonkRelease = L"InpActEvt_atv_honk_K2Node_InputActionEvent_15";
+constexpr int kModulesCap = 64;   // a Modules array longer than this is unreadable garbage
 
 int32_t ResolveOff(void* cls, const wchar_t* name, int32_t fallback) {
     int32_t o = R::FindPropertyOffset(cls, name);
@@ -63,6 +85,14 @@ bool IsAtvClass(void* cls) {
 }
 constexpr const wchar_t* kAtvBases[] = {L"ATV_C"};
 const class_resolve::Family kAtvFamily{L"ATV", kAtvBases, 1, &IsAtvClass};
+bool ReadBit(void* atv, int32_t off, uint8_t mask) {
+    return (*(reinterpret_cast<const uint8_t*>(atv) + off) & mask) != 0;
+}
+
+void WriteBit(void* atv, int32_t off, uint8_t mask, bool v) {
+    uint8_t& byte = *(reinterpret_cast<uint8_t*>(atv) + off);
+    byte = v ? static_cast<uint8_t>(byte | mask) : static_cast<uint8_t>(byte & ~mask);
+}
 
 }  // namespace
 
@@ -78,12 +108,42 @@ bool EnsureResolved() {
     g_fuelOff     = ResolveOff(cls, L"fuel",     0x05D4);
     g_healthOff   = ResolveOff(cls, L"health",   0x05E4);
     g_brakeOff    = ResolveOff(cls, L"Brake",    0x05D9);
+    {
+        int32_t off = -1;
+        uint8_t mask = 0;
+        if (R::FindBoolProperty(cls, L"Brake", off, mask) && off >= 0 && mask != 0) { g_brakeOff = off; g_brakeMask = mask; }
+    }
+    // No fallback for the rest: a miss leaves the copy's lights, turbo or speed unwritten and said once.
+    if (!R::FindBoolProperty(cls, L"lights", g_lightsOff, g_lightsMask) || g_lightsOff < 0 || g_lightsMask == 0) {
+        g_lightsOff = -1;
+        UE_LOGW("atv: lights offset not found -- a copy's lights are not written");
+    }
+    if (!R::FindBoolProperty(cls, L"turbo", g_turboOff, g_turboMask) || g_turboOff < 0 || g_turboMask == 0) {
+        g_turboOff = -1;
+        UE_LOGW("atv: turbo offset not found -- a copy's turbo is not written");
+    }
+    g_speedOff = R::FindPropertyOffset(cls, L"speed");
+    g_speedTurboOff = R::FindPropertyOffset(cls, L"speed_turbo");
+    if (g_speedOff < 0 || g_speedTurboOff < 0) UE_LOGW("atv: speed offsets not found -- a copy's turbo is not set on");
     // No fallback: a miss leaves the trap host-only, as it was before it travelled. The flag is a bit packed with its
     // neighbours (inWater, floater), so its byte and mask are both resolved.
     if (!R::FindBoolProperty(cls, L"trap", g_trapOff, g_trapMask) || g_trapOff < 0 || g_trapMask == 0) {
         g_trapOff = -1;
         UE_LOGW("atv: trap offset not found -- the story event's trap stays host-only");
     }
+    // No fallback for the vitals' marks, the horn's two flags and the module arrays: a miss leaves that write false, said
+    // once, and the caller's lane reports what it could not carry.
+    struct Bit { int32_t* off; uint8_t* mask; const wchar_t* name; };
+    const Bit bits[] = {{&g_emptyOff, &g_emptyMask, L"empty"},         {&g_brokenOff, &g_brokenMask, L"brokenn"},
+                        {&g_inputAltOff, &g_inputAltMask, L"input_alt"}, {&g_flyOff, &g_flyMask, L"fly"}};
+    for (const Bit& b : bits)
+        if (!R::FindBoolProperty(cls, b.name, *b.off, *b.mask) || *b.off < 0 || *b.mask == 0) {
+            *b.off = -1;
+            UE_LOGW("atv: %ls offset not found -- the host's copy of it is not carried", b.name);
+        }
+    g_modulesOff = R::FindPropertyOffset(cls, L"modules");
+    g_namesOff = R::FindPropertyOffset(cls, L"upgradesNames");
+    if (g_modulesOff < 0 || g_namesOff < 0) UE_LOGW("atv: modules offsets not found -- an ATV's modules are not carried");
     // No fallback: a miss leaves a client's ATV explosion unrequested, since the host has no place to put it.
     g_tpOff = R::FindPropertyOffset(cls, L"tp");
     if (g_tpOff < 0) UE_LOGW("atv: tp offset not found -- a client's ATV explosion cannot be requested");
@@ -157,7 +217,113 @@ float GetHealth(void* atv) {
 
 bool GetBrake(void* atv) {
     if (!atv || g_brakeOff < 0) return false;
-    return *reinterpret_cast<const bool*>(reinterpret_cast<const char*>(atv) + g_brakeOff);
+    return ReadBit(atv, g_brakeOff, g_brakeMask);
+}
+
+bool GetLights(void* atv) {
+    return atv && g_lightsOff >= 0 && ReadBit(atv, g_lightsOff, g_lightsMask);
+}
+
+bool GetTurbo(void* atv) {
+    return atv && g_turboOff >= 0 && ReadBit(atv, g_turboOff, g_turboMask);
+}
+
+bool SetLights(void* atv, bool on) {
+    if (!atv || g_lightsOff < 0) return false;
+    WriteBit(atv, g_lightsOff, g_lightsMask, on);
+    return component_calls::CallParamlessNamed(atv, L"Upd Lights");
+}
+
+bool SetBrake(void* atv, bool on) {
+    if (!atv || g_brakeOff < 0) return false;
+    WriteBit(atv, g_brakeOff, g_brakeMask, on);
+    return component_calls::CallParamlessNamed(atv, L"setBrake");
+}
+
+bool SetTurbo(void* atv, bool on) {
+    if (!atv) return false;
+    if (!on) return component_calls::CallParamlessNamed(atv, L"unturbo");
+    if (g_turboOff < 0 || g_speedOff < 0 || g_speedTurboOff < 0) return false;
+    WriteBit(atv, g_turboOff, g_turboMask, true);
+    *reinterpret_cast<float*>(reinterpret_cast<char*>(atv) + g_speedOff) =
+        *reinterpret_cast<const float*>(reinterpret_cast<const char*>(atv) + g_speedTurboOff);
+    return true;
+}
+
+bool SetFuel(void* atv, float v) {
+    if (!atv || g_fuelOff < 0) return false;
+    *reinterpret_cast<float*>(reinterpret_cast<char*>(atv) + g_fuelOff) = v;
+    return true;
+}
+
+bool SetHealth(void* atv, float v) {
+    if (!atv || g_healthOff < 0) return false;
+    *reinterpret_cast<float*>(reinterpret_cast<char*>(atv) + g_healthOff) = v;
+    return true;
+}
+
+bool GetEmpty(void* atv) { return atv && g_emptyOff >= 0 && ReadBit(atv, g_emptyOff, g_emptyMask); }
+
+bool SetEmpty(void* atv, bool v) {
+    if (!atv || g_emptyOff < 0) return false;
+    WriteBit(atv, g_emptyOff, g_emptyMask, v);
+    return true;
+}
+
+bool GetBroken(void* atv) { return atv && g_brokenOff >= 0 && ReadBit(atv, g_brokenOff, g_brokenMask); }
+
+bool SetBroken(void* atv, bool v) {
+    if (!atv || g_brokenOff < 0) return false;
+    WriteBit(atv, g_brokenOff, g_brokenMask, v);
+    return true;
+}
+
+bool CallUpdHealth(void* atv) { return atv && component_calls::CallParamlessNamed(atv, L"updHealth"); }
+
+int ReadModules(void* atv, uint8_t* out, int cap) {
+    if (!atv || g_modulesOff < 0) return -1;
+    const save_record::Arr arr = save_record::ReadArr(atv, g_modulesOff);
+    if (arr.num > kModulesCap || (arr.num > 0 && !arr.data)) return -1;
+    for (int32_t i = 0; i < arr.num && i < cap && out; ++i) out[i] = arr.data[i];
+    return arr.num;
+}
+
+bool WriteModules(void* atv, const uint8_t* mods, int count) {
+    if (!atv || g_modulesOff < 0 || count < 0 || count > kModulesCap || (count > 0 && !mods)) return false;
+    if (!save_record::ReplaceByteArray(atv, g_modulesOff, mods, count)) return false;
+    return component_calls::CallParamlessNamed(atv, L"updUpgrades");
+}
+
+bool ModuleByName(void* atv, const R::FName& name, uint8_t& value) {
+    if (!atv || g_modulesOff < 0 || g_namesOff < 0) return false;
+    const save_record::Arr names = save_record::ReadArr(atv, g_namesOff);
+    const save_record::Arr mods = save_record::ReadArr(atv, g_modulesOff);
+    if (!names.data || !mods.data) return false;
+    for (int32_t i = 0; i < names.num && i < mods.num; ++i) {
+        R::FName n{};
+        std::memcpy(&n, names.data + static_cast<size_t>(i) * sizeof(R::FName), sizeof(n));
+        if (n.ComparisonIndex != name.ComparisonIndex || n.Number != name.Number) continue;
+        value = mods.data[i];
+        return true;
+    }
+    return false;
+}
+
+bool ReplayHorn(void* atv, bool press) {
+    if (!atv || g_inputAltOff < 0 || g_flyOff < 0) return false;
+    void* const fn = R::FindDispatchFunctionCached(R::ClassOf(atv), press ? kHonkPress : kHonkRelease);
+    if (!fn) return false;
+    ParamFrame f(fn);
+    if (!f.valid()) return false;
+    const bool alt = ReadBit(atv, g_inputAltOff, g_inputAltMask), fly = ReadBit(atv, g_flyOff, g_flyMask);
+    const bool ran = Call(atv, f);
+    WriteBit(atv, g_inputAltOff, g_inputAltMask, alt);
+    WriteBit(atv, g_flyOff, g_flyMask, fly);
+    return ran;
+}
+
+bool CheckIfRunout(void* atv) {
+    return atv && component_calls::CallParamlessNamed(atv, L"checkIfRunout");
 }
 
 bool ReadTrap(void* atv, bool& out) {

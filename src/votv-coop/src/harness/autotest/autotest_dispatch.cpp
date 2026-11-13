@@ -10,6 +10,7 @@
 #include "harness/autotest/driveslot.h"
 #include "coop/session/join_seed.h"  // the inline seed selftest
 #include "coop/config/config.h"
+#include "coop/dev/atv_gate_drill.h"
 #include "coop/dev/cremator_drill.h"
 #include "coop/dev/director/director.h"
 #include "coop/dev/mannequin_walker_drill.h"
@@ -237,7 +238,6 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // The data case: a client fills a drive box; its record's size and the host's copy of it.
     SpawnIf("VOTVCOOP_RUN_DATA_CASE", "data case drill", &DataCaseThread, role);
     // The ATV: what of it the host owns, from a client's refuel to its horn.
-    SpawnIf("VOTVCOOP_RUN_ATV_HOST", "ATV host-owned state drill", &AtvHostThread, role);
     // The ATV's riders: the driver's body and the kerfur, on both peers.
     SpawnIf("VOTVCOOP_RUN_ATV_RIDERS", "ATV riders drill", &AtvRidersThread, role);
     // The ATV's passenger: a player in the kerfur's spot.
@@ -324,6 +324,8 @@ void SpawnEnvGatedTests(coop::net::Role role) {
         UE_LOGI("harness: mannequin_drill is a walker drill value (%s) -- spawning the mannequin drill thread", RoleStr(role));
         if (HANDLE h = ::CreateThread(nullptr, 0, &coop::dev::mannequin_walker_drill::Thread, nullptr, 0, nullptr)) ::CloseHandle(h);
     }
+    // The ATV drill: each act a player does at an ATV, decided on the events of the host path, green and eleven reds.
+    SpawnIfEnum(coop::config_registry::rows::atv_gate_drill, "ATV drill", &coop::dev::atv_gate_drill::Thread, role);
 }
 
 }  // namespace harness::autotest

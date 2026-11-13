@@ -40,6 +40,7 @@ set(VOTVCOOP_SOURCES
     src/coop/props/prop_act_host.cpp
     src/coop/props/prop_act_request.cpp
     src/coop/props/prop_act_selftest.cpp
+    src/coop/props/snack_act.cpp
     src/coop/props/prop_hold.cpp
     src/coop/props/prop_hold_claim.cpp
     src/coop/props/prop_settle.cpp
@@ -88,6 +89,10 @@ set(VOTVCOOP_SOURCES
     src/coop/interactables/woodchipper_sync.cpp
     src/coop/interactables/woodchipper_feed.cpp
     src/coop/interactables/woodchipper_gate.cpp
+    src/coop/interactables/atv_gate.cpp
+    src/coop/interactables/atv_host_judge.cpp
+    src/coop/interactables/atv_drill_events.cpp
+    src/coop/interactables/atv_host_sync.cpp
     src/coop/interactables/upgrade_sync.cpp
     src/coop/interactables/interactable_sync.cpp
     src/coop/interactables/cord_sync.cpp
@@ -743,7 +748,6 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_mushroom.cpp
     src/harness/autotest/autotest_crowbar.cpp
     src/harness/autotest/autotest_data_case.cpp
-    src/harness/autotest/autotest_atv_host.cpp
     src/harness/autotest/autotest_atv_riders.cpp
     src/harness/autotest/autotest_atv_passenger.cpp
     src/harness/autotest/autotest_cargo_lift.cpp

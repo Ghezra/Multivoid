@@ -170,6 +170,11 @@ bool OwnsTick(void* actor);
 // thread.
 bool IsIndexed(void* actor);
 
+// The honk key went down (`down`) or up on the copy of the ATV under `key` that this machine's player sits in (atv_gate's
+// rows): the horn's level and latch that the syncer's next block carries as stateBits' kAtvHorn. Nothing for a copy this
+// machine's player does not sit in. Game thread.
+void NoteHorn(const std::wstring& key, bool down);
+
 // Is `actor` an indexed ATV whose tick ANOTHER copy owns? True only while the collision guard is active (an inactive
 // guard means the lane is not deciding, so every copy runs as it does without the mod), the ATV is indexed and this
 // peer does not own its tick. Game thread.
@@ -192,5 +197,10 @@ std::vector<std::wstring> ReceivedSpawnKeys();
 // ApplyCorrection (which may still refuse them: corrector off, transform unreadable, teleport failed). The connect
 // snapshot is read per ATV instead: TableView::snapshotReached.
 uint32_t AppliedFromSyncer();
+
+// For the ATV health drill's `trap` arm, CLIENT, game thread; counts this session and starts over at a disconnect: the
+// blocks the host sent whose payload carries the trap bit (kAtvTrap), counted as received, before any developer red masks it.
+// The arm's event that the host's trap reached this peer, whatever the table then shows.
+uint32_t TrapStampsSeen();
 
 }  // namespace coop::atv_sync

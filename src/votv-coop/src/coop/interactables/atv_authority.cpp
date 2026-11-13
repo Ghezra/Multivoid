@@ -205,6 +205,7 @@ void Grant(AtvEntry& e, uint8_t who, bool seat, bool carried, uint64_t nowMs) {
     e.lastGrabbed = carried;
     e.streamBucket.Reset();
     e.haveSyncerHealth = false;
+    coop::atv_sync::ForgetHorn(e);   // the last horn level replayed was the previous syncer's
     e.stampDue = true;
 }
 
@@ -215,6 +216,7 @@ void HandToHost(AtvEntry& e, uint8_t prev, uint64_t nowMs) {
     e.syncerSlot = 0;
     e.streamBucket.Reset();
     e.haveSyncerHealth = false;
+    coop::atv_sync::ForgetHorn(e);   // the last horn level replayed was the previous syncer's
     e.stampDue = true;
 }
 
@@ -392,7 +394,9 @@ void RunPass(uint64_t nowMs) {
         const uint8_t syncer = e.syncerSlot;
         // 1. silent: the host takes the ATV, and the seat with it when that client held it. MTA's syncer sends only
         // on change (CUnoccupiedVehicleSync.cpp:459), so silence is normal there; here a syncer streams.
-        if (!s_redSilence && nowMs - e.lastBlockMs >= kSyncerSilenceMs) {
+        const bool silent = nowMs - e.lastBlockMs >= kSyncerSilenceMs;
+        if (silent) ++g_counters.silentSeen;
+        if (!s_redSilence && silent) {
             if (e.occupantSlot == syncer) e.occupantSlot = kNoSeat;
             HandToHost(e, syncer, nowMs);
             ++g_counters.silenced;
@@ -442,6 +446,7 @@ void ClearTable(AtvEntry& e) {
     e.blown = false;
     e.blownBy = 0xFF;
     e.haveSyncerHealth = false;
+    coop::atv_sync::ForgetHorn(e);   // the last horn level replayed was the previous syncer's
     e.stampDue = true;
 }
 

@@ -214,8 +214,6 @@ DWORD WINAPI SusHoleThread(LPVOID arg);
 // VOTVCOOP_RUN_PLANT_STATE, both peers -- harness/autotest/autotest_plant_state.cpp
 DWORD WINAPI PlantStateThread(LPVOID arg);
 
-// VOTVCOOP_RUN_ATV_HOST, both peers -- harness/autotest/autotest_atv_host.cpp
-DWORD WINAPI AtvHostThread(LPVOID arg);
 
 // VOTVCOOP_RUN_ATV_RIDERS, both peers -- harness/autotest/autotest_atv_riders.cpp
 DWORD WINAPI AtvRidersThread(LPVOID arg);

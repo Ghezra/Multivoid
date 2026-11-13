@@ -48,7 +48,6 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::SpillIntent:
     case ReliableKind::SpillPourIntent:
     case ReliableKind::BuildIntent:
-    case ReliableKind::AtvRequest:
     case ReliableKind::ContainerBreakRequest:
     case ReliableKind::DeskShortRequest:
     case ReliableKind::PropSpawn:
@@ -127,6 +126,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::PackTrashIntent:
     case ReliableKind::DroneFlyIntent:
     case ReliableKind::WoodchipperIntent:
+    case ReliableKind::AtvRequest:
     case ReliableKind::UpgradeIntent:
     case ReliableKind::WindowStroke:
     case ReliableKind::DoorVerbIntent:
@@ -200,6 +200,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::SaveTransferChunk:
     case ReliableKind::TurbineState:
     case ReliableKind::WoodchipperState:
+    case ReliableKind::AtvHostState:
     case ReliableKind::SkySignalState:
     case ReliableKind::EmailAppend:
     case ReliableKind::CompState:
@@ -265,7 +266,6 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::SpillState:
     case ReliableKind::SpillPour:
     case ReliableKind::BuildState:
-    case ReliableKind::AtvHostState:
     case ReliableKind::GarbageBinState:
     case ReliableKind::DeskShortState:
     case ReliableKind::SwingerRestPose:

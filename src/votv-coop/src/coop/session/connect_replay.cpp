@@ -47,6 +47,7 @@
 #include "coop/interactables/upgrade_sync.h"
 #include "coop/interactables/turbine_sync.h"
 #include "coop/interactables/woodchipper_sync.h"
+#include "coop/interactables/atv_host_sync.h"
 #include "coop/interactables/keypad_sync.h"
 #include "coop/world/fuse_tower_rows.h"
 #include "coop/world/power_grid.h"
@@ -57,7 +58,6 @@
 #include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
 #include "coop/interactables/garbage_bin_sync.h"
-#include "coop/interactables/atv_host_sync.h"
 #include "coop/world/spill_sync.h"
 #include "coop/world/plant_sync.h"
 #include "coop/world/media_device_sync.h"  // every radio again
@@ -136,6 +136,7 @@ void ConnectReplayForSlot(int slot) {
     coop::order_queue_sync::QueueConnectBroadcastForSlot(slot);  // the delivery order queue: a reset + every queued order
     coop::turbine_sync::QueueConnectBroadcastForSlot(slot);  // wind-turbine facing/spin snap
     coop::woodchipper_sync::QueueConnectBroadcastForSlot(slot);  // every woodchipper again
+    coop::atv_host_sync::QueueConnectBroadcastForSlot(slot);  // every ATV's host state again
     coop::device_occupancy::QueueConnectBroadcastForSlot(slot);  // live device claims (busy table)
     coop::download_arm_sync::QueueConnectResetForSlot(slot);  // a reset since the capture, ahead of the desk's seed: the game's order is reset, catch, arm
     coop::console_state_sync::QueueConnectBroadcastForSlot(slot);  // sky-signal snapshot + desk adopt
@@ -146,7 +147,6 @@ void ConnectReplayForSlot(int slot) {
     coop::prop_fire_sync::QueueConnectBroadcastForSlot(slot);  // every burning prop again
     coop::ground_hose_sync::QueueConnectBroadcastForSlot(slot);  // every hose again
     coop::garbage_bin_sync::QueueConnectBroadcastForSlot(slot);  // every garbage container again
-    coop::atv_host_sync::QueueConnectBroadcastForSlot(slot);  // every ATV's host state again
     coop::build_sync::QueueConnectBroadcastForSlot(slot);  // every nail and wall again
     coop::kitchen_sync::QueueConnectBroadcastForSlot(slot);  // the machines not at their defaults
     coop::props::prop_food_sync::QueueConnectBroadcastForSlot(slot);  // every world food's condition again

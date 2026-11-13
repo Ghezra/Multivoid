@@ -65,12 +65,16 @@ bool KnownFamily(uint8_t family);      // 1..3
 // The first term of the verb's fit that is false, in the order the fit reads them; none when the act fits.
 std::optional<Tally> FirstRefusal(uint8_t family, const ActTraits& t);
 std::optional<coop::net::PropActReplyPayload> ReplyFor(ActVerdict v, uint16_t id);
-enum class CommitStep : uint8_t { BadCommit, Abort, TargetGone, Destroy };
-CommitStep DecideCommit(bool matched, uint8_t committed, bool liveAndSame);
+// A snack's commit never destroys by the lane: SnackEnded is its copy gone on the client (committed 1), SnackApplied the
+// eater run with the copy alive there (committed 2); the host applies the reported delta to its own copy either way
+// (coop/props/snack_act). `snack` is whether the grant was a USE of an actor that walks to prop_snack_C (a pocket or a
+// hold of a snack is no snack commit); `flags` the commit's second byte.
+enum class CommitStep : uint8_t { BadCommit, Abort, TargetGone, Destroy, SnackEnded, SnackApplied };
+CommitStep DecideCommit(bool matched, uint8_t committed, bool liveAndSame, bool snack, uint8_t flags);
 enum class AfterStep : uint8_t { DestroyFailed, FanOut };
 AfterStep AfterDestroy(bool destroyed);
 const char* VerdictName(ActVerdict v);   // "wait" "gone" "wrong-family" "held" "reach" "grant"
-const char* CommitName(CommitStep s);    // "bad" "abort" "target-gone" "destroy"
+const char* CommitName(CommitStep s);    // "bad" "abort" "target-gone" "destroy" "snack-ended" "snack-applied"
 }  // namespace internal
 
 enum class WaitCause : uint8_t { NotReady, Reservation, NoBody, kCount };
@@ -88,6 +92,9 @@ namespace dev {   // called only from src/coop/dev/ (the act drills); compiled a
 // Would the judge accept `family` on `actor`? FamilyFits' path with no tally bumped. `*first` is the term that
 // refuses, Tally::kCount when the act fits. Game thread.
 bool CensusFits(void* actor, uint8_t family, Tally* first);
+// Called from OnPeerGone with the leaver's slot and the eid it held, after its reservation is released; null by default. The
+// departure's own event: the session-wide tally the same tick's DisconnectAll clears is not a place to read it from.
+void SetOnHeldAtDeparture(void (*fn)(uint8_t slot, uint32_t eid));
 }  // namespace dev
 
 }  // namespace coop::prop_act_host

@@ -31,9 +31,9 @@ host and a rejoin, with silent test tracks, the rule written on and the pick by 
 carries its channel, volume, brightness and squeeze; its openLink needs its power as well as the rule, so a track waits
 for its cord `[V]` (`harness/autotest/autotest_tv_state.cpp`: the same from each peer with a channel and the picture, with
 a silent audio-only `.mp4`, powered by a write, so no picture was decoded). The ATV's radio is one of them, a child actor
-of the ATV named by the ATV's key (`atv:<key>`) `[V]` (`harness/autotest/autotest_atv_host.cpp`: a pick from each peer
-through the radio's own interface, read off its media player on both; on the code before it, each pick stayed on its
-own peer).
+of the ATV named by the ATV's key (`atv:<key>`) `[?]` (a pick from each peer through the radio's own interface was read
+off its media player on both, and on the code before it each pick stayed on its own peer, by the ATV host drill that
+the rework of the ATV's host lane retired).
 
 ## Wire messages
 
