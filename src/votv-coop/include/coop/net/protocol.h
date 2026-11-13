@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 306;
+inline constexpr uint16_t kProtocolVersion = 307;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1497,6 +1497,14 @@ enum class ReliableKind : uint16_t {
     // pre-world (a Begin for a copy not yet made is dropped). Late join: none, an encounter is ten seconds. Host-
     // authored: a client's copy is refused at the host's receive edge. OrbEventPayload.
     OrbEvent = 258,
+    // HOST->CLIENT: the gamemode's ambient UFOs (coop/world/ufo_sync). A path, to every client after the UFO's
+    // WorldActorSpawn: what the host's copy rolled at its birth (a ball's turn and two ends, a boo's flight spline in
+    // chunks of 16 points), written over the client copy's own roll so every copy flies one path. MidasRun, to every
+    // client: the host's level-placed Midas UFO took off, and each client's own runs its flight. Never relayed; not
+    // pre-world (a path for a copy not yet made waits ten seconds). Late join: the host sends the path of every UFO
+    // still flying and the Midas run while it lasts. Host-authored: a client's copy is refused at the host's receive
+    // edge. UfoEventPayload.
+    UfoEvent = 259,
 };
 
 #pragma pack(push, 1)
@@ -4687,6 +4695,22 @@ struct OrbEventPayload {
 };
 static_assert(sizeof(OrbEventPayload) == 8, "OrbEventPayload must be 8 bytes");
 static_assert(sizeof(OrbEventPayload) <= 256 - 20 - 8, "OrbEventPayload must fit in one reliable datagram");
+
+// The ambient UFOs (UfoEvent): the UFO's world-actor element id, the op, and up to 16 vectors of a path.
+inline constexpr uint8_t kUfoEventBallPath = 1;  // v[0] the turn (pitch, yaw, roll), v[1] end a, v[2] end b
+inline constexpr uint8_t kUfoEventBooPath  = 2;  // v[0..count) the flight spline's points first.., local space
+inline constexpr uint8_t kUfoEventMidasRun = 3;  // eid 0: the level's Midas UFO takes off
+inline constexpr uint8_t kUfoEventMaxPoints = 16;
+struct UfoEventPayload {
+    uint32_t eid;     // the UFO's world-actor element id (host-allocated); 0 for MidasRun
+    uint8_t  op;      // kUfoEvent*
+    uint8_t  first;   // the index of v[0] in the whole path
+    uint8_t  count;   // vectors valid in v, at most kUfoEventMaxPoints
+    uint8_t  total;   // vectors in the whole path
+    float    v[kUfoEventMaxPoints][3];
+};
+static_assert(sizeof(UfoEventPayload) == 200, "UfoEventPayload must be 200 bytes");
+static_assert(sizeof(UfoEventPayload) <= 256 - 20 - 8, "UfoEventPayload must fit in one reliable datagram");
 
 struct GeomOctaEventPayload {
     uint8_t  op;
