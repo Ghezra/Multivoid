@@ -3,6 +3,7 @@
 #include "coop/dev/native_spawn_probe.h"
 
 #include "coop/config/config.h"
+#include "coop/creatures/orb_authority.h"
 #include "coop/element/registry.h"
 #include "coop/player/players_registry.h"
 #include "coop/session/teleport_client.h"
@@ -288,8 +289,13 @@ const std::string& TouchMode() {
     return m;
 }
 
+const bool& CircleMode() {
+    static const bool on = coop::config::ReadEnv("VOTVCOOP_ORB_CIRCLE") == "1";
+    return on;
+}
+
 void TickOrbHost() {
-    if (g_orb == Orb::Done || !IsHost()) return;
+    if (g_orb == Orb::Done || !IsHost() || CircleMode()) return;
     if (!g_orbStartAt) g_orbStartAt = Now();
     if (Now() - g_orbStartAt < kOrbHostStartMs) return;
     if (g_orb == Orb::Verify) {
@@ -389,6 +395,47 @@ void TickOrbTouchClient() {
     }
 }
 
+// VOTVCOOP_ORB_CIRCLE=1 with native_spawn_probe=orbhost: the HOST starts every client's lap count at the spawner's
+// maxlaps (coop/creatures/orb_authority's dev knob), and a CLIENT circles its copy of the first blackball spawner
+// 6 m out, 10 degrees each 100 ms, the way the spawner counts a lap, for two turns after its world is ready. The host
+// then mints that client's orb, which every peer logs as it would any orb.
+bool     g_circlePreset = false;
+uint64_t g_circleStartAt = 0;
+uint64_t g_circleStepAt = 0;
+int      g_circleSteps = 0;
+ue_wrap::CachedObjRef g_circleSpawner;
+
+void FindSpawnerCopy(void*, void* obj, int32_t) {
+    if (!g_circleSpawner.Alive() && obj && R::IsLive(obj) && !R::NameStartsWith(R::NameOf(obj), L"Default__"))
+        g_circleSpawner.Set(obj);
+}
+
+void TickCircle() {
+    if (!CircleMode()) return;
+    if (IsHost()) {
+        if (!g_circlePreset) {
+            g_circlePreset = true;
+            coop::orb_authority::DevSetClientLaps(240);
+        }
+        return;
+    }
+    if (!coop::npc_adoption::GhostSweepDone() || g_circleSteps >= 72) return;
+    if (!g_circleStartAt) g_circleStartAt = Now();
+    if (Now() - g_circleStartAt < 20000 || Now() - g_circleStepAt < 100) return;
+    g_circleStepAt = Now();
+    if (!g_circleSpawner.Alive())
+        if (void* cls = OI::ClassByName(L"blackballSpawner_C")) OI::ForEachInstance(cls, &FindSpawnerCopy, nullptr);
+    void* const sp = g_circleSpawner.Get();
+    ue_wrap::FVector at{};
+    if (!sp || !ue_wrap::engine::TryGetActorLocation(sp, at)) return;
+    const float b = static_cast<float>(g_circleSteps) * 10.f * 3.14159265f / 180.f;
+    coop::teleport_client::ApplyLocally({at.X + 600.f * std::cos(b), at.Y + 600.f * std::sin(b), at.Z + 100.f, 0.f,
+                                         static_cast<float>(g_circleSteps) * 10.f + 90.f, 0.f});
+    if (g_circleSteps % 9 == 0)
+        UE_LOGI("[NB-0] orbcircle step %d of 72 round the spawner at (%.0f,%.0f,%.0f)", g_circleSteps, at.X, at.Y, at.Z);
+    ++g_circleSteps;
+}
+
 }  // namespace
 
 void Install(coop::net::Session* session) {
@@ -403,6 +450,7 @@ void Tick(coop::net::Session* session) {
     if (ModeOf() == Mode::OrbHost) {
         TickOrbHost();
         TickOrbTouchClient();
+        TickCircle();
     }
     else TickOrb();
 }

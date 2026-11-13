@@ -71,7 +71,7 @@ leaving one leaves nothing to restore.
 | jellyfish path | spawn refused | its seven fish are made inside its graph; the host's run is mirrored through the source-gated catch |
 | vent crawler, grays, eggs, tentacle balls | gameplay entries refused (BeginPlay, tick, overlaps, AI and despawn verbs); the AnimBP and the pose stay | on a client they exist only as host mirrors through the npc lane's allowlist. A mirror loses what its BeginPlay also set up: a ball's and a gray's mesh attach, a ball's ambient loop. The crawler's crawl is the host's (any player's body in its box starts it there), and a client plays what its graph plays beside the pose: the vent steps, the steps along the crawl, the metal break and its burst, the vent's swing and the signal room door's power, from one EventCue at the crawl's start (`coop/world/vent_crawler_sync`) A peer that joins mid-event gets every living creature from the npc lane's join census; the event's own scene is not replayed |
 | gray controller, balls follower, super egger | the mint and activation bodies refused | their creature BeginDeferred calls are bytecode-internal: no spawn interceptor can see them, so the bodies must not run |
-| black orb spawner | tick refused | its tick counts the local player's laps around it and, past 240, mints an orb 200 m from that player's camera: a client's own would be a private orb. The host's orb crosses by the source-gated catch, so a client's laps start no orb |
+| black orb spawner | tick refused | its tick counts the local player's laps around it and, past 240, mints an orb 200 m from that player's camera: a client's own would be a private orb. The host counts each client's laps by the same rule, from the client's streamed eye, and mints that client's orb, which crosses as any orb (`coop/creatures/orb_authority`) |
 | firefly | left running | anchored on the local player's camera: each peer owns its roll and the others render a mirror |
 | pinecone | left running | anchored on the local player's camera. Its drops (pinecones, sticks, crystals, forage) are spawned by a direct engine call that the ambient mirror's observer cannot see, so only the host's reach the others, through the keyed spawn seam; a client's drops stay its own |
 | eyer | left running | it stalks its own peer's player: each peer owns its eyer and the others render a mirror (`coop/creatures/owner_entity_sync`) |
@@ -110,7 +110,8 @@ client's body touches its orb; every client's copy then runs its own begin (`Orb
 it stops, fades in and sounds as the host's does. At the timeline's end the host reads the
 toucher's view (its own camera, or a client's streamed eye and aim) with the orb's own test and
 destroys the orb whatever the verdict. A client's own spawner is refused (the table above), so every orb a
-client sees is the host's. A caught player is revived through the run end's usual
+client sees is the host's; the host counts every player's laps round the spawner, a client's from
+its streamed eye, and mints a client's orb 200 m from that client as the spawner would. A caught player is revived through the run end's usual
 answer, on the host directly or on the client by `OrbEvent` Death, and nobody's game closes
 (`coop/creatures/orb_authority`). `[V]` on the rig: a client that walked into the host's orb with
 its view away from it was spared, and with its view toward it was caught and revived; the orb was
