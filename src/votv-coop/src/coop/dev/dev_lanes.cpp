@@ -133,6 +133,7 @@
 #include "coop/dev/sky_tp_probe.h"  // [dev] the earth teleport fired on the host, refused on a client, its sky on both
 #include "coop/dev/poster_probe.h"  // [dev] a poster put up by the host, one taken down by a client, listed on both
 #include "coop/dev/miner_probe.h"  // [dev] a mining rig built by the host, claimed by a client, listed on both
+#include "coop/dev/foam_probe.h"  // [dev] a client's extinguisher spray and the host's thrust, logged on both
 #include "coop/dev/tower_poof_probe.h"  // [dev] the stolen radio tower fired on the host, its tower read on both
 #include "coop/dev/puppet_blast_probe.h"  // [dev] a blast at a peer's puppet, each peer's own health read
 #include "coop/dev/order_probe.h"  // who writes the order queue, and what the drone delivers, per peer
@@ -458,6 +459,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::sky_tp_probe::Tick(&session);  // [dev] the earth teleport's sky on both peers (a latched read when off)
     coop::dev::poster_probe::Tick(&session);  // [dev] the posters on both peers (a latched read when off)
     coop::dev::miner_probe::Tick(&session);  // [dev] the mining rigs on both peers (a latched read when off)
+    coop::dev::foam_probe::Tick(&session);  // [dev] the extinguishers on both peers (a latched read when off)
     coop::dev::tower_poof_probe::Tick(&session);  // [dev] the radio tower on both peers (a latched read when off)
     coop::dev::puppet_blast_probe::Tick(&session);  // [dev] a blast at a peer's puppet (a latched read when off)
     coop::dev::death_seam_census::Tick();  // [dev] every element end the death seam announces (latched read when off)

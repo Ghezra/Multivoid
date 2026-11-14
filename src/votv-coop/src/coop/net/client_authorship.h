@@ -46,6 +46,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::PropFireRequest:
     case ReliableKind::RoombaIntent:
     case ReliableKind::MinerIntent:
+    case ReliableKind::FireExtIntent:
     case ReliableKind::GroundHoseIntent:
     case ReliableKind::SpillIntent:
     case ReliableKind::SpillPourIntent:
@@ -267,6 +268,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::PropFireState:
     case ReliableKind::RoombaState:
     case ReliableKind::MinerState:
+    case ReliableKind::FireExtState:
     case ReliableKind::GroundHoseState:
     case ReliableKind::SpillState:
     case ReliableKind::SpillPour:

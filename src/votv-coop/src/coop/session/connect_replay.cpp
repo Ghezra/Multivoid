@@ -89,6 +89,7 @@
 #include "coop/world/ufo_sync.h"  // the paths of the UFOs still flying, and the Midas run
 #include "coop/props/roomba_sync.h"  // every robot cleaner's switch
 #include "coop/props/miner_sync.h"   // every mining rig's counts and points
+#include "coop/props/fireext_sync.h"  // every extinguisher's thrust and every spray
 #include "coop/world/spill_sync.h"
 #include "coop/world/vent_crawler_sync.h"
 #include "coop/world/weather_sync.h"
@@ -205,6 +206,7 @@ void ConnectReplayForSlot(int slot) {
     // Every robot cleaner's switch; one that runs is followed through the drive stream.
     coop::roomba_sync::SendJoinSnapshotForSlot(slot);
     coop::miner_sync::SendJoinSnapshotForSlot(slot);
+    coop::fireext_sync::SendJoinSnapshotForSlot(slot);
     // The alarm lane's late-join answer: the current alarm state, unconditionally, so a mid-alarm
     // joiner starts its klaxon on arrival.
     coop::alarm_sync::QueueConnectBroadcastForSlot(slot);

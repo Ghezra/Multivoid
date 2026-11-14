@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 317;
+inline constexpr uint16_t kProtocolVersion = 318;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1541,6 +1541,16 @@ enum class ReliableKind : uint16_t {
     // (op 3). The host judges the sender's reach and pace and runs its own rig's `upgrade` or claim, whose hints go to
     // the asker. Never relayed. MinerPayload.
     MinerIntent = 278,
+    // HOST->ALL: a fire extinguisher's foam (coop/props/fireext_sync). Op 0: a world extinguisher's runaway thrust (its
+    // `active` with charge left) and its charge, when either changes and to a joiner at its ready edge; a client's copy
+    // shows the thrust's foam and sound, and never runs the thrust itself. Op 1: a player's spray from the extinguisher
+    // in its hand, on or off; every other peer shows it on that player's hand mirror. Never relayed; not pre-world.
+    // FireExtPayload.
+    FireExtState = 279,
+    // CLIENT->HOST: this client's player started or stopped spraying the extinguisher in its hand (op 2). The host checks
+    // the sender's hand holds one, sprays the game's own extinguishing ray along the sender's aim while it is on, and
+    // sends op 1 to every peer. Never relayed. FireExtPayload.
+    FireExtIntent = 280,
 };
 
 #pragma pack(push, 1)
@@ -2400,6 +2410,18 @@ struct MinerPayload {
     float    overheat;  // op 0
 };
 static_assert(sizeof(MinerPayload) == 28, "MinerPayload must be 28 bytes");
+
+// A fire extinguisher's foam (FireExtState, FireExtIntent).
+inline constexpr uint8_t kFireExtOpThrust = 0, kFireExtOpSpray = 1, kFireExtOpSprayAsk = 2;
+struct FireExtPayload {
+    uint32_t eid;   // op 0: the extinguisher's prop element id; ops 1, 2: zero
+    uint8_t  op;    // kFireExtOp*
+    uint8_t  slot;  // op 1: the sprayer's slot
+    uint8_t  on;    // 1 the thrust or the spray runs
+    uint8_t  pad;   // zero
+    float    life;  // op 0: the charge, 0..1
+};
+static_assert(sizeof(FireExtPayload) == 12, "FireExtPayload must be 12 bytes");
 
 // A burning prop (PropFireState), or a client's light (PropFireRequest).
 struct PropFirePayload {

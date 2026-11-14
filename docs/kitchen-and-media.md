@@ -2,8 +2,8 @@
 
 ## Purpose
 
-The microwave, the mini oven and the grill, the placed radios and TVs with the ATV's radio, and the GPU mining rig: who
-owns each one's state and how a peer's press or pick reaches the others.
+The microwave, the mini oven and the grill, the placed radios and TVs with the ATV's radio, the GPU mining rig and the
+fire extinguisher's foam: who owns each one's state and how a peer's press or pick reaches the others.
 The other keyed devices around the base are in [devices.md](devices.md).
 
 ## How it works
@@ -52,12 +52,30 @@ the client; after, the client's copy took the host's counts in the same second, 
 the host and on both copies, and its claim ran on the host, the host's hint shown on the client). The probe's use names
 the item without one in the hand, so the spend of a real held item, and a powered rig's points, are not measured `[?]`.
 
+### The fire extinguisher's foam
+
+A fire extinguisher (`prop_fireExt_C`) sprays from a player's hand: its `fire`, the hand's LMB press and release, turns
+its spray effect and sound on, and its tick aims the spray along that machine's camera, drains its charge and casts the
+game's `extinguishRay`, which puts out what it touches. Hit hard or burnt in the world, its `shoot` sends it thrusting
+with its own foam and rays until the charge is gone. Each ran on the one machine, so the other players saw no foam
+(Ghezra/Multivoid issue 31). The foam is the host's: a player's spray is that player's to start and stop, and goes to
+the host (`FireExtIntent`), which checks the sender's hand holds an extinguisher, shows the spray on its mirror of that
+hand, casts the extinguishing ray along the sender's aim each frame while it runs, and tells every peer
+(`FireExtState`), each showing it on its mirror of that hand. A client's own ray and its `shoot` are refused, so a fire
+goes out, and an extinguisher thrusts, only on the host; the host sends each world extinguisher's thrust and charge when
+they change and to a joiner, and a client's copy shows the thrust's foam and sound (`coop/props/fireext_sync`) `[V]`
+(`coop/dev/foam_probe`, `VOTVCOOP_FOAM_PROBE=1`: a client's spray showed on the host's mirror within a second and the
+host cast 364 rays along its aim; the host's spray showed on the client's mirror; a world extinguisher the host set
+thrusting thrusted on the client's copy, its charge following the host's). A fire put out by a client's spray is not
+measured `[?]`, and the charge of an extinguisher in a client's hand is drained by that client alone.
+
 ## Wire messages
 
 | Message | Direction | Carries |
 |---|---|---|
 | `KitchenState` | the presser to all; the host's burn of a grill's coals | a microwave's or a mini oven's setting and whether it runs; a grill's coals, fire, lid and burn |
 | `MinerState`, `MinerIntent` | the host to all, an answer to its asker alone; a client to the host | a rig's GPUs, slots, coolers, points and heat; a client's use of an item or its claim |
+| `FireExtState`, `FireExtIntent` | the host to all; a client to the host | a world extinguisher's thrust and charge, a player's spray; a client's spray on or off |
 | `MediaDeviceState` | the host to all; a client to the host | a device's track (a hash of its catalog link), time, play state and mode, and a TV's channel and picture; a client's change through its interface |
 
 ## Late join
@@ -77,3 +95,4 @@ Every radio and TV again at the joiner's ready edge, and every kitchen machine t
 | a microwave's, a mini oven's and a grill's controls | `coop/interactables/kitchen_sync`, `ue_wrap/devices/kitchen` |
 | a placed radio or TV | `coop/world/media_device_sync`, `ue_wrap/world/media_device` |
 | the GPU mining rig | `coop/props/miner_sync`; `coop/dev/miner_probe` |
+| the fire extinguisher's foam | `coop/props/fireext_sync`; `coop/dev/foam_probe` |

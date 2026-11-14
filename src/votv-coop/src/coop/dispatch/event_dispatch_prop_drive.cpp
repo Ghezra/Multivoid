@@ -23,6 +23,7 @@
 #include "coop/props/prop_fire_sync.h"
 #include "coop/props/roomba_sync.h"  // a robot cleaner's switch, the host's
 #include "coop/props/miner_sync.h"   // a GPU mining rig's counts and points, the host's
+#include "coop/props/fireext_sync.h"  // an extinguisher's thrust and a player's spray
 #include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
 #include "coop/interactables/garbage_bin_sync.h"
@@ -382,6 +383,25 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         if (intent) ::coop::miner_sync::OnIntent(msg.senderPeerSlot, p);
         else ::coop::miner_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::FireExtState:
+    case net::ReliableKind::FireExtIntent: {
+        // FireExtState HOST->ALL, FireExtIntent CLIENT->HOST (coop/props/fireext_sync). Exact length.
+        const bool intent = msg.kind == net::ReliableKind::FireExtIntent;
+        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != sizeof(net::FireExtPayload)) {
+            UE_LOGW("event_feed: an extinguisher message the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        net::FireExtPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (!std::isfinite(p.life) || p.life < -0.01f || p.life > 1.01f) {
+            UE_LOGW("event_feed: an extinguisher message malformed -- dropping");
+            break;
+        }
+        if (intent) ::coop::fireext_sync::OnIntent(msg.senderPeerSlot, p);
+        else ::coop::fireext_sync::OnState(p);
         break;
     }
     case net::ReliableKind::PropFireState:
