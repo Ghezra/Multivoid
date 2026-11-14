@@ -53,6 +53,7 @@
 #include "coop/props/fireext_sync.h"          // a fire extinguisher's foam: the host's rays, every peer's view
 #include "coop/world/cover_sync.h"            // the desk's back plates and the stations' doors are the host's
 #include "coop/player/hand_record_sync.h"      // a held item's own record on its hand mirrors
+#include "coop/items/wall_preview_sync.h"       // a wall builder's aiming preview on every peer
 #include "coop/player/puppet_identity.h"  // a puppet's touch never runs this machine's player's effects
 #include "coop/player/sleep_rest.h"
 #include "coop/player/nightmare_roll.h"
@@ -305,6 +306,7 @@ void Install(coop::net::Session& session) {
     coop::roomba_sync::Install(&session);  // the robot cleaner: a client refuses its tick and pickup, its switch is the host's
     coop::miner_sync::Install(&session);  // a mining rig: a client refuses its tick, its uses and claims are asked of the host
     coop::fireext_sync::Install(&session);  // an extinguisher: a client refuses its thrust and ray, its spray is told the host
+    coop::wall_preview_sync::Install(&session);  // a wall builder's preview: its holder sends it, each mirror shows it
     coop::hand_record_sync::Install(&session);  // a held item's record: its owner sends it, each mirror takes it
     coop::cover_sync::Install(&session);  // the desk's plates and the stations' doors: a client's changes are asked of the host
     coop::puppet_identity::Install(&session);  // a puppet's touch of a wisp, a grunt, a trigger box or a dream box acts on no machine's player
@@ -459,6 +461,7 @@ void DisconnectSlot(coop::net::Session& session, int slot) {
     coop::trash_channel::OnGrabHolderLeft(session, static_cast<uint8_t>(slot));  // the leaver's carried clump is let go: it falls, streams, lands
     coop::fireext_sync::OnPeerLeft(static_cast<uint8_t>(slot));  // the leaver's spray ends
     coop::hand_record_sync::OnPeerLeft(static_cast<uint8_t>(slot));  // the leaver's hand record goes
+    coop::wall_preview_sync::OnPeerLeft(static_cast<uint8_t>(slot));  // the leaver's preview goes
     coop::broom_stroke::OnPeerLeft(static_cast<uint8_t>(slot));  // the leaver's stroke rate goes with it
     coop::kerfus_lanes::OnPeerLeft(static_cast<uint8_t>(slot));  // and the Kerfuses it turned on follow the host again (its verbs' queue goes with its slot)
     coop::dish_calib_sync::OnPeerLeft(static_cast<uint8_t>(slot));  // and its precision-intent budget
@@ -600,6 +603,7 @@ DisconnectStats DisconnectAll() {
     coop::roomba_sync::OnDisconnect();  // the cleaners known, the presses and states queued
     coop::miner_sync::OnDisconnect();  // the rigs known, the asks and states queued
     coop::fireext_sync::OnDisconnect();  // the sprays shown, the thrusts known and queued
+    coop::wall_preview_sync::OnDisconnect();  // the previews shown
     coop::hand_record_sync::OnDisconnect();  // the hands' records and half-assemblies
     coop::cover_sync::OnDisconnect();  // the covers sent, the asks and states queued
     coop::puppet_identity::OnDisconnect();  // the resolved classes and stubs, the grunt and wisp_p windows
@@ -720,7 +724,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:server"}; coop::serverbox_sync::Tick(); }  // the server boxes: the watches settled, then the HOST's 1 Hz poll -> broadcast on change
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:server_upgrade"}; coop::server_upgrade_sync::Tick(); }  // a parked canonical, applied once the servers resolve
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:slot"}; coop::floppy_slot_sync::Tick(); coop::mirror_slot_entry::Tick(); }  // device slots: 1 Hz digest-gated poll -> HOST canonical, CLIENT claim; the mirror entry's watches settle
-    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"puppet_identity.settle"}; coop::puppet_identity::Tick(); coop::orb_authority::Tick(); coop::ufo_sync::Tick(); coop::roomba_sync::Tick(); coop::miner_sync::Tick(); coop::fireext_sync::Tick(); coop::cover_sync::Tick(); coop::hand_record_sync::Tick(); }  // the watches settle, the per-world pointers follow the class set
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"puppet_identity.settle"}; coop::puppet_identity::Tick(); coop::orb_authority::Tick(); coop::ufo_sync::Tick(); coop::roomba_sync::Tick(); coop::miner_sync::Tick(); coop::fireext_sync::Tick(); coop::cover_sync::Tick(); coop::hand_record_sync::Tick(); coop::wall_preview_sync::Tick(); }  // the watches settle, the per-world pointers follow the class set
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:roach"}; coop::roach_sync::Tick(); }  // roach infestation: HOST 1 Hz population poll -> paged broadcast; CLIENT liveness-scan -> consumption intents
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:owner_entity"}; coop::owner_entity_sync::Tick(); }  // owner-entity: 4 Hz own-pose stream + keepalive + death-watch + mirror prune
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:hook"}; coop::hook_sync::Tick(); }  // hook: one activeHook read, then a gated 4/20 Hz head poll only while a hook exists

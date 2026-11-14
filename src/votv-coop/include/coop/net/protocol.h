@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 322;
+inline constexpr uint16_t kProtocolVersion = 323;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1570,6 +1570,11 @@ enum class ReliableKind : uint16_t {
     // sender's hand holds that class and sends it on to everyone, the host's own to everyone, and every hand's to a
     // joiner at its ready edge. Each peer writes it into its mirror of that hand through the item's own loadData.
     HandRecord = 279,
+    // A wall builder's aiming preview (coop/items/wall_preview_sync): its holder's, when it changes (at most ten a
+    // second) and once as it ends, a client's to the host, which checks its mirror of that hand is a wall builder and
+    // sends it on, the host's own to everyone. Each peer shows it on its mirror of that hand. Not pre-world.
+    // WallPreviewPayload.
+    WallPreview = 280,
 };
 
 #pragma pack(push, 1)
@@ -2456,6 +2461,20 @@ struct CoverPayload {
     uint32_t eid;    // op 3: the plate prop's element id; op 5: the plate the host spawned, 0 when refused
 };
 static_assert(sizeof(CoverPayload) == 8, "CoverPayload must be 8 bytes");
+
+// A wall builder's aiming preview (WallPreview): the tool's own components, in world space.
+struct WallPreviewPayload {
+    uint8_t slot;          // the holder
+    uint8_t held;          // 0: the preview ended (the hand let the tool go)
+    uint8_t editing;       // 1: the left button is held, the cube and the far corner shown
+    uint8_t pad;           // zero
+    float   cubeLoc[3];    // the cube: the wall to be placed
+    float   cubeRot[3];    // pitch, yaw, roll
+    float   cubeScale[3];
+    float   pivotA[3];     // where the aim lands
+    float   pivotB[3];     // the far corner, while editing
+};
+static_assert(sizeof(WallPreviewPayload) == 64, "WallPreviewPayload must be 64 bytes");
 
 // A burning prop (PropFireState), or a client's light (PropFireRequest).
 struct PropFirePayload {

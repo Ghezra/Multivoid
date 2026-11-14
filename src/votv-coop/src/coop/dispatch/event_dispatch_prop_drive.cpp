@@ -26,6 +26,7 @@
 #include "coop/props/fireext_sync.h"  // an extinguisher's thrust and a player's spray
 #include "coop/world/cover_sync.h"    // the desk's back plates and the stations' doors
 #include "coop/player/hand_record_sync.h"  // a held item's own record on its hand mirrors
+#include "coop/items/wall_preview_sync.h"  // a wall builder's aiming preview
 #include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
 #include "coop/interactables/garbage_bin_sync.h"
@@ -404,6 +405,14 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         if (intent) ::coop::fireext_sync::OnIntent(msg.senderPeerSlot, p);
         else ::coop::fireext_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::WallPreview: {
+        // Any peer to the host, the host to all (coop/items/wall_preview_sync). Exact length.
+        if (msg.payloadLen != sizeof(net::WallPreviewPayload)) break;
+        net::WallPreviewPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        ::coop::wall_preview_sync::OnPreview(msg.senderPeerSlot, p);
         break;
     }
     case net::ReliableKind::HandRecord: {

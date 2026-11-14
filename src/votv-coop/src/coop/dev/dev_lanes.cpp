@@ -135,6 +135,8 @@
 #include "coop/dev/foam_probe.h"  // [dev] a client's extinguisher spray and the host's thrust, logged on both
 #include "coop/dev/cover_probe.h"  // [dev] a client's desk plate and station door, then the host's, logged on both
 #include "coop/dev/item_trip_probe.h"  // [dev] an item's state across a trip into the inventory and back, logged on both
+#include "coop/dev/wall_fill_probe.h"  // [dev] an unfinished wall filled with bricks by both players, logged on both
+#include "coop/dev/wall_preview_probe.h"  // [dev] a client's wall builder preview, logged on both
 #include "coop/dev/tower_poof_probe.h"  // [dev] the stolen radio tower fired on the host, its tower read on both
 #include "coop/dev/puppet_blast_probe.h"  // [dev] a blast at a peer's puppet, each peer's own health read
 #include "coop/dev/native_spawn_probe.h"  // [dev] every allowlisted creature a Blueprint graph spawns here
@@ -463,6 +465,8 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::foam_probe::Tick(&session);  // [dev] the extinguishers on both peers (a latched read when off)
     coop::dev::cover_probe::Tick(&session);  // [dev] the desk's plates and a station's door on both peers (a latched read when off)
     coop::dev::item_trip_probe::Tick(&session);  // [dev] an item's trip into the inventory and back (a latched read when off)
+    coop::dev::wall_fill_probe::Tick(&session);  // [dev] an unfinished wall's bricks on both peers (a latched read when off)
+    coop::dev::wall_preview_probe::Tick(&session);  // [dev] a wall builder's preview on both peers (a latched read when off)
     coop::dev::tower_poof_probe::Tick(&session);  // [dev] the radio tower on both peers (a latched read when off)
     coop::dev::puppet_blast_probe::Tick(&session);  // [dev] a blast at a peer's puppet (a latched read when off)
     coop::dev::death_seam_census::Tick();  // [dev] every element end the death seam announces (latched read when off)

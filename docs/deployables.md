@@ -108,7 +108,21 @@ held tie and a tie broken outright on the client's copy, a host pin whose board 
 drags until the pin snaps on both, each peer's removal
 with its one dropped nail item on both, an unfinished wall, its finish, a wet wall drying, a client's hit and repair shown
 on its copy within 110 ms and on the host's wall, a log thrown by each peer counted once, the host's break, a client's
-wall builder).
+wall builder). Bricks fill an unfinished wall on the host alone: a brick prop whose name is the wall's material that
+touches the host's wall counts there and goes, and the wall's record carries the count to every copy. A client's brick
+counts when the host's copy of it, following the client's hold, touches the host's wall `[V]` (`coop/dev/wall_fill_probe`,
+`VOTVCOOP_WALL_FILL_PROBE=1`: two bricks the host dropped and one a client grabbed through the use key's chain and
+carried in each counted on the host, the client's copy reading the same count a second later and the brick gone on both;
+with the requirement at 3, the client's brick finished the wall on both).
+
+The wall builder's aiming preview -- `pivot_a` where its holder aims, and while the left button is held the `cube` that
+is the wall to be placed and `pivot_b`, its far corner -- is moved by the tool's own tick on the holder's machine alone.
+The holder sends `editing` and the three components' world transforms when they change, at most ten times a second, and
+once as the preview ends (`WallPreview`): a client's to the host, which checks its mirror of that hand is a wall
+builder and sends it on. Each peer shows it on its mirror of that hand every frame while it holds
+(`coop/items/wall_preview_sync`) `[V]` (`coop/dev/wall_preview_probe`, `VOTVCOOP_WALL_PREVIEW_PROBE=1`, the Custom
+Content rule set on in the process: the host's mirror of a client's tool showed its aim point, the cube at the
+client's location and scale from the press, followed its stretch as the client turned, and hid at the cancel).
 
 A poster on a wall rides the same lane. A poster item's put spawns a `poster_c` (the treehouse's and the custom poster's
 classes too), a save actor whose record carries its picture (`type`, and `filename` for a custom one); the poster's own
@@ -146,6 +160,7 @@ that name, or none.
 | `GroundHoseState` | the host to all | a finished hose's own record, or its key when it went; chunked |
 | `GroundHoseIntent` | a client to the host | a hose its player finished or changed, as its record, or took up; chunked |
 | `BuildState` | the host to all | a nail's, a custom wall's or a poster's own record, or its key when it went; chunked |
+| `WallPreview` | a holder to the host; the host to all | a wall builder's aiming preview: editing, the cube's world transform, the two pivots |
 | `BuildIntent` | a client to the host | a piece its player made, as its record, or took away, a wall it hit or repaired, or a nail its pull snapped; chunked |
 
 ## Late join
@@ -166,7 +181,7 @@ only through the save.
 | The timed explosives, the fishing rod and the physgun are not synced | `[V]` no lane carries them |
 | A client's hit or repair shows on its own copy at once; the host and the other clients see it one network trip later, and a host's own change reaches the clients on the next poll, within half a second | `[RD]` `coop/world/build_sync` |
 | A client's pull snaps a host nail by its own physics, and the host takes its word within the hold and reach checks; a snap the host refuses was not run, and the drill grabs through the player's physics handle as the game's grab does rather than by a press | `[?]` `harness/autotest/autotest_build.cpp` step R |
-| A brick a client drops into an unfinished wall counts when the host's copy of the brick touches the host's wall; that path was not run, nor was a real wall builder's or nail gun's press | `[?]` the drill places walls and fires projectiles as the tools' own scripts do |
+| A real wall builder's or nail gun's press by a player was not run: the drill places walls and fires projectiles as the tools' own scripts do, and the preview probe presses the tool's LMB and RMB through their own handlers | `[?]` `harness/autotest/autotest_build.cpp`, `coop/dev/wall_preview_probe` |
 | The host captures every piece's record twice a second; the cost with hundreds of nails is not measured | `[?]` `coop/world/build_sync` |
 | A garden hose reaches the others only once it is finished: while one player lays it, the others see the faucet without it. A sprinkler a hose ties is made static by the coil on the laying peer only | `[V]` `coop/world/ground_hose_sync` sends no laying hose; `prop_sprinkler_C`'s `connectHose` calls `setPropProps`, which the lane does not replay |
 | The drill lays hoses by their records and runs the cut by the hose's own `detachSprinkler`; a hose walked out with a coil, and a cut by grabbing the sprinkler, are not driven on the rig | `[?]` `harness/autotest/autotest_ground_hose.cpp` |
@@ -182,4 +197,5 @@ only through the save.
 | the props a tie claims for the driven-prop channel | `coop/items/hook_prop_claim` |
 | an anchored hook taken back with the use key | `coop/items/hook_retrieve` |
 | the garden hose lane | `coop/world/ground_hose_sync`; the hose, its faucet and sprinkler `ue_wrap/actors/ground_hose` |
-| nails, custom walls and posters | `coop/world/build_sync`; the pieces `ue_wrap/actors/build_piece`; `coop/dev/poster_probe` |
+| nails, custom walls and posters | `coop/world/build_sync`; the pieces `ue_wrap/actors/build_piece`; `coop/dev/poster_probe`, `coop/dev/wall_fill_probe` |
+| the wall builder's aiming preview | `coop/items/wall_preview_sync`; `coop/dev/wall_preview_probe` |

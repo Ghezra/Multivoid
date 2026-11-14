@@ -57,6 +57,7 @@ set(VOTVCOOP_SOURCES
     src/coop/world/balance_sync.cpp
     src/coop/world/cover_sync.cpp
     src/coop/player/hand_record_sync.cpp
+    src/coop/items/wall_preview_sync.cpp
     src/coop/world/daily_task_sync.cpp
     src/coop/save/save_block.cpp
     src/coop/save/save_button_disable.cpp

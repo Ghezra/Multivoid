@@ -390,6 +390,8 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/foam_probe.cpp
     src/coop/dev/cover_probe.cpp
     src/coop/dev/item_trip_probe.cpp
+    src/coop/dev/wall_fill_probe.cpp
+    src/coop/dev/wall_preview_probe.cpp
     src/coop/dev/tower_poof_probe.cpp
     src/coop/dev/puppet_blast_probe.cpp
 )
