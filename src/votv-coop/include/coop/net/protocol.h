@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 319;
+inline constexpr uint16_t kProtocolVersion = 320;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1513,9 +1513,12 @@ enum class ReliableKind : uint16_t {
     // HOST->CLIENT: the black orb's encounter (npc_orborb_C), which the host judges (coop/creatures/orb_authority).
     // Begin, to every client: the host's orb began its encounter, and each client's copy runs its own begin. Death, to
     // the toucher alone: the orb caught that player, whose machine answers the run's end as a death. Never relayed; not
-    // pre-world (a Begin for a copy not yet made is dropped). Late join: none, an encounter is ten seconds. Host-
-    // authored: a client's copy is refused at the host's receive edge. OrbEventPayload.
-    OrbEvent = 273,
+    // pre-world (a Begin for a copy not yet made is dropped). Late join: none is owed. The encounter is about 5.1 s (the
+    // timeline's last key is at 5.0 s, then the end's own 0.1 s delay) and a copy born inside it stands still with no
+    // fade until the host's destroy takes it; MTA replays no one-shot event to a joiner (CGame.cpp Packet_ExplosionSync,
+    // the join stream carries elements only). Host-authored: a client's copy is refused at the host's receive edge.
+    // OrbEventPayload.
+    OrbEvent = 258,
     // HOST->CLIENT: the gamemode's ambient UFOs (coop/world/ufo_sync). A path, to every client after the UFO's
     // WorldActorSpawn: what the host's copy rolled at its birth (a ball's turn and two ends, a boo's flight spline in
     // chunks of 16 points), written over the client copy's own roll so every copy flies one path. MidasRun, to every
@@ -1523,44 +1526,44 @@ enum class ReliableKind : uint16_t {
     // pre-world (a path for a copy not yet made waits ten seconds). Late join: the host sends the path of every UFO
     // still flying and the Midas run while it lasts. Host-authored: a client's copy is refused at the host's receive
     // edge. UfoEventPayload.
-    UfoEvent = 274,
+    UfoEvent = 259,
     // HOST->ALL: a robot cleaner (prop_roomba_C) of the host's switched on or off (coop/props/roomba_sync), when its
     // `active` changes and to a joiner at its ready edge; a client's copy takes it through the cleaner's own `use`. While
     // it runs, the host's copy drives and its pose rides PropDrivePose. Never relayed; not pre-world. RoombaPayload.
-    RoombaState = 275,
+    RoombaState = 245,
     // CLIENT->HOST: this client's player pressed a robot cleaner's switch (action 5); `active` is the state it wants.
     // The host judges the sender's reach and presses its own cleaner, whose RoombaState answers. Never relayed.
     // RoombaPayload.
-    RoombaIntent = 276,
+    RoombaIntent = 246,
     // HOST->ALL: a GPU mining rig's (prop_miner_C) GPUs, slots, coolers, points and heat (coop/props/miner_sync), when one
     // changes (the points at most once a second) and to a joiner at its ready edge; a client's copy writes them and
     // repaints through the rig's own `upd`. Op 1, HOST->that client: its ask was granted or refused. Never relayed; not
     // pre-world. MinerPayload.
-    MinerState = 277,
+    MinerState = 273,
     // CLIENT->HOST: this client's player used a GPU, a cooler or scrap metal on a rig (op 2) or claimed its points
     // (op 3). The host judges the sender's reach and pace and runs its own rig's `upgrade` or claim, whose hints go to
     // the asker. Never relayed. MinerPayload.
-    MinerIntent = 278,
+    MinerIntent = 274,
     // HOST->ALL: a fire extinguisher's foam (coop/props/fireext_sync). Op 0: a world extinguisher's runaway thrust (its
     // `active` with charge left) and its charge, when either changes and to a joiner at its ready edge; a client's copy
     // shows the thrust's foam and sound, and never runs the thrust itself. Op 1: a player's spray from the extinguisher
     // in its hand, on or off; every other peer shows it on that player's hand mirror. Never relayed; not pre-world.
     // FireExtPayload.
-    FireExtState = 279,
+    FireExtState = 275,
     // CLIENT->HOST: this client's player started or stopped spraying the extinguisher in its hand (op 2). The host checks
     // the sender's hand holds one, sprays the game's own extinguishing ray along the sender's aim while it is on, and
     // sends op 1 to every peer. Never relayed. FireExtPayload.
-    FireExtIntent = 280,
+    FireExtIntent = 276,
     // HOST->ALL: a cover's state (coop/world/cover_sync), when it changes and to a joiner at its ready edge. The signal
     // desk's four back plates: which are on and which are unbolted, written into the desk and shown through its own
     // updPanels. A transformer station's (generator_C) maintenance door: open or shut, shown through its own openDoor.
     // Op 5, HOST->that client: its take-off was granted or refused. Never relayed; not pre-world. CoverPayload.
-    CoverState = 281,
+    CoverState = 277,
     // CLIENT->HOST: this client's player unbolted or bolted a back plate (op 1), took one off (op 2), set one back (op 3,
     // the plate prop's element id), or pressed a transformer station's door (op 4, the state it wants). The host judges
     // the sender's reach and its own desk's or station's state, runs the change on its copy, and CoverState answers.
     // Never relayed. CoverPayload.
-    CoverIntent = 282,
+    CoverIntent = 278,
 };
 
 #pragma pack(push, 1)

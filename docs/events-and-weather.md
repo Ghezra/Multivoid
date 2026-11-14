@@ -44,9 +44,9 @@ that on either peer can merge two and skip a minute's pulse `[RD]` -- one night 
 the host once a second (`coop/world/sky_sync`) `[V]`. So does the earth teleport's black hole: the event's `tp` hides the
 day sky and shows the black hole 20 s in and turns them back 86 s later, unless a game rule keeps the black hole. A
 client refuses its own `tp`, takes the host's flip through the sky's own `skyVisibility` and the black hole's light,
-hears the two sounds as cues and reads the emails from the host's feed; a joiner gets the flip with the sky
-(`coop/dev/sky_tp_probe`) `[V]`: the client's sky flipped and turned back in the same second as the host's, and a
-client that joined mid-flip got the black hole at its join.
+and reads the emails from the host's feed; its two 2D sounds are carried as EventCue ids 100 and 101 (`coop/world/world_sound_sync`). A joiner gets the flip with the sky
+(`harness/autotest/autotest_sky_tp.cpp`, `sky_tp_drill`) `[?]`: the client's sky flips and turns back with the host's, and a
+client that joins mid-flip gets the black hole at its join (the drill's first rig run is pending).
 
 ### Weather
 
@@ -187,12 +187,13 @@ stands at its top, checked every 5 to 10 minutes) and Midas (the level's own UFO
 outputs of the gamemode's source on the world-actor lane, so each client gets a copy, which runs the UFO's own
 animation. The ball and the boo roll their path on each machine at birth: the ball the turn and the two ends its
 lights fly between, kept from its construction script because the engine refuses to move those parts afterwards,
-and the boo the wobble of each point of its flight spline. So the host sends what its copy rolled (`UfoEvent`) and
-the client writes it over its own before the copy flies. The host relays the Midas take-off, and each client runs
+and the boo the wobble of each point of its flight spline. So the host sends what its copy rolled (`UfoEvent`),
+right after the spawn it follows on the same ordered lane (a joiner gets each UFO still flying, enrolled again if the last client's leave drained it, and its path at its ready
+edge), and the client writes it over its own before the copy flies; a path the receive boundary refuses is logged with
+the UFO's id, and that copy flies its own roll (a boo) or stays parked (a ball). The host relays the Midas take-off, and each client runs
 its own. A copy the host ends first gives back the event entry its script would have given back on its own way out
-(`coop/world/ufo_sync`) `[V]` (`coop/dev/ufo_probe`, `VOTVCOOP_UFO_PROBE=1`: the client's five timers were refused, and
-its ball, boo, pill and Joel flew on the host's paths, the ball's ends equal to the centimetre; a client that joined
-mid-flight ran the Midas UFO).
+(`coop/world/ufo_sync`) `[?]` (`harness/autotest/autotest_ufo.cpp`, `ufo_drill`: the host's ball path reaches a client's copy, and a
+joiner's at its ready edge; the boo's path sync is `[?]`, the gamemode's boo needing day 21 and a night hour, which the drill cannot set; first rig run pending).
 
 ### The stolen radio tower
 
@@ -308,7 +309,7 @@ edge. A one-shot cue a joiner was not present for is missed, by definition.
 
 | Limit | Evidence |
 |---|---|
-| The sky's earth teleport plays its two sounds on every client (`coop/world/world_sound_sync`, EventCue ids from 100, found by the sound the host's `PlaySound2D` is given), and its flip to the black hole and back rides the sky lane (`coop/world/sky_sync`); its other effects are the host's, and a client's own count of running events leaves it out | `[?]` `harness/autotest/autotest_world_sound.cpp`: the cue received and the play call made on the client (the rewritten drill has not run yet); `[V]` `coop/dev/sky_tp_probe` for the flip; `[RD]` for the rest |
+| The sky's earth teleport plays its two sounds on every client (`coop/world/world_sound_sync`, EventCue ids from 100, found by the sound the host's `PlaySound2D` is given); its black hole and its light ride SkyState | `[?]` `harness/autotest/autotest_world_sound.cpp`: the cue received and the play call made on the client (the rewritten drill has not run yet); `[RD]` for the rest |
 | The alien sounds are each player's own: the event is replayed, and each peer's three noisers walk around its own player, sound and leave when that player sees one. A player does not hear the noisers around another. A joiner whose world is up while the host's noisers are out is sent the event once at its ready edge (the join snapshot, one row for the three noisers) and gets noisers of its own | `[?]` `harness/autotest/autotest_world_sound.cpp`: three noisers on each peer, and on a rejoined client (the rewritten drill has not run yet) |
 | A harvest's sound is the harvester's alone: no other peer plays it | `[RD]` the harvest half of #104 waits for the host to perform every harvest (#115): the host's own `growingPlant_C::harvestSound` call then sends an EventCue id 102 at the plant |
 | A black fog the host rolls has no wire lane yet; the client's own rolls are suppressed | `[V]` `coop/world/weather_event_births` |
@@ -334,6 +335,6 @@ edge. A one-shot cue a joiner was not present for is missed, by definition.
 | events | `coop/world/event_fire_sync`, `coop/world/event_active_sync`, `coop/world/creature_event_relay`, `coop/world/event_cue_sync`, `coop/world/vent_crawler_sync`, `coop/dev/event_trigger` |
 | event actors and the pyramid | `coop/world/world_actor_sync`, `coop/world/world_actor_mirror`, `coop/creatures/piramid_sync` |
 | the stolen radio tower | `coop/world/fuse_tower_ops` (the ticker's refusal), `coop/world/fuse_tower_kind`, `ue_wrap/devices/radio_tower`; `coop/dev/tower_poof_probe` |
-| the ambient UFOs | `coop/world/ufo_sync`, `coop/world/spawn_authority` (the gamemode's five timers); `coop/dev/ufo_probe` |
+| the ambient UFOs | `coop/world/ufo_sync`, `coop/world/spawn_authority` (the gamemode's five timers); `harness/autotest/autotest_ufo.cpp` (`ufo_drill`) |
 | the alarm, emails, the task | `coop/world/alarm_sync`, `coop/world/email_sync`, `coop/world/daily_task_sync`, `ue_wrap/world/email` |
 | tests | `harness/autotest/autotest_weather.cpp`, `autotest_fog_probe.cpp`, `autotest_eventforce.cpp`, `autotest_alarmforce.cpp`, `autotest_piramidforce.cpp`, `autotest_vent_crawler.cpp`; the event drill, `coop/dev/event_drill`; the world roll drill, `coop/dev/world_roll_drill` |

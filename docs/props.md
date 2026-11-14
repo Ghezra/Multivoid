@@ -300,24 +300,22 @@ and an extraction on a client is a container-extract birth through the intent do
 overlap box (the trigger a thrown prop enters to be filed) when a record leaves the container by a player's take,
 through the container's own `dingus`; the host's raw record edit never runs it, so the host calls `dingus` once a
 client's take is final (`container_act_host`) `[?]`. Whether that box is armed is the host's own physical state: every
-slice the host publishes carries it in a flags byte (`coop/props/container_arming`, `container_slice_wire`), a native
-hook on `SetCollisionEnabled` marks the container for publication when the box changes (a host take, a broken container,
-a roomba's own writes included), and a client's mirror takes its box from the byte and cancels its own `dingus` on a
-shared container, so a mirror's trigger is never armed by a client alone `[?]`. A prop a client drives into an armed box
-is judged by the host at the host's own overlap, with no client message: the host's copy is kinematic there, so the
-box's own body would refuse it, and a PRE on `putObjectIn_overlap` judges it instead (the box is armed, a held or
-claimed driver is within reach, no client holds the container, the body's silent gates pass, the prop fits), ends the
-driver's row or drive so the copy simulates, and lets the game's body file it. Every such put is filed, refused with its
-reason, or dropped and counted. A put that cannot be judged yet waits for the edge it needs: a client's hold ending, the
-prop's id binding, or the container changing (the last two for at most 2 s, then it is refused as unread); the host's
-own put on a held container waits too. A prop still in the box by then with no driver is pre-checked the same way and
-the game's body runs on it, since it fires no second overlap, and the game's own body may still refuse it. A refusal
-stands while the same drive does, until the container changes. A client's own copy of the call on a shared mirror is
-cancelled whoever calls it (the container's own overlap graph, a drone sack's trigger), since the mirror is display
-only; only a roomba's own graph runs, on the host, because its put files a prop that graph just spawned. A joiner needs no replay:
-the put is one host step, so a joiner seeded before it receives the prop's destroy and the container's publication, and
-one seeded after receives the container with the record `[?]`. The open and closed state is a keyed-device channel like
-a door's ([devices.md](devices.md)). The single-slot verbs are reverse-engineered and designed and not built.
+slice the host publishes carries it in a flags byte (`coop/props/container_arming`, `container_slice_wire`), a native hook
+on `SetCollisionEnabled` marks the container for publication when the box changes (a host take, a broken container, a
+roomba's own writes included), and a client's mirror takes its box from the byte and cancels its own `dingus` on a shared
+container, so a mirror's trigger is never armed by a client alone `[?]`. A prop a client drives into an armed box is
+judged by the host at the host's own overlap, with no client message: the host's copy is kinematic there, so the box's
+own body would refuse it, and a PRE on `putObjectIn_overlap` judges it instead (the box is armed, a held or claimed
+driver is within reach, no client holds the container, the body's silent gates pass, the prop fits), ends the driver's
+row or drive so the copy simulates, and lets the game's body file it. Every such put is filed, refused with its reason, or
+dropped and counted. A put that cannot be judged yet waits for the edge it needs: a client's hold ending, the prop's id
+binding, or the container changing (the last two for at most 2 s, then it is refused as unread); the host's own put on a
+held container waits too. A prop still in the box by then with no driver is pre-checked the same way and the game's body
+runs on it, since it fires no second overlap, and the game's own body may still refuse it. A refusal stands while the
+same drive does, until the container changes. A client's own copy of the call on a shared mirror is cancelled whoever
+calls it (the container's own overlap graph, a drone sack's trigger, a cleaner's own graph, which a client never runs), since the mirror is display only. A joiner needs no replay: the put is one host step, so a joiner seeded
+before it receives the prop's destroy and the container's publication, and one seeded after receives the container with
+the record `[?]`. The open and closed state is a keyed-device channel like a door's ([devices.md](devices.md)). The single-slot verbs are reverse-engineered and designed and not built.
 
 A container that breaks spills its records (its own `broken`), then is destroyed. A client's lethal hit on a container it
 authors is cancelled and sent to the host (`ContainerBreakRequest`), which breaks its own copy by the same call, and a
@@ -525,6 +523,7 @@ cm of it each second and resting 1 cm from it; the client's press switched the h
 | `ContainerState`, `ContainerContents` | the presser; the host | open or closed; one slice of the host's object array, its nested containers' contents in its tail |
 | `ContainerBreakRequest` | a client to the host | a container this client authors took a lethal hit; the host breaks its copy |
 | `InventoryPickup` | each peer, relayed | the pocket blip, so others hear a pickup |
+| `RoombaState`, `RoombaIntent` | the host to all; a client to the host | a robot cleaner's id and whether it runs; a client's press with the state it wants |
 
 ## Late join
 
@@ -588,6 +587,7 @@ prop resolves.
 | the stick | `coop/props/prop_stick_sync` |
 | a prop's nametag | `coop/props/prop_nametag`, `ue_wrap/actors/nametag` |
 | a prop under a hook's drive or a broom's push | `coop/props/prop_drive_host` (the host's set and stream), `coop/props/prop_drive_stream` (the receiver), `coop/items/hook_prop_claim` (the hook lane feeding it), `coop/items/hook_constraint` (the tie itself, host-only), `coop/items/broom_push` (the broom's push feeding it) |
+| the robot cleaner | `coop/props/roomba_sync`; `harness/autotest/autotest_roomba.cpp` (`roomba_drill`) |
 | containers | `coop/props/container_contents_sync`, `coop/items/save_record_wire`, `coop/interactables/interactable_sync`; a break, `coop/props/container_break`; nested contents, `ue_wrap/actors/container_inventory` |
 | a world food's condition | `coop/props/prop_food_sync`, `ue_wrap/actors/food` |
 | a keyed prop's fire | `coop/props/prop_fire_sync`, `ue_wrap/actors/prop_fire` |
