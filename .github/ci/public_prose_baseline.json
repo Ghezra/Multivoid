@@ -1,9 +1,9 @@
 {
-  "as_of": "ca8537cb9",
+  "as_of": "c57167d6b",
   "note": "measured on the working tree; as_of is HEAD at that moment",
   "counters": {
-    "md.files": 56,
-    "md.lines": 10366,
+    "md.files": 57,
+    "md.lines": 10746,
     "md.over_600": 0,
     "md.cyrillic": 1,
     "md.user": 1,
@@ -31,7 +31,7 @@
     "other.ptr_claude": 1,
     "other.ptr_security": 1,
     "other.dead_docpath": 0,
-    "src.comment_lines": 82878,
+    "src.comment_lines": 84610,
     "src.comment_cyrillic": 0,
     "src.comment_user": 0,
     "src.comment_verbatim": 0,
@@ -59,8 +59,8 @@
     "src.comment_dead_ini_key": 0,
     "src.comment_dead_member": 0,
     "src.dead_declarations": 0,
-    "src.comment_permille": 200,
-    "src.files": 2435,
+    "src.comment_permille": 195,
+    "src.files": 2527,
     "src.files_not_swept": 0
   }
 }

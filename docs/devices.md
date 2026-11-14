@@ -186,22 +186,19 @@ hook seam can intercept it and only the script-body gate can watch it
 (`docs/coop-dispatch-visibility.md`). Without a lane of its own, a
 drone delivery landed full on the host and empty on the client.
 
-The seam is a gate on the Blueprint body of the add and take verbs, and it only marks the
-container dirty -- it reads no arguments and takes no action, which is what makes it correct for
-every caller. On the host the next sweep publishes the slice. There is no request the host could
-refuse here: the gate fires at the body's entry, on the presser's own machine, and the item has
-moved there before an answer from anywhere else could arrive. So a client's mirror of a shared
-container is display only: its own add or take runs on the mirror, the watch forgets the applied
-hash, and the host's next publication, or the truth it sends a refused ask, puts the mirror back.
-A change a client really makes to a shared container is an act the host judges
-(`coop/props/container_act_*`). One client slice remains, a thrown container's birth: the host
-built its copy empty from the throw, the contents are the thrower's, and that slice is the one a
-host takes. It spends the author's arrival budget (sixteen a second); past it the slice waits in
-the pen. The host refuses every other client slice after its header, never applies or relays it,
-counts it, says it once per container, and answers the author with its own truth: at most one
-per container every two seconds and one per author every half second, so a forged address buys
-no more than the floor. An accepted birth is relayed to every peer except the author -- echoing a
-peer's own state back would revert its newer local value.
+The seam is a gate on the Blueprint body of the add and take verbs, and it only marks the container dirty -- it reads
+no arguments and takes no action, which is what makes it correct for every caller. On the host the next sweep
+publishes the slice. There is no request the host could refuse here: the gate fires at the body's entry, on the
+presser's own machine, and the item has moved there before an answer from anywhere else could arrive. So a client's
+mirror of a shared container is display only: its own add or take runs on the mirror, the watch forgets the applied
+hash, and the host's next publication, or the truth it sends a refused ask, puts the mirror back. A change a client
+really makes to a shared container is an act the host judges (`coop/props/container_act_*`). One client slice remains,
+a thrown container's birth: the host built its copy empty from the throw, the contents are the thrower's, and that
+slice is the one a host takes. It spends the author's arrival budget (sixteen a second); past it the slice waits in
+the pen. The host refuses every other client slice after its header, never applies or relays it, counts it, says it
+once per container, and answers the author with its own truth: at most one per container every two seconds and one per
+author every half second, so a forged address buys no more than the floor. An accepted birth is relayed to every peer
+except the author -- echoing a peer's own state back would revert its newer local value.
 
 Two things can arrive before they can be judged, and neither is refused for it. A slice whose
 container has not spawned on this machine yet waits in a holding pen -- one entry per container,
@@ -262,32 +259,27 @@ row that arrives without one (`save_record::ApplyRecord`). `[V]` (`harness/autot
 
 ### Keypads and locks
 
-A keypad is a typed buffer and a verdict, and the verdict is also the power it hands on to its pair
-and its gated door. The host's copy decides. Every change goes through one of the keypad's own
-verbs -- a digit, an open with its verdict, the scripted guesser, the set-new-code mode, a false
-entry -- and the script-body gate watches them by name (`coop/interactables/keypad_verbs`): before
-each body on the host the verb goes to every client, which runs the same verb on its own copy, so
-the keypad's own chain plays its sounds and lands the same state; after it the state the chain
-settled on goes too -- at the keypad's setActive, its pair's with it and the password in it; at a
-digit or a reset that started no open -- and a joiner gets each keypad's state in its snapshot
-(`coop/interactables/keypad_sync`), handed on to its pair and door where the host's already hold
-it, so a door ends as the host's even when a chain ran after the host's save was taken. A client's
-copy is written to that state whatever its own
-replay met, but one that arrives while the copy's own replayed open, on the keypad or its pair, is
-still in its 0.2 s wait is written at that chain's end, so it never lands under the tail that
-reads the set-new-code mode and writes the pair. On a client every call of those
-verbs is refused but the lane's own; a player's own entries -- a digit, the accept or cancel key,
-the numpad's (told apart by the key, since the numpad's accept passes the copy's own verdict), a
-keycard's swipe, a pass changer -- go to the host as an intent, and the host runs the verb on its
-copy, judging a submit against its own password. A digit clicked on the keys needs the light's power
-on the presser's own copy, as single player's click does, and a client's copy holds the host's
-light power, since a client applies the host's canonical through the panel's own buttonsVisibility,
-whose tail runs setPower once the panel is enabled and its generators read whole: a client's clicks
-stop in a blackout and come back with the power. The entries run in order, and the next one waits
-while the host has no body for the sender and while the keypad's open is in the 0.2 s tail that
-clears its buffer, so none is lost to either wait (a full queue still refuses). A keycard's
-verdict is taken only while the sender holds a keycard. An accept unlocks a door; opening it is
-an ordinary press of the door.
+A keypad is a typed buffer and a verdict, and the verdict is also the power it hands on to its pair and its gated
+door. The host's copy decides. Every change goes through one of the keypad's own verbs -- a digit, an open with its
+verdict, the scripted guesser, the set-new-code mode, a false entry -- and the script-body gate watches them by name
+(`coop/interactables/keypad_verbs`): before each body on the host the verb goes to every client, which runs the same
+verb on its own copy, so the keypad's own chain plays its sounds and lands the same state; after it the state the
+chain settled on goes too -- at the keypad's setActive, its pair's with it and the password in it; at a digit or a
+reset that started no open -- and a joiner gets each keypad's state in its snapshot
+(`coop/interactables/keypad_sync`), handed on to its pair and door where the host's already hold it, so a door ends as
+the host's even when a chain ran after the host's save was taken. A client's copy is written to that state whatever
+its own replay met, but one that arrives while the copy's own replayed open, on the keypad or its pair, is still in
+its 0.2 s wait is written at that chain's end, so it never lands under the tail that reads the set-new-code mode and
+writes the pair. On a client every call of those verbs is refused but the lane's own; a player's own entries -- a
+digit, the accept or cancel key, the numpad's (told apart by the key, since the numpad's accept passes the copy's own
+verdict), a keycard's swipe, a pass changer -- go to the host as an intent, and the host runs the verb on its copy,
+judging a submit against its own password. A digit clicked on the keys needs the light's power on the presser's own
+copy, as single player's click does, and a client's copy holds the host's light power, since a client applies the
+host's canonical through the panel's own buttonsVisibility, whose tail runs setPower once the panel is enabled and its
+generators read whole: a client's clicks stop in a blackout and come back with the power. The entries run in order,
+and the next one waits while the host has no body for the sender and while the keypad's open is in the 0.2 s tail that
+clears its buffer, so none is lost to either wait (a full queue still refuses). A keycard's verdict is taken only
+while the sender holds a keycard. An accept unlocks a door; opening it is an ordinary press of the door.
 
 ### Power, turbine, windows, grime
 
@@ -377,23 +369,20 @@ tower rolls its dice in one function, `Scramble Radar Dish`, which blows a good 
 left, scrambles the puzzle and breaks the tower; three callers reach it -- the decay timer the
 generators' saboteur runs, an explosion nearby, and the tower's own load when it was saved broken
 -- and the lever's end judges the puzzle. A client refuses both at the script gate on every route,
-its world's load included, so the host's world is the towers' only author
-(`coop/world/fuse_tower_ops`). The host reads its towers each tick and sends every tower's row
-whenever one changes (`coop/world/fuse_tower_rows`); a client applies each change as the tower's
-own graph makes it: the painters for the state, `solvePuzzle` for a repair with its success sound,
-`moveLever` for the lever, and its own retract for the panel once its own montage is idle; a press,
-a pull, an insert and a failed lever play their own sounds. The lever's end, refused on a client, is
-what would clear its moving flag, so a client takes that flag from the row. A client's press of a
-puzzle button, the lever or the panel's retract is refused and sent to the host, which runs the
-tower's own use with the look-at answered and then gives its own player's look-at back. A pull or an
-insert moves a fuse into or out of the player's own hand, so the client's own game makes it and
-claims the slot. The host takes a pull when its copy has the panel open, the lever at rest and that
-fuse blown, and an insert when the slot is empty and, above the two easiest difficulties, that player
-spent a good fuse on it; it refuses one otherwise, answering in the rows to the
-sender alone, and a refused pull's fuse is taken back out of the puller's hand, a refused insert's
-fuse given back where the player stands. A press or a lever the tower's own gates would ignore on the
-host's copy is refused the same way, and a dead player's acts are. Every act is judged within reach of
-the part it acts on, in the player's order, at a few a second.
+its world's load included, so the host's world is the towers' only author (`coop/world/fuse_tower_ops`). The host
+reads its towers each tick and sends every tower's row whenever one changes (`coop/world/fuse_tower_rows`); a client
+applies each change as the tower's own graph makes it: the painters for the state, `solvePuzzle` for a repair with its
+success sound, `moveLever` for the lever, and its own retract for the panel once its own montage is idle; a press, a
+pull, an insert and a failed lever play their own sounds. The lever's end, refused on a client, is what would clear
+its moving flag, so a client takes that flag from the row. A client's press of a puzzle button, the lever or the
+panel's retract is refused and sent to the host, which runs the tower's own use with the look-at answered and then
+gives its own player's look-at back. A pull or an insert moves a fuse into or out of the player's own hand, so the
+client's own game makes it and claims the slot. The host takes a pull when its copy has the panel open, the lever at
+rest and that fuse blown, and an insert when the slot is empty and, above the two easiest difficulties, that player
+spent a good fuse on it; it refuses one otherwise, answering in the rows to the sender alone, and a refused pull's
+fuse is taken back out of the puller's hand, a refused insert's fuse given back where the player stands. A press or a
+lever the tower's own gates would ignore on the host's copy is refused the same way, and a dead player's acts are.
+Every act is judged within reach of the part it acts on, in the player's order, at a few a second.
 
 The spend is one of two things the host saw. A fuse lying in the world that the player grabbed is a world
 prop, and its destroy at the insert reaches the host, which counts it as a spend at the tower within reach of
@@ -408,32 +397,29 @@ inventory: a client that announces a hold and keeps its fuse is taken once per a
 A request the lane never counted is the client's loss, reached by an honest client only through a same-tick swap of
 two identical items or a hand that outruns the lane's budget and its debt; a counted one the host refuses, or loses to a leaver, is given back.
 
-The radio tower is the second kind (`coop/world/fuse_tower_kind` holds what differs between the two). It
-is one actor, the gamemode's `radiotower`, and the drone's shop run reads its broken flag on the host, so
-a client's own break or repair that stayed on its own copy left the order flow judged by the host alone.
-It has the same fuses, a lights-out puzzle on a torus of up to 5x5 cells, a confirm lever whose forward
-end judges the puzzle and one `animation` flag that gates every use, and no panel; its second lever, the
-reset lever, re-rolls the tower. Its one roll is `scramble` (the decay timer, an explosion nearby and the
-reset lever all reach it), refused on a client with the lever's judgement, so the host is its only
-author. Only its fuses are saved: it loads whole and rolls nothing at load. Its row rides the same
-message: the confirm lever's two bits are its timeline's (running, and running forward), the reset
-lever's one is new, and a client starts each lever's timeline once when the host's row first has it
-running, takes `animation` from the row, and repairs through `completeMinigame`. A client that is shown
-a fuse blowing or the tower breaking raises the console's "Radio tower has been damaged!" and "is
-down!" alert by hand (the handler the host's broadcast would call), never for a tower's first applied
-row, since the handler also wakes the player. A client's press of a puzzle button or of either lever is
-sent to the host when its own copy is broken and idle; a whole tower answers with its own hint on the
-client. The host takes a pull of a blown fuse when no lever runs, and an insert on an empty slot with
-a spend behind it, as the coordinate towers' are. At
-the two easiest difficulties the game keeps the held fuse and the insert solves the puzzle (the radio
-tower also writes the slot, the coordinate tower does not): a client's insert there is refused at the
-gate and sent to the host like a press, which judges reach and the slot on its copy and runs the solve,
-its rows answering. No spend is asked, since the game spends none, so a client holding no fuse can
-solve an easy tower. A client keeps the host's last row of each tower and applies it when that tower
-resolves, looking it up again once a second meanwhile; a tower's first applied row is silent in every
-sound, and a tower that is another object than the row last went to starts over as a first row. The
-radio tower regenerates its puzzle and fuses at construction and at BeginPlay, so a client watches both
-generators and puts the kept row back onto the tower after each.
+The radio tower is the second kind (`coop/world/fuse_tower_kind` holds what differs between the two). It is one actor,
+the gamemode's `radiotower`, and the drone's shop run reads its broken flag on the host, so a client's own break or
+repair that stayed on its own copy left the order flow judged by the host alone. It has the same fuses, a lights-out
+puzzle on a torus of up to 5x5 cells, a confirm lever whose forward end judges the puzzle and one `animation` flag
+that gates every use, and no panel; its second lever, the reset lever, re-rolls the tower. Its one roll is `scramble`
+(the decay timer, an explosion nearby and the reset lever all reach it), refused on a client with the lever's
+judgement, so the host is its only author. Only its fuses are saved: it loads whole and rolls nothing at load. Its row
+rides the same message: the confirm lever's two bits are its timeline's (running, and running forward), the reset
+lever's one is new, and a client starts each lever's timeline once when the host's row first has it running, takes
+`animation` from the row, and repairs through `completeMinigame`. A client that is shown a fuse blowing or the tower
+breaking raises the console's "Radio tower has been damaged!" and "is down!" alert by hand (the handler the host's
+broadcast would call), never for a tower's first applied row, since the handler also wakes the player. A client's
+press of a puzzle button or of either lever is sent to the host when its own copy is broken and idle; a whole tower
+answers with its own hint on the client. The host takes a pull of a blown fuse when no lever runs, and an insert on an
+empty slot with a spend behind it, as the coordinate towers' are. At the two easiest difficulties the game keeps the
+held fuse and the insert solves the puzzle (the radio tower also writes the slot, the coordinate tower does not): a
+client's insert there is refused at the gate and sent to the host like a press, which judges reach and the slot on its
+copy and runs the solve, its rows answering. No spend is asked, since the game spends none, so a client holding no
+fuse can solve an easy tower. A client keeps the host's last row of each tower and applies it when that tower
+resolves, looking it up again once a second meanwhile; a tower's first applied row is silent in every sound, and a
+tower that is another object than the row last went to starts over as a first row. The radio tower regenerates its
+puzzle and fuses at construction and at BeginPlay, so a client watches both generators and puts the kept row back onto
+the tower after each.
 
 ### The drone
 
@@ -499,28 +485,24 @@ above and the drone's host-only sale.
 
 ### The signal servers
 
-A base runs dozens of signal boxes, and the game breaks them on its own timer and on world events:
-lightning, damage, triggers, the desk's virus. Three verbs write a box's state -- its break, the
-virus's typed break and its fix -- and the script-body gate watches all three by name. A client
-refuses every one of them through its whole connected session, since each break is a world event
-the host's own game makes, and its player's own repair -- the fix the gamemode's repair widget
-calls when the minigame succeeds -- goes to the host as an intent, which the host runs on its box
-when it is broken and within the player's reach, answering a refusal with its state to that player
-alone. The widget's points are the shared balance's, so a client's own credit from the widget is
-refused and the intent carries what the reward reads (the lol mode and the solve time): the host
-pays the repair (15, or 50 in lol mode, nothing for a box broken by damage) and a record under its
-own best time (30, or 100) in the same step as the fix, and a repair it refuses pays nothing. The
-lol mode and the solve time are the client's report, which the host cannot check: a time under a
-second settles no record, and the host's best rides the server row to every peer, so each widget
-judges a record against the best the host pays from. The repair count stays the player's; the
-points total is the host's, its payment counting it. The host polls each box's broken and
-damaged flags, the repair type its break rolled, and the three totals the gamemode keeps for the
-farm, broadcasts a change at once after a repair and within a second otherwise, and a client writes
-the flags and the type and calls the box's own re-skin, which is notify-free and so repaints
-without firing the notice a real break fires. The box list, the verbs, the label, the break state
-and the repair widget resolve in one engine wrapper (`ue_wrap/devices/serverbox`); the lane beside
-it owns the wire half -- the row, its width, the poll, the repair intent and who may author any of
-it (`coop/interactables/serverbox_sync`).
+A base runs dozens of signal boxes, and the game breaks them on its own timer and on world events: lightning, damage,
+triggers, the desk's virus. Three verbs write a box's state -- its break, the virus's typed break and its fix -- and
+the script-body gate watches all three by name. A client refuses every one of them through its whole connected
+session, since each break is a world event the host's own game makes, and its player's own repair -- the fix the
+gamemode's repair widget calls when the minigame succeeds -- goes to the host as an intent, which the host runs on its
+box when it is broken and within the player's reach, answering a refusal with its state to that player alone. The
+widget's points are the shared balance's, so a client's own credit from the widget is refused and the intent carries
+what the reward reads (the lol mode and the solve time): the host pays the repair (15, or 50 in lol mode, nothing for
+a box broken by damage) and a record under its own best time (30, or 100) in the same step as the fix, and a repair it
+refuses pays nothing. The lol mode and the solve time are the client's report, which the host cannot check: a time
+under a second settles no record, and the host's best rides the server row to every peer, so each widget judges a
+record against the best the host pays from. The repair count stays the player's; the points total is the host's, its
+payment counting it. The host polls each box's broken and damaged flags, the repair type its break rolled, and the
+three totals the gamemode keeps for the farm, broadcasts a change at once after a repair and within a second
+otherwise, and a client writes the flags and the type and calls the box's own re-skin, which is notify-free and so
+repaints without firing the notice a real break fires. The box list, the verbs, the label, the break state and the
+repair widget resolve in one engine wrapper (`ue_wrap/devices/serverbox`); the lane beside it owns the wire half --
+the row, its width, the poll, the repair intent and who may author any of it (`coop/interactables/serverbox_sync`).
 
 A box also takes up to three physical upgrades, a count of its own that its break dice weigh. A player
 installs one by using a held upgrade on the box, which destroys the upgrade, and takes one out with E at
