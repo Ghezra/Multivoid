@@ -131,3 +131,18 @@ CFG_FLAG(late_join_drill, "late_join_drill", "dev", false, "VOTVCOOP_LATE_JOIN_D
     "returns to idle, checks the staged world is in its world, prints the bind wait's tallies per message kind and in "
     "all (held, coalesced, replayed, dropped, given up, never bound) then and ten seconds later, judges the staged "
     "effects, then prints 'client DONE'. Lines tagged [LATE-JOIN].")
+
+// The join curtain's dismissal: the red of the drill that joins from a minimized window.
+CFG_FLAG(curtain_dismiss_frame_clock_off, "curtain_dismiss_frame_clock_off", "dev", false,
+    "VOTVCOOP_CURTAIN_DISMISS_FRAME_CLOCK_OFF",
+    "Drill red only, never set (CLIENT). The join curtain's dismissal reads ImGui's clock on the game thread, as "
+    "it did before it was moved into the frame. A window that has never presented a frame has no ImGui context, "
+    "so the snapshot-complete handler faults there and the reconcile window stays up: the minimized-join drill "
+    "must say FAIL.")
+CFG_FLAG(join_minimized_drill, "join_minimized_drill", "dev", false, "VOTVCOOP_JOIN_MINIMIZED_DRILL",
+    "Drill (CLIENT): at boot the client minimizes its own game window, so the join runs with no frame ever "
+    "presented and no ImGui context. On the first tick after the join completed it says `rig: VERDICT "
+    "join-minimized FAIL` when the reconcile window is still up, INVALID when a frame was presented first. Else it "
+    "restores the window and says PASS once the first presented frame has lifted the join curtain (then prints "
+    "`join-minimized: DONE on client`), FAIL when that frame left the cover up. On a host it does nothing. Its red "
+    "is curtain_dismiss_frame_clock_off.")

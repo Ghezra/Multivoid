@@ -40,6 +40,13 @@ inline constexpr coop::net::IntentBudget kHandBudget{12.0f, 4.0f};
 // destroy side belongs to the K2_DestroyActor Func seam in prop_lifecycle.
 void TickOwner(coop::net::Session& session, void* local, void* holdingProp);
 
+// Owner side: the announce TickOwner would make for the hand item `holdingProp` this tick, made now and counted as no
+// look at the hand (OwnHandLookSeq). A client about to send a request about the item it holds calls it first, so the
+// hold is on the wire ahead of the request on the one ordered lane even when the item was picked up and used within
+// one tick (local_streams.cpp calls TickOwner once a tick, after the use). A hold already announced makes none. Game
+// thread only.
+void AnnounceHeldNow(coop::net::Session& session, void* local, void* holdingProp);
+
 // Receiver side, per tick (same site): lazily spawn/replace/destroy the display mirrors, so a
 // state arriving before the puppet exists (join) or a puppet respawn are absorbed without event
 // ordering. A mirror has physics and collision off and its spawn echo suppressed, and it is
@@ -112,9 +119,10 @@ uint32_t OwnHandLookSeq();
 // the pry ends with an empty hand. Game thread only.
 bool LastHeldClassIs(uint8_t slot, const wchar_t* cls);
 
-// Host: how many hold announces (a state with an item in the hand) have been applied for `slot`'s occupant; it moves on
-// every identity change the owner announces, never on the pose stream. A verb that consumes the held item records the
-// number it spent, and a later request counts the hold only when this is newer (atv_host_judge). Game thread only.
+// Host: how many hold announces (a state with an item in the hand) have been applied for `slot`'s occupant, and the holds
+// an owed empty merged away (the same item taken up again); it moves on every identity change the owner announces, never
+// on the pose stream. A verb that consumes the held item records the number it spent, and a later request counts the hold
+// only when this is newer (hand_spend). Game thread only.
 uint32_t HoldGeneration(uint8_t slot);
 
 // Host: a consumer of the hand states the lane applied. Called on the game thread, after the state is applied and re-sent,
@@ -133,6 +141,12 @@ std::wstring HeldItem(uint8_t slot);
 // Host, each tick after the roster reconcile and before the drain (event_feed::Update): a client's newest hand state
 // that arrived past its budget is applied once the budget allows it. Game thread only.
 void PayOwed(coop::net::Session& session);
+
+// Host: the state owed for `slot`, if any, applied now, ahead of its pacing token, which is charged as debt of at most a
+// burst (coop/net/latest_wins.h) so the lane's average rate stays its budget. A request that rests on the hand it was
+// sent from asks for it, since the owed state is the hold announced ahead of the request on the one ordered lane, and the
+// emptied hand behind the request would merge it away. Past the debt nothing is applied. Game thread only.
+void ApplyOwedNow(coop::net::Session& session, uint8_t slot);
 
 // Whether `slot`'s hand holds anything, as the lane holds it. Game thread only.
 bool HoldsItem(uint8_t slot);

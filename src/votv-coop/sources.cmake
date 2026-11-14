@@ -64,6 +64,8 @@ set(VOTVCOOP_SOURCES
     src/coop/player/nick_color.cpp
     src/coop/player/nickname_arbiter.cpp
     src/coop/player/hand_item.cpp
+    src/coop/player/hand_item_applied.cpp
+    src/coop/player/hand_spend.cpp
     src/coop/player/hand_history.cpp
     src/coop/player/hand_history_selftest.cpp
     src/coop/player/hand_item_pose.cpp
@@ -129,6 +131,7 @@ set(VOTVCOOP_SOURCES
     src/coop/world/sky_sync.cpp
     src/coop/world/power_decay.cpp
     src/coop/world/power_grid.cpp
+    src/coop/world/power_grid_install.cpp
     src/coop/world/power_panel.cpp
     src/coop/world/power_puzzle.cpp
     src/coop/world/power_upgrade.cpp

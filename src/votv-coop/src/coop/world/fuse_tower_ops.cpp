@@ -7,7 +7,8 @@
 #include "coop/element/intent_authority.h"
 #include "coop/net/intent_bucket.h"
 #include "coop/net/session.h"
-#include "coop/player/hand_history.h"
+#include "coop/player/hand_item.h"
+#include "coop/player/hand_spend.h"
 #include "coop/player/players_registry.h"
 #include "coop/player/remote_player.h"
 #include "coop/player/roster_ledger.h"
@@ -56,12 +57,8 @@ constexpr size_t   kMaxUnansweredClaims = kMaxQueued;
 constexpr coop::net::IntentBudget kOpBudget{8.0f, 8.0f};
 // A spend waits for its insert's claim; a player's inserts come seconds apart, so a few a slot cover any that race.
 constexpr int kSpendsPerSlot = 4;
-// A player's fuse is in the hand when it goes in: the hold slot's own actor, which is the player's expression and
-// never a world prop, so its destroy never reaches the host. The hand lane's history says the hand held one: within
-// this window of the claim's arrival (the lane's pacing and its order against the claim), and one such spend a slot
-// per gap, since an honest player takes the next fuse out of the inventory before the next insert.
-constexpr uint64_t kHandFuseWindowMs = 3000;
-constexpr uint64_t kHandFuseGapMs = 1000;
+// The class a tower's insert takes, as the hand lane announces a hand item of it (hand_item compares without case).
+constexpr const wchar_t* kFuseClass = L"prop_fuse_C";
 
 std::atomic<coop::net::Session*> g_session{nullptr};
 
@@ -115,15 +112,15 @@ struct RefusedFifo {
 };
 coop::roster_ledger::PerSlotState<RefusedFifo> g_refused;
 coop::roster_ledger::PerSlotState<bool> g_overfullWarned;  // a sender past the claim bound, said once per occupant
-struct Waiting { FuseTowerPayload p; uint64_t arrivedMs; };
+// An insert the sender's hand paid for is judged as it arrives (PaidByHand) and carried with the entry, so the drain
+// never reads the hand again.
+struct Waiting { FuseTowerPayload p; uint64_t arrivedMs; bool handPaid = false; };
 std::deque<Waiting> g_waiting[coop::net::kMaxPeers];
 coop::net::IntentBucket g_rate[coop::net::kMaxPeers];
 // A spend at the tower (kind, id); tower -1 is an empty place.
 struct Spend { int32_t tower = -1; FK::Kind kind = FK::Kind::Coordinate; uint64_t ms = 0; };
 struct Spends { Spend ring[kSpendsPerSlot]; uint8_t next = 0; };
 coop::roster_ledger::PerSlotState<Spends> g_spends;
-// The arrival time of the last insert a slot's hand paid for; 0 for none.
-uint64_t g_handSpentMs[coop::net::kMaxPeers] = {};
 uint64_t g_taken = 0, g_refusedCount = 0, g_refunds = 0, g_queuesFull = 0, g_outOfReach = 0, g_staleSeqs = 0;
 
 // A client's destroy this host applies: a good fuse its sender spent within reach of a tower's fuses is a spend
@@ -161,17 +158,6 @@ bool TakeSpend(uint8_t slot, FK::Kind kind, int32_t id) {
     return true;
 }
 
-// An insert paid by the fuse in the sender's hand: the hand lane's history shows a good fuse held at the claim's
-// arrival, and no other insert of that slot's was paid by the hand within the gap.
-bool TakeHandSpend(uint8_t slot, uint64_t arrivedMs) {
-    if (slot >= coop::net::kMaxPeers) return false;
-    if (g_handSpentMs[slot] && arrivedMs < g_handSpentMs[slot] + kHandFuseGapMs) return false;
-    if (!coop::hand_history::HeldWithin(slot, L"prop_fuse_C", kHandFuseWindowMs, arrivedMs)) return false;
-    g_handSpentMs[slot] = arrivedMs;
-    UE_LOGI("fuse_tower: slot %u spent the fuse in its hand (%s)", slot, coop::hand_history::Describe(slot).c_str());
-    return true;
-}
-
 // A refused insert's fuse, given back where its inserter stands (above the tower's fuses when the body is unread);
 // the host's spawn watcher gives it to every peer.
 void Refund(uint8_t slot, FK::Kind kind, void* tower) {
@@ -187,6 +173,15 @@ void Refund(uint8_t slot, FK::Kind kind, void* tower) {
     if (fuse) ++g_refunds;
     UE_LOGW("fuse_tower: slot %u's refused insert refunded -- %s", slot,
             fuse ? "a fuse spawned where it stands" : "NOT spawned (the fuse is lost)");
+}
+
+// A counted insert that did not run is given back: the hand paid for it as it arrived (handPaid) or a world spend did,
+// whether its queue is refused or its sender left. An entry refused before it took a place was never counted.
+void RefundCounted(uint8_t slot, const Waiting& w) {
+    if (w.p.op != coop::net::kFuseTowerOpInsert) return;
+    const bool world = TakeSpend(slot, KindOf(w.p), w.p.tower);
+    if (!w.handPaid && !world) return;
+    if (void* tower = FK::Find(KindOf(w.p), w.p.tower)) Refund(slot, KindOf(w.p), tower);
 }
 
 // The kinds of fault in an op the host drops or refuses: each is warned once per slot, however many ops carry it
@@ -241,6 +236,21 @@ void Refused(uint8_t sender, const FuseTowerPayload& p, const char* refusal, Fau
     coop::fuse_tower_rows::HostAnswerOwed(sender);
 }
 
+// Whether the fuse in the sender's hand paid for this insert, judged as the request arrives: the hold it was sent from,
+// if the hand lane still owes it, is applied first, then hand_spend counts the use. The result goes with the entry, so
+// a request that waits in the queue behind an earlier one is not judged against a hand that has emptied or moved on.
+// A request Spend never counted is the client's loss: the host cannot see its inventory, so it refunds only what it
+// counted. An honest client reaches that only by a same-tick swap of two identical items (no new hold generation) or by
+// outrunning the hand lane's budget and its debt (ApplyOwedNow).
+// The two easiest difficulties spend no fuse.
+bool PaidByHand(coop::net::Session& session, uint8_t sender, const FuseTowerPayload& p) {
+    if (p.op != coop::net::kFuseTowerOpInsert || FK::EasyInsert()) return false;
+    coop::hand_item::ApplyOwedNow(session, sender);
+    if (!coop::hand_spend::Spend(sender, kFuseClass, 1)) return false;
+    UE_LOGI("fuse_tower: slot %u's insert of tower %d is paid by the fuse its hand held", sender, p.tower);
+    return true;
+}
+
 enum class Take : uint8_t { Done, Wait };
 
 Take HostTakeOp(coop::net::Session* s, const Waiting& wt, uint8_t sender) {
@@ -248,6 +258,8 @@ Take HostTakeOp(coop::net::Session* s, const Waiting& wt, uint8_t sender) {
     const bool waited = NowMs() - wt.arrivedMs >= kWaitMs;
     const FK::Kind kind = KindOf(p);
     if (!FK::Resolved(kind) && !waited) return Take::Wait;
+    // A stale seq never comes from an honest client: the ordered reliable lane delivers each once. PaidByHand has counted
+    // one for a forged duplicate, whose use is its sender's own.
     if (!SeqAfter(p.seq, g_ack[sender])) {
         ++g_staleSeqs;
         if (FirstOfFault(Fault::Stale, sender))
@@ -263,14 +275,17 @@ Take HostTakeOp(coop::net::Session* s, const Waiting& wt, uint8_t sender) {
     EL::IntentSubject reach{};
     if (located) reach = EL::IntentTarget::ForClientIntent(*s, sender, kTowerReachUU).AuthorizeSegment(at, at);
     if (located && reach.outcome == EL::IntentOutcome::NoBody && !waited) return Take::Wait;
-    // Above the two easiest difficulties an insert rests on the fuse its own game spent: a world fuse the host saw
-    // destroyed beside this tower, or the fuse the sender's hand held. Taken here, whatever the outcome, so one spend
-    // answers one insert. None yet waits for the destroy or the hand state behind it. On the two easiest the game spends none and the host runs the insert itself.
+    // Above the two easiest difficulties an insert rests on the fuse its own game spent: the one its sender's hand held,
+    // judged as the request arrived (wt.handPaid, coop/player/hand_spend; its destroy never leaves the client), or a
+    // world fuse the host saw destroyed beside this tower, else the destroy's wait. Taken here, whatever the outcome,
+    // so one spend answers one insert. On the two easiest the game spends none and the host runs the insert itself.
     const bool easyInsert = p.op == coop::net::kFuseTowerOpInsert && FK::EasyInsert();
     const bool needSpend = located && p.op == coop::net::kFuseTowerOpInsert && !easyInsert;
-    bool spent = false;
+    bool spent = wt.handPaid;
     if (needSpend) {
-        spent = TakeSpend(sender, kind, p.tower) || TakeHandSpend(sender, wt.arrivedMs);
+        // A hand-paid insert burns the world spend beside it too: one fuse, one credit.
+        const bool world = TakeSpend(sender, kind, p.tower);
+        spent = spent || world;
         if (!spent && !waited && !dead) return Take::Wait;
     }
     FK::View st;
@@ -354,8 +369,12 @@ void HostOffer(coop::net::Session* s, const FuseTowerPayload& p, uint8_t sender)
         return;
     }
     auto& q = g_waiting[sender];
-    const Waiting w{p, NowMs()};
+    Waiting w{p, NowMs()};
+    // The hand is read once, after the lane's own limit: when the op took a rate token, or a place in the queue below.
+    bool judged = false;
     if (q.empty() && g_rate[sender].Take(kOpBudget, NowMs())) {
+        w.handPaid = PaidByHand(*s, sender, p);
+        judged = true;
         if (HostTakeOp(s, w, sender) == Take::Done) return;
         g_rate[sender].Refund(kOpBudget);  // a wait runs nothing
     }
@@ -368,9 +387,7 @@ void HostOffer(coop::net::Session* s, const FuseTowerPayload& p, uint8_t sender)
             if (SeqAfter(r.p.seq, g_ack[sender])) g_ack[sender] = r.p.seq;
             if (!IsClaim(r.p.op)) continue;
             PushRefused(sender, r.p.seq);
-            if (r.p.op == coop::net::kFuseTowerOpInsert && TakeSpend(sender, KindOf(r.p), r.p.tower))
-                if (void* tower = FK::Find(KindOf(r.p), r.p.tower))
-                    Refund(sender, KindOf(r.p), tower);
+            RefundCounted(sender, r);
         }
         q.clear();
         g_refusedCount += n + 1;
@@ -380,6 +397,7 @@ void HostOffer(coop::net::Session* s, const FuseTowerPayload& p, uint8_t sender)
         coop::fuse_tower_rows::HostAnswerOwed(sender);
         return;
     }
+    if (!judged) w.handPaid = PaidByHand(*s, sender, p);
     q.push_back(w);
 }
 
@@ -562,6 +580,10 @@ sg::Verdict OnInsertPre(const sg::Call& call) {
         return sg::Verdict::Cancel;
     }
     if (ClaimsFull()) return sg::Verdict::Cancel;
+    // A fuse from the hold slot is announced to the host before its claim is, though it was picked up and used within
+    // one tick: the host judges the claim against the hold it has by then.
+    if (coop::hand_item::IsLocalHandViewActor(held))
+        coop::hand_item::AnnounceHeldNow(*Connected(), coop::players::Registry::Get().Local(), held);
     g_insertTower = call.object;
     g_insertSlot = slot;
     return sg::Verdict::Run;
@@ -728,9 +750,11 @@ void Overlay(coop::net::FuseTowerRow& row) {
 
 void OnPeerLeft(uint8_t slot) {
     if (slot == 0 || slot >= coop::net::kMaxPeers) return;
+    // The sender's waiting ops go with it, answered to no one; an insert the hand or a world spend paid for is given
+    // back where its sender stood (above the tower's fuses when the body is gone).
+    for (const Waiting& w : g_waiting[slot]) RefundCounted(slot, w);
     g_waiting[slot].clear();
     g_rate[slot].Reset();
-    g_handSpentMs[slot] = 0;
 }
 
 uint64_t OpsSent() { return g_sent; }
@@ -740,6 +764,11 @@ uint64_t RollsRefused() { return g_rollsRefused; }
 uint16_t LastSentSeq() { return g_seq; }
 uint16_t LastAck() { return g_lastAck; }
 uint64_t Reaped() { return g_reaped; }
+
+void DevSendInsert(uint8_t kind, int32_t tower, int32_t index) {
+    if (auto* s = Connected(); IsClient(s) && kind < coop::net::kFuseTowerKinds)
+        ClientSend(s, coop::net::kFuseTowerOpInsert, static_cast<FK::Kind>(kind), tower, index);
+}
 
 bool RedOpen() {
     static const bool red = [] {
@@ -769,7 +798,6 @@ void OnDisconnect() {
     for (auto& q : g_waiting) q.clear();
     for (auto& b : g_rate) b.Reset();
     for (int slot = 0; slot < g_spends.size(); ++slot) g_spends[slot] = Spends{};
-    for (auto& ms : g_handSpentMs) ms = 0;
     g_claims.clear();
     g_seq = g_lastAck = 0;
     g_pullTower = g_insertTower = nullptr;
