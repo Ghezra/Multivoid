@@ -134,6 +134,7 @@
 #include "coop/dev/poster_probe.h"  // [dev] a poster put up by the host, one taken down by a client, listed on both
 #include "coop/dev/miner_probe.h"  // [dev] a mining rig built by the host, claimed by a client, listed on both
 #include "coop/dev/tower_poof_probe.h"  // [dev] the stolen radio tower fired on the host, its tower read on both
+#include "coop/dev/puppet_blast_probe.h"  // [dev] a blast at a peer's puppet, each peer's own health read
 #include "coop/dev/order_probe.h"  // who writes the order queue, and what the drone delivers, per peer
 #include "coop/dev/bind_wait_selftest.h"  // [dev] the bind wait's rules on stated inputs
 #include "coop/dev/pile_late_load.h"   // [dev] the late-load seam: one save-loaded clump kept aside until its row defers
@@ -458,6 +459,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::poster_probe::Tick(&session);  // [dev] the posters on both peers (a latched read when off)
     coop::dev::miner_probe::Tick(&session);  // [dev] the mining rigs on both peers (a latched read when off)
     coop::dev::tower_poof_probe::Tick(&session);  // [dev] the radio tower on both peers (a latched read when off)
+    coop::dev::puppet_blast_probe::Tick(&session);  // [dev] a blast at a peer's puppet (a latched read when off)
     coop::dev::death_seam_census::Tick();  // [dev] every element end the death seam announces (latched read when off)
     coop::dev::damage_probe::Tick();  // [dev] every player damage verb call: whose body, source, caller (latched read when off)
     coop::dev::grime_drill::Tick(&session);  // [dev] the grime drill's legs (a latched read when off)

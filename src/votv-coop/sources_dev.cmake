@@ -387,6 +387,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/poster_probe.cpp
     src/coop/dev/miner_probe.cpp
     src/coop/dev/tower_poof_probe.cpp
+    src/coop/dev/puppet_blast_probe.cpp
 )
 # Per-developer local sources: a gitignored file on this box may append its own entries to
 # VOTVCOOP_DEV_SOURCES and add its own include root. Absent from the public tree; a no-op without it.
