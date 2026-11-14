@@ -22,6 +22,7 @@
 #include "coop/interactables/kitchen_sync.h"  // a microwave's and a mini oven's controls
 #include "coop/props/prop_fire_sync.h"
 #include "coop/props/roomba_sync.h"  // a robot cleaner's switch, the host's
+#include "coop/props/miner_sync.h"   // a GPU mining rig's counts and points, the host's
 #include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
 #include "coop/interactables/garbage_bin_sync.h"
@@ -361,6 +362,26 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         if (intent) ::coop::roomba_sync::OnIntent(msg.senderPeerSlot, p);
         else ::coop::roomba_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::MinerState:
+    case net::ReliableKind::MinerIntent: {
+        // MinerState HOST->ALL (op 1 to one asker), MinerIntent CLIENT->HOST (coop/props/miner_sync). Exact length.
+        const bool intent = msg.kind == net::ReliableKind::MinerIntent;
+        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != sizeof(net::MinerPayload)) {
+            UE_LOGW("event_feed: a mining rig message the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        net::MinerPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (!std::isfinite(p.overheat) || p.gpus < 0 || p.gpus > 16 || p.slots < 0 || p.slots > 16 || p.fans < 0 ||
+            p.fans > 6 || p.points < 0) {
+            UE_LOGW("event_feed: a mining rig message malformed -- dropping");
+            break;
+        }
+        if (intent) ::coop::miner_sync::OnIntent(msg.senderPeerSlot, p);
+        else ::coop::miner_sync::OnState(p);
         break;
     }
     case net::ReliableKind::PropFireState:

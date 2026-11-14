@@ -124,6 +124,7 @@ set(VOTVCOOP_SOURCES
     src/coop/world/time_sync.cpp
     src/coop/world/ufo_sync.cpp
     src/coop/props/roomba_sync.cpp
+    src/coop/props/miner_sync.cpp
     src/coop/world/day_edge.cpp
     src/coop/world/sky_sync.cpp
     src/coop/world/power_decay.cpp

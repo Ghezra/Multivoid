@@ -2,8 +2,8 @@
 
 ## Purpose
 
-The microwave, the mini oven and the grill, and the placed radios and TVs with the ATV's radio: who owns each one's
-state and how a peer's press or pick reaches the others.
+The microwave, the mini oven and the grill, the placed radios and TVs with the ATV's radio, and the GPU mining rig: who
+owns each one's state and how a peer's press or pick reaches the others.
 The other keyed devices around the base are in [devices.md](devices.md).
 
 ## How it works
@@ -35,11 +35,28 @@ of the ATV named by the ATV's key (`atv:<key>`) `[?]` (a pick from each peer thr
 off its media player on both, and on the code before it each pick stayed on its own peer, by the ATV host drill that
 the rework of the ATV's host lane retired).
 
+### The GPU mining rig
+
+A mining rig (`prop_miner_C`) counts its slots, GPUs and coolers in its own fields: a held scrap metal, GPU or cooler used
+on it runs its `upgrade`, which counts one more and repaints it, and the item goes. Its tick mines points while it is
+powered and cools its heat, and its claim (action 4) pays the points into the balance. Each ran on the one machine, so a
+rig one player filled stood empty for the other, and each copy mined its own points (VOTV-MP/Multivoid issue 43). The
+rig is the host's: a client refuses its tick, and its use of an item and its claim are refused and asked of the host
+(`MinerIntent`), which judges the reach (6 m) and pace and runs its own rig's `upgrade` or claim, the rig's hints going
+to the asker. A granted use spends the item in the asker's hand. The host sends each rig's counts, points and heat when
+they change, the points at most once a second, and to a joiner at its ready edge (`MinerState`); a client writes them and
+repaints through the rig's own `upd` (`coop/props/miner_sync`) `[V]` (`coop/dev/miner_probe`, `VOTVCOOP_MINER_PROBE=1`:
+before, the host's rig held 2 GPUs, 2 slots and a cooler and the client's copy none, and a client's added slot stayed on
+the client; after, the client's copy took the host's counts in the same second, a client's scrap metal added a slot on
+the host and on both copies, and its claim ran on the host, the host's hint shown on the client). The probe's use names
+the item without one in the hand, so the spend of a real held item, and a powered rig's points, are not measured `[?]`.
+
 ## Wire messages
 
 | Message | Direction | Carries |
 |---|---|---|
 | `KitchenState` | the presser to all; the host's burn of a grill's coals | a microwave's or a mini oven's setting and whether it runs; a grill's coals, fire, lid and burn |
+| `MinerState`, `MinerIntent` | the host to all, an answer to its asker alone; a client to the host | a rig's GPUs, slots, coolers, points and heat; a client's use of an item or its claim |
 | `MediaDeviceState` | the host to all; a client to the host | a device's track (a hash of its catalog link), time, play state and mode, and a TV's channel and picture; a client's change through its interface |
 
 ## Late join
@@ -58,3 +75,4 @@ Every radio and TV again at the joiner's ready edge, and every kitchen machine t
 |---|---|
 | a microwave's, a mini oven's and a grill's controls | `coop/interactables/kitchen_sync`, `ue_wrap/devices/kitchen` |
 | a placed radio or TV | `coop/world/media_device_sync`, `ue_wrap/world/media_device` |
+| the GPU mining rig | `coop/props/miner_sync`; `coop/dev/miner_probe` |
