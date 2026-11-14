@@ -24,6 +24,7 @@
 #include "coop/props/roomba_sync.h"  // a robot cleaner's switch, the host's
 #include "coop/props/miner_sync.h"   // a GPU mining rig's counts and points, the host's
 #include "coop/props/fireext_sync.h"  // an extinguisher's thrust and a player's spray
+#include "coop/world/cover_sync.h"    // the desk's back plates and the stations' doors
 #include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
 #include "coop/interactables/garbage_bin_sync.h"
@@ -402,6 +403,21 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         if (intent) ::coop::fireext_sync::OnIntent(msg.senderPeerSlot, p);
         else ::coop::fireext_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::CoverState:
+    case net::ReliableKind::CoverIntent: {
+        // CoverState HOST->ALL (op 5 to one asker), CoverIntent CLIENT->HOST (coop/world/cover_sync). Exact length.
+        const bool intent = msg.kind == net::ReliableKind::CoverIntent;
+        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != sizeof(net::CoverPayload)) {
+            UE_LOGW("event_feed: a cover message the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        net::CoverPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (intent) ::coop::cover_sync::OnIntent(msg.senderPeerSlot, p);
+        else ::coop::cover_sync::OnState(p);
         break;
     }
     case net::ReliableKind::PropFireState:

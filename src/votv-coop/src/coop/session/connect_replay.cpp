@@ -90,6 +90,7 @@
 #include "coop/props/roomba_sync.h"  // every robot cleaner's switch
 #include "coop/props/miner_sync.h"   // every mining rig's counts and points
 #include "coop/props/fireext_sync.h"  // every extinguisher's thrust and every spray
+#include "coop/world/cover_sync.h"    // the desk's plates and every station's door
 #include "coop/world/spill_sync.h"
 #include "coop/world/vent_crawler_sync.h"
 #include "coop/world/weather_sync.h"
@@ -207,6 +208,7 @@ void ConnectReplayForSlot(int slot) {
     coop::roomba_sync::SendJoinSnapshotForSlot(slot);
     coop::miner_sync::SendJoinSnapshotForSlot(slot);
     coop::fireext_sync::SendJoinSnapshotForSlot(slot);
+    coop::cover_sync::SendJoinSnapshotForSlot(slot);
     // The alarm lane's late-join answer: the current alarm state, unconditionally, so a mid-alarm
     // joiner starts its klaxon on arrival.
     coop::alarm_sync::QueueConnectBroadcastForSlot(slot);
