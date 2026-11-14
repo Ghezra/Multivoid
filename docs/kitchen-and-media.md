@@ -67,7 +67,11 @@ they change and to a joiner, and a client's copy shows the thrust's foam and sou
 (`coop/dev/foam_probe`, `VOTVCOOP_FOAM_PROBE=1`: a client's spray showed on the host's mirror within a second and the
 host cast 364 rays along its aim; the host's spray showed on the client's mirror; a world extinguisher the host set
 thrusting thrusted on the client's copy, its charge following the host's). A fire put out by a client's spray is not
-measured `[?]`, and the charge of an extinguisher in a client's hand is drained by that client alone.
+measured `[?]`. The charge of an extinguisher in a client's hand is the host's count (Ghezra/Multivoid issue 34): the
+spray's start and end carry the hand's charge, the host drains its own count at the game's rate (1/60 a second) while it
+runs, never above the hand's word, and sends it twice a second and at the end; the sprayer's hand and every mirror of it
+take it, so its drop carries the host's count `[V]` (`coop/dev/item_trip_probe`, `VOTVCOOP_ITEM_TRIP_ITEM=ext`: six
+seconds' spray from 1.000 read 0.900 in the hand, on the host and on both copies after the drop, either player spraying).
 
 ## Wire messages
 
