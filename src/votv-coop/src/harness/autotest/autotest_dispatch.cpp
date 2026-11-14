@@ -198,41 +198,37 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // moving source; enable on one peer and read the other's pose diagnostic.
     SpawnIf("VOTVCOOP_RUN_MOVE_OSC", "move oscillator (interp verify)", &MoveOscThread, role);
 
-    // The save notice: the game's own save with and without an event, read on both peers.
-    SpawnIf("VOTVCOOP_RUN_SAVE_NOTICE", "save notice drill", &SaveNoticeThread, role);
-
+    SpawnIf("VOTVCOOP_RUN_BEAM_LOOK", "flashlight beam look (shadow flags, captures)", &BeamLookThread, role);
     // The flashlight battery: each peer's runs out in turn and the other reads its puppet's light.
     SpawnIf("VOTVCOOP_RUN_FLASH_BATTERY", "flashlight battery drill", &FlashBatteryThread, role);
-    SpawnIf("VOTVCOOP_RUN_UPGRADE_BUY", "laptop upgrades bought by both peers", &UpgradeBuyThread, role);
-
-    // The info tip: each peer runs the game's addHint and both capture their windows.
-    SpawnIf("VOTVCOOP_RUN_INFO_HINT", "info tip drill", &InfoHintThread, role);
-
-    // The beam sweep: the client sweeps a lit flashlight; the host records its puppet's beam each tick.
-    SpawnIf("VOTVCOOP_RUN_BEAM_SWEEP", "flashlight beam sweep", &BeamSweepThread, role);
-    SpawnIf("VOTVCOOP_RUN_BEAM_LOOK", "flashlight beam look (shadow flags, captures)", &BeamLookThread, role);
-    SpawnIf("VOTVCOOP_RUN_CLASS_DUMP", "Blueprint class dump", &ClassDumpThread, role);
+    SpawnIf("VOTVCOOP_RUN_DESK_VIEW", "desk signal view drill", &DeskViewThread, role);
+    SpawnIfEnum(coop::config_registry::rows::cap_label_drill, "refiner cap label drill", &CapLabelThread, role);
+    SpawnIf("VOTVCOOP_RUN_DISH_SOUND", "dish slew sound drill", &DishSoundThread, role);
+    // The save notice: the game's own save with and without an event, read on both peers.
+    SpawnIf("VOTVCOOP_RUN_SAVE_NOTICE", "save notice drill", &SaveNoticeThread, role);
+    SpawnIf("VOTVCOOP_RUN_VENT_CRAWLER", "vent crawler drill", &VentCrawlerThread, role);
     SpawnIf("VOTVCOOP_RUN_CAN_STATE", "canned food state drill", &CanStateThread, role);
     SpawnIf("VOTVCOOP_RUN_FOOD_STATE", "world food state drill", &FoodStateThread, role);
+    SpawnIfEnum(coop::config_registry::rows::world_sound_drill, "world sound drill", &WorldSoundThread, role);
+
+    SpawnIf("VOTVCOOP_RUN_PLANT_STATE", "plant drill", &PlantStateThread, role);
+    // The cargo lift, the base's elevator, as each peer sees it.
+    SpawnIfRow(coop::config_registry::rows::cargo_lift_drill, "cargo lift drill", &CargoLiftThread, role);
+    SpawnIf("VOTVCOOP_RUN_UPGRADE_BUY", "laptop upgrades bought by both peers", &UpgradeBuyThread, role);
+    // The info tip: each peer runs the game's addHint and both capture their windows.
+    SpawnIf("VOTVCOOP_RUN_INFO_HINT", "info tip drill", &InfoHintThread, role);
+    // The beam sweep: the client sweeps a lit flashlight; the host records its puppet's beam each tick.
+    SpawnIf("VOTVCOOP_RUN_BEAM_SWEEP", "flashlight beam sweep", &BeamSweepThread, role);
+    SpawnIf("VOTVCOOP_RUN_CLASS_DUMP", "Blueprint class dump", &ClassDumpThread, role);
     SpawnIf("VOTVCOOP_RUN_COOK_STATE", "microwave, oven and cooking drill", &CookStateThread, role);
     SpawnIf("VOTVCOOP_RUN_RADIO_STATE", "placed radio drill", &RadioStateThread, role);
     SpawnIf("VOTVCOOP_RUN_TV_STATE", "placed TV drill", &TvStateThread, role);
-    SpawnIf("VOTVCOOP_RUN_WORLD_SOUND", "world sound drill", &WorldSoundThread, role);
-    SpawnIf("VOTVCOOP_RUN_DISH_SOUND", "dish slew sound drill", &DishSoundThread, role);
-    SpawnIf("VOTVCOOP_RUN_AMBIENT_CREATURE", "ambient creature drill", &AmbientCreatureThread, role);
-    SpawnIf("VOTVCOOP_RUN_AMBIENT_FIELD", "ambient field drill", &AmbientFieldThread, role);
     SpawnIf("VOTVCOOP_RUN_LEVEL_TRAVEL", "level travel drill", &LevelTravelThread, role);
-    SpawnIf("VOTVCOOP_RUN_PLANT_STATE", "plant drill", &PlantStateThread, role);
-    SpawnIf("VOTVCOOP_RUN_SUS_HOLE", "sus hole drill", &SusHoleThread, role);
     SpawnIf("VOTVCOOP_RUN_JOIN_DROP", "join window drop drill", &JoinDropThread, role);
     SpawnIf("VOTVCOOP_RUN_PROP_FIRE", "burning prop drill", &PropFireThread, role);
     SpawnIf("VOTVCOOP_RUN_GROUND_HOSE", "garden hose drill", &GroundHoseThread, role);
-    SpawnIf("VOTVCOOP_RUN_SPILL", "spill drill", &SpillThread, role);
     SpawnIf("VOTVCOOP_RUN_BUILD", "nail and wall drill", &BuildThread, role);
-    SpawnIf("VOTVCOOP_RUN_VENT_CRAWLER", "vent crawler drill", &VentCrawlerThread, role);
     SpawnIf("VOTVCOOP_RUN_DISC_RACE", "disc race drill", &DiscRaceThread, role);
-    SpawnIf("VOTVCOOP_RUN_DESK_VIEW", "desk signal view drill", &DeskViewThread, role);
-    SpawnIf("VOTVCOOP_RUN_CAP_LABEL", "refiner cap label drill", &CapLabelThread, role);
     SpawnIf("VOTVCOOP_RUN_MUSHROOM", "mushroom drill", &MushroomThread, role);
     SpawnIf("VOTVCOOP_RUN_CROWBAR", "crowbar drill", &CrowbarThread, role);
     // The data case: a client fills a drive box; its record's size and the host's copy of it.
@@ -242,26 +238,23 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIf("VOTVCOOP_RUN_ATV_RIDERS", "ATV riders drill", &AtvRidersThread, role);
     // The ATV's passenger: a player in the kerfur's spot.
     SpawnIf("VOTVCOOP_RUN_ATV_PASSENGER", "ATV passenger drill", &AtvPassengerThread, role);
-    // The cargo lift, the base's elevator, as each peer sees it.
-    SpawnIf("VOTVCOOP_RUN_CARGO_LIFT", "cargo lift drill", &CargoLiftThread, role);
     SpawnIf("VOTVCOOP_RUN_KERFUS_WHEELS", "kerfus wheels probe", &KerfusWheelsThread, role);
     SpawnIf("VOTVCOOP_RUN_VIDCAM_DROP", "vidcam drop probe", &VidcamDropThread, role);
     SpawnIf("VOTVCOOP_RUN_BACKROOMS_PROBE", "backrooms probe", &BackroomsProbeThread, role);
     // Containers: photos in a record, a nested container, a garbage container, a container that breaks.
     SpawnIf("VOTVCOOP_RUN_CONTAINER_GAPS", "container gaps drill", &ContainerGapsThread, role);
-
     SpawnIf("VOTVCOOP_RUN_FARM_HARVEST", "farm harvest drill", &FarmHarvestThread, role);
-    SpawnIf("VOTVCOOP_RUN_SV_REQUEST", "sv.request drill", &SvRequestThread, role);
-    SpawnIf("VOTVCOOP_RUN_MODULE_BUY", "module row drill", &ModuleBuyThread, role);
-    // How steadily the delivery drone flies and hovers on each peer.
-    SpawnIf("VOTVCOOP_RUN_DRONE_HOVER", "drone hover drill", &DroneHoverThread, role);
     SpawnIf("VOTVCOOP_RUN_HACKSAW", "hacksaw drill", &HacksawThread, role);
     SpawnIf("VOTVCOOP_RUN_CHIPPER_FEED", "chipper feed drill", &ChipperFeedThread, role);
     SpawnIf("VOTVCOOP_RUN_BODY_PUSH", "body push drill", &BodyPushThread, role);
-    // The base computer's short circuit on both peers.
-    SpawnIf("VOTVCOOP_RUN_DESK_SHORT", "desk short drill", &DeskShortThread, role);
+    SpawnIf("VOTVCOOP_RUN_SV_REQUEST", "sv.request drill", &SvRequestThread, role);
+    SpawnIf("VOTVCOOP_RUN_MODULE_BUY", "module row drill", &ModuleBuyThread, role);
     // A device's claim when its user ragdolls.
     SpawnIf("VOTVCOOP_RUN_SEAT_RAGDOLL", "seat ragdoll drill", &SeatRagdollThread, role);
+    // How steadily the delivery drone flies and hovers on each peer.
+    SpawnIf("VOTVCOOP_RUN_DRONE_HOVER", "drone hover drill", &DroneHoverThread, role);
+    // The base computer's short circuit on both peers.
+    SpawnIfEnum(coop::config_registry::rows::desk_short_drill, "desk short drill", &DeskShortThread, role);
     // The bot-director halt probe, solo: measures the path query over the baked NavMesh and a
     // reflected AddMovementInput moving the possessed body.
     SpawnIf("VOTVCOOP_RUN_NAV_PROBE", "nav HALT probe (director Phase-0)", &NavHaltProbeThread, role);
@@ -306,6 +299,12 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // The slip drill: a zero-damage ragdoll with `dead` already set must be shown to re-enter the
     // death chain, and our seam shown to refuse the menu travel it asks for.
     SpawnIf("VOTVCOOP_RUN_SLIP_DRILL", "slip / death re-entry drill", &SlipDrillThread, role);
+    SpawnIf("VOTVCOOP_RUN_SPILL", "spill drill", &SpillThread, role);
+
+    // The ambient creatures: deer and walking trees; dirt holes and beehive branches; a sus hole around a client.
+    SpawnIf("VOTVCOOP_RUN_AMBIENT_CREATURE", "ambient creature drill", &AmbientCreatureThread, role);
+    SpawnIf("VOTVCOOP_RUN_AMBIENT_FIELD", "ambient field drill", &AmbientFieldThread, role);
+    SpawnIf("VOTVCOOP_RUN_SUS_HOLE", "sus hole drill", &SusHoleThread, role);
     // The cremator drill: the host pulls its lever and the client's copy must show the run, then show it again after a
     // rejoin (1); a client sent into the running machine must die by it (g3).
     SpawnIfEnum(coop::config_registry::rows::cremator_drill, "cremator drill", &coop::dev::cremator_drill::Thread, role);
@@ -317,8 +316,9 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIfEnum(coop::config_registry::rows::woodchipper_drill, "woodchipper drill", &WoodchipperThread, role);
     // The prop-properties tool: the host presses it on a prop it laid, the client takes a toolgun into its hand.
     SpawnIf("VOTVCOOP_RUN_PROP_PROPS", "prop-properties drill", &PropPropsThread, role);
-    SpawnIf("VOTVCOOP_RUN_NIGHTMARE", "nightmare drill", &NightmareThread, role);
-    SpawnIf("VOTVCOOP_RUN_LEVEL_VISIT", "level visit drill", &LevelVisitThread, role);
+    // The nightmare lane: both peers, or a staging value (sleeper, dreamer) for one.
+    SpawnIfEnum(coop::config_registry::rows::nightmare_drill, "nightmare drill", &NightmareThread, role);
+    SpawnIfEnum(coop::config_registry::rows::level_visit_drill, "level visit drill", &LevelVisitThread, role);
     // The walking mannequin's two-peer drill: armed by a value of the mannequin_drill row on both peers (`walker` or a red).
     if (coop::dev::mannequin_walker_drill::Armed()) {
         UE_LOGI("harness: mannequin_drill is a walker drill value (%s) -- spawning the mannequin drill thread", RoleStr(role));

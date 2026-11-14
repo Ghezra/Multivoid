@@ -11,8 +11,8 @@
 //     through the host's clock and streams).
 // Late join: a joiner gets the host's flag and every non-awake state; a client repeats a non-awake state on each flag it gets.
 //
-// A client holds dreamProbability at 0 for the session; coop/player/nightmare_roll rolls in its place at the host's
-// pace. The host's own roll is never written (the game's native -1).
+// A client holds dreamProbability at 0 for the session, so the game's own roll (a Delay(500) of world time held at 1)
+// never makes a second one; coop/player/nightmare_roll makes the rest's one roll at the host's pace. The host's own roll is never written (the game's native -1).
 
 #pragma once
 
@@ -52,6 +52,13 @@ void OnDisconnectForSlot(int slot);
 // The rest state of `slot` as this peer knows it: on the host, from the clients' reports and its own
 // polls; on a client, from the host's relays (slot 0 the host). Awake for a slot out of range.
 coop::net::SleepPeerState PeerState(int slot);
+
+// A slot's rest state changed as this peer knows it: the host's own polled state (slot 0), a client's report the host
+// applied, the host's relay a client took, and a leaver set back to awake. The state itself changed, not only its bed.
+// The subscriber runs inside the receive (or the poll), so it only records or does one engine call. One subscriber: a
+// second would turn this into a list. Game thread.
+using PeerRestFn = void (*)(int slot, coop::net::SleepPeerState state);
+void SubscribePeerRest(PeerRestFn fn);
 
 // Is the host asleep: on the host its own isSleep, on a client the last flag the host sent. For
 // instruments. Game thread.

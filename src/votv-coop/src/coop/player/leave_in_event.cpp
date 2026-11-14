@@ -7,8 +7,11 @@
 
 #include "coop/player/leave_in_event.h"
 
+#include "coop/config/config.h"
+#include "coop/config/config_registry.h"
 #include "coop/net/session.h"
 
+#include "ue_wrap/core/class_reask.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
@@ -16,8 +19,6 @@
 #include "ue_wrap/core/script_gate.h"
 #include "ue_wrap/engine/world_identity.h"
 #include "ue_wrap/facts/function_row.h"
-
-#include <windows.h>
 
 #include <atomic>
 #include <cstdint>
@@ -36,12 +37,23 @@ constexpr int kTag = 0x4C455654;  // 'LEVT'
 std::atomic<coop::net::Session*> g_session{nullptr};
 std::atomic<void*> g_menuGraph{nullptr};      // ui_menu_C's ExecuteUbergraph_ui_menu, this world's
 std::atomic<int32_t> g_offIsEventActive{-1};  // getEvent's out parameter
-void* g_menuCls = nullptr;                    // game thread: the class g_menuGraph was read from
-void* g_libCls = nullptr;
+
+// A class this watch reads from, and the listing it was found under: a class is a new object with each level, and
+// one unloaded and loaded again answers a new listing id even at the same address (object_index.h).
+struct BoundClass {
+    void* cls = nullptr;
+    uint64_t listing = 0;
+    ue_wrap::class_reask::Latch ask;
+};
+BoundClass g_menuCls;  // game thread: the class g_menuGraph was read from
+BoundClass g_libCls;   // game thread: the class g_offIsEventActive was read from
 bool g_watching = false;
 uint32_t g_let = 0;                           // game thread: presses let through, for the log
 
 sg::Verdict OnGetEventPre(const sg::Call& c) {
+    // Drill red (leave_in_event_red, off by default): the game's answer stands, as before this watch.
+    static const bool kRed = coop::config::ResolveFlag(coop::config_registry::rows::leave_in_event_red);
+    if (kRed) return sg::Verdict::Run;
     void* graph = g_menuGraph.load(std::memory_order_acquire);
     if (!graph || c.callerFunction != graph) return sg::Verdict::Run;
     coop::net::Session* s = g_session.load(std::memory_order_acquire);
@@ -58,19 +70,56 @@ sg::Verdict OnGetEventPre(const sg::Call& c) {
     return sg::Verdict::Cancel;
 }
 
-// This world's menu graph and getEvent's out parameter, read again when either class is a new object.
-void Refresh() {
-    void* menu = OI::ClassByName(L"ui_menu_C");
-    if (menu != g_menuCls) {
-        g_menuCls = menu;
-        g_menuGraph.store(menu ? R::FindFunction(menu, L"ExecuteUbergraph_ui_menu") : nullptr,
-                          std::memory_order_release);
+// The class `name`, looked up only while this holder has none: when the class set moves and through the load window
+// after it (ue_wrap/core/class_reask), never every tick once it is bound. True when `b` holds the class; an unloaded
+// class is dropped (false) so the next call asks again.
+bool Bind(BoundClass& b, const wchar_t* name) {
+    if (b.cls && OI::ClassListingId(b.cls) != b.listing) {
+        b.cls = nullptr;
+        b.ask.Reset();
     }
-    void* lib = OI::ClassByName(L"lib_C");
-    if (lib != g_libCls) {
-        g_libCls = lib;
-        void* fn = lib ? R::FindFunction(lib, L"getEvent") : nullptr;
-        g_offIsEventActive.store(fn ? R::FindParamOffset(fn, L"isEventActive") : -1, std::memory_order_release);
+    if (b.cls) return true;
+    if (!b.ask.Due()) return false;
+    void* cls = OI::ClassByName(name);
+    if (!cls) return false;
+    b.cls = cls;
+    b.listing = OI::ClassListingId(cls);
+    return true;
+}
+
+// This world's menu graph and getEvent's out parameter. Steady state, with both classes bound, is two listing-id
+// hash lookups; a new world's classes bind again at the class set's move. A class that binds without its function or
+// parameter leaves the watch inert for that world; each of the two misses is said once a process.
+void Refresh() {
+    static bool sMenuMissSaid = false, sLibMissSaid = false;
+    const uint64_t menuBefore = g_menuCls.listing;
+    if (Bind(g_menuCls, L"ui_menu_C")) {
+        if (g_menuCls.listing != menuBefore) {
+            void* graph = R::FindFunction(g_menuCls.cls, L"ExecuteUbergraph_ui_menu");
+            g_menuGraph.store(graph, std::memory_order_release);
+            if (!graph && !sMenuMissSaid) {
+                sMenuMissSaid = true;
+                UE_LOGW("leave_in_event: ui_menu_C has no ExecuteUbergraph_ui_menu here -- the pause menu's buttons wait for an event");
+            }
+        }
+    } else if (menuBefore != 0) {
+        g_menuGraph.store(nullptr, std::memory_order_release);
+        g_menuCls.listing = 0;
+    }
+    const uint64_t libBefore = g_libCls.listing;
+    if (Bind(g_libCls, L"lib_C")) {
+        if (g_libCls.listing != libBefore) {
+            void* fn = R::FindFunction(g_libCls.cls, L"getEvent");
+            const int32_t off = fn ? R::FindParamOffset(fn, L"isEventActive") : -1;
+            g_offIsEventActive.store(off, std::memory_order_release);
+            if (off < 0 && !sLibMissSaid) {
+                sLibMissSaid = true;
+                UE_LOGW("leave_in_event: lib_C::getEvent or its isEventActive parameter is not here -- the watch is inert");
+            }
+        }
+    } else if (libBefore != 0) {
+        g_offIsEventActive.store(-1, std::memory_order_release);
+        g_libCls.listing = 0;
     }
 }
 
@@ -78,10 +127,6 @@ void Refresh() {
 
 void Install(coop::net::Session* session) {
     g_session.store(session, std::memory_order_release);
-    static ULONGLONG s_next = 0;
-    const ULONGLONG now = ::GetTickCount64();
-    if (now < s_next) return;
-    s_next = now + 1000;
     Refresh();
     if (g_watching || !sg::IsInstalled()) return;
     if (sg::WatchName(kRowGetEvent, kTag, &OnGetEventPre, nullptr)) {

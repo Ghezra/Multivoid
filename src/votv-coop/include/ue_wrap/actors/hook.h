@@ -217,7 +217,7 @@ bool CaptureRecord(void* hookActor, ue_wrap::save_record::SaveRecord& out);
 // mirror keeps them so, for the player's look to take it (coop/items/hook_retrieve).
 // `load` governs how the record's class leaves resolve; the host adopting a CLIENT's commit passes
 // LookupOnly, so an attacker's class name costs an index lookup and never a load. A client adopting the
-// host's HookAnchored loads a class it has not loaded (the default).
+// host's HookAnchored loads a class it has not loaded (Immediate).
 bool AdoptRecord(void* hookActor, const ue_wrap::save_record::SaveRecord& r,
                  ue_wrap::save_record::ClassLoad load);
 

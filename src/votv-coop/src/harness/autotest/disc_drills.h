@@ -1,13 +1,16 @@
-// harness/autotest/disc_drills.h -- what the two disc drills and the prop-properties drill wait on before they act.
-// Private to the drills (autotest_sv_request.cpp, autotest_module_buy.cpp, autotest_prop_props.cpp).
+// harness/autotest/disc_drills.h -- what the drills wait on before they act.
+// Private to the drills that include it (grep `disc_drills.h` under harness/autotest/ for the list).
 
 #pragma once
 
 #include "harness/autotest/peer_signal.h"
+#include "harness/session_runtime.h"
 
+#include "coop/net/session.h"
 #include "coop/player/players_registry.h"
 #include "coop/player/remote_player.h"
 #include "coop/session/host_world_settle.h"
+#include "coop/session/join_progress.h"
 #include "coop/session/net_pump.h"
 #include "ue_wrap/core/game_thread.h"
 #include "ue_wrap/core/object_index.h"
@@ -55,6 +58,19 @@ inline bool HostPuppetUp() {
             have = p && p->valid();
         });
         return have;
+    });
+}
+
+// CLIENT: its join is over (connected, the world announced and the join's progress idle, the predicate `rig: READY joined`
+// stands on), the moment a peer may act or leave without cutting the join off.
+inline bool ClientJoined() {
+    return peer_signal::WaitFor("this client's join complete", 240, [] {
+        bool done = false;
+        OnGameThread([&] {
+            done = harness::session_runtime::Session().connected() && coop::net_pump::HasAnnouncedWorldReady() &&
+                   coop::join_progress::CurrentPhase() == coop::join_progress::Phase::Idle;
+        });
+        return done;
     });
 }
 

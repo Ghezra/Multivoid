@@ -501,32 +501,9 @@ CFG_STRING(fall_drill, "fall_drill", "dev", "", "VOTVCOOP_FALL_DRILL", false,
     "drops a drive from 4 m once the client's world is ready; the client's DONE line ends it.")
 CFG_FLAG(prop_fall_no_coast, "prop_fall_no_coast", "dev", false, "VOTVCOOP_PROP_FALL_NO_COAST",
     "Developer: a falling host birth is not streamed to the clients (the fall drill's red).")
-CFG_STRING(sack_drill, "sack_drill", "dev", "", "VOTVCOOP_SACK_DRILL", false,
-    "Drill (BOTH peers): a client's point sack is paid by the host, once. run -- the host spawns a sack before the "
-    "client's puppet once its world is ready; the client aims and presses it; the host's DONE line ends it.")
-CFG_FLAG(point_sack_client_runs, "point_sack_client_runs", "dev", false, "VOTVCOOP_POINT_SACK_CLIENT_RUNS",
-    "Developer: a client's point sack runs the game's own body there instead of asking the host (the sack drill's red).")
-CFG_STRING(hook_retrieve_drill, "hook_retrieve_drill", "dev", "", "VOTVCOOP_HOOK_RETRIEVE_DRILL", false,
-    "Drill (BOTH peers): a client takes back an anchored hook, through the host, once. run -- the host ties a hook "
-    "between two cups before the client's puppet once its world is ready and hands it to the hook lane, which adopts "
-    "it and sends it to the client; the client aims at its copy until its look takes the hook and presses the use "
-    "key. The host's DONE line ends it: its hook gone by one granted pickup. The client says when its copy went and a "
-    "hook item reached its inventory. join -- the hook is tied before the host player before the client joins, so the "
-    "client's copy is the one its save loaded; the client is put beside it and takes it. host / joinhost -- the same "
-    "two copies, and the host player walks to its hook and takes it: both peers' DONE lines, the host's item in its "
-    "inventory with no grant, the client's copy gone with no item.")
-CFG_ENUM(hook_retrieve_red, "hook_retrieve_red", "dev", "off", "off|nocollision|clientruns", "VOTVCOOP_HOOK_RETRIEVE_RED",
-    "Developer (client): the hook retrieve drill's reds. nocollision -- an anchored mirror's collision stays off, as "
-    "before the lane, so the player's look never takes it; clientruns -- the game's own pickup runs on the client's "
-    "copy instead of asking the host, so the host's hook stays.")
-CFG_STRING(nametag_drill, "nametag_drill", "dev", "", "VOTVCOOP_NAMETAG_DRILL", false,
-    "Drill (BOTH peers): a prop's nametag is the host's. run -- the host spawns a cup before the client's puppet once "
-    "its world is ready; the client takes a nametag into its hand, writes a tag on it, walks to the cup, aims and "
-    "left-clicks. Host DONE: its cup carries the tag, applied for the client once; client DONE: its copy carries the "
-    "tag and the item in its hand is spent. host -- the host player tags the cup the same way; client DONE when its "
-    "copy carries the host's tag.")
-CFG_FLAG(nametag_client_runs, "nametag_client_runs", "dev", false, "VOTVCOOP_NAMETAG_CLIENT_RUNS",
-    "Developer: a client's nametag runs the game's own use there instead of asking the host (the nametag drill's red).")
+// The prop-intent drills' rows (a client's point sack, hook take-back and nametag, judged by the host): their own file,
+// one concept.
+#include "coop/config/config_registry_rows_dev_prop_intent.inc"
 CFG_ENUM(prop_syncer_drill, "prop_syncer_drill", "dev", "off", "off|kick|forge", "VOTVCOOP_PROP_SYNCER_DRILL",
     "Drill (host and BOTH clients, the same value; three peers): a client syncs a prop its own interaction moves. "
     "kick: the client in slot 1 walks to a keyed prop with the director, claims it, kicks it with the game's own "
@@ -800,9 +777,21 @@ CFG_FLAG(class_resolve_lookup_only, "class_resolve_lookup_only", "dev", false, "
 
 // The woodchipper lane's drill and red arms: their own file, one concept, included as _dev_cremator.inc is above.
 #include "coop/config/config_registry_rows_dev_woodchipper.inc"
+// The world-sound lane's drill and red arms: their own file, one concept.
+#include "coop/config/config_registry_rows_dev_world_sound.inc"
 // The prop-properties tool's red arms: their own file, one concept.
 #include "coop/config/config_registry_rows_dev_prop_props.inc"
 // The disc drills' rows: their own file, one concept.
 #include "coop/config/config_registry_rows_dev_disc.inc"
 // The equipment drill's rows: their own file, one concept.
 #include "coop/config/config_registry_rows_dev_equip.inc"
+// The drone hover drill's bump arm and red: their own file, one concept.
+#include "coop/config/config_registry_rows_dev_drone.inc"
+// The video camera hint drill and its red: their own file, one concept.
+#include "coop/config/config_registry_rows_dev_vidcam.inc"
+// The nightmare lane's drill, staging and red arms: their own file, one concept.
+#include "coop/config/config_registry_rows_dev_nightmare.inc"
+// The level-visit lane's drill and red arms: their own file, one concept.
+#include "coop/config/config_registry_rows_dev_level_visit.inc"
+// The cargo lift drill's rows: their own file, one concept.
+#include "coop/config/config_registry_rows_dev_cargo_lift.inc"

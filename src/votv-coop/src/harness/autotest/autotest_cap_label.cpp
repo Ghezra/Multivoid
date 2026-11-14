@@ -1,24 +1,27 @@
 // harness/autotest/autotest_cap_label.cpp -- TEST-ONLY: the refiner's cap label on two peers, with and without the
 // Auto Processing module.
 //
-// The label is the cap button's tag (the hover's "Cap level [N]", or the "Upgrade Auto Processing to use" line) and
-// the screen's cap text ("[N]", or "NaN"); only the cap press and the desk's upgraded_pcUpgrades write them. Before
-// the client joins, the host plugs the module and presses the cap to its third level, so the join carries both.
-// Then each peer in turn plugs or pulls the module or presses the cap, through the desk's own plugInModule and
-// press, and after each step both peers must show the same label, the one the actor's level and module say. Each
-// step logs `cap-label: STATE <step> level= module= tag= text=` on both peers and the drill ends with
-// `cap-label: DONE fails=N`. Gated by VOTVCOOP_RUN_CAP_LABEL; the folder is VOTVCOOP_CAN_DIR. The host prepares only
-// once the driver writes `host_loaded` there, after the host's log shows the desk's save restored: the save's setData
-// writes the cap and the modules back after the session starts, and it repaints no label. The driver launches the
-// client once the host logs `STATE 0-before-join`, and the host sends its label when the client's drill has begun
-// (a signal counts only when written after the reader's drill began).
+// The label is the cap button's tag ("Cap level [N]", or the line asking for the module) and the screen's cap text
+// ("[N]", or "NaN"); only the cap press and the desk's upgraded_pcUpgrades write them. The host plugs the module and
+// presses the cap to its third level before the client joins; the joiner must show that label. Then each peer in
+// turn plugs, pulls or presses, through the desk's own verbs, and both peers must show the actor's label. Each step
+// logs `cap-label: STATE <step> ...`. The first failed check says `rig: VERDICT cap-label FAIL` and no later step
+// runs; a wait that ends on its bound says INVALID. The receiver waits for the actor's level and module, which its
+// apply writes in one game-thread task with the repaint, and reads its label once. Armed by the row cap_label_drill
+// on both peers (VOTVCOOP_CAN_DIR). Red: cap_label_repaint_off. The driver launches the client once the host logs
+// `STATE 0-before-join`. The saved arm (cap_label_drill=saved, the host on the rig's own save, no --host-fresh) skips
+// the steps: the host's loaded desk must show its saved level and module's label, which only the lane's install
+// repaint gives it, and the joiner the same one; both are read once the joiner has applied the host's state. Its red
+// is cap_label_install_repaint_off.
 
 #include "harness/autotest.h"
+#include "disc_drills.h"   // co-located private header (src tree, not include/)
 #include "harness/autotest/peer_signal.h"
 
+#include "coop/config/config.h"
+#include "coop/config/config_registry.h"
 #include "coop/player/players_registry.h"
-#include "coop/player/remote_player.h"
-#include "coop/session/net_pump.h"
+#include "coop/session/rig_verdict.h"
 #include "ue_wrap/core/game_thread.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
@@ -48,21 +51,26 @@ using PS::AwaitText;
 using PS::Mark;
 using PS::WaitFor;
 
-int g_fails = 0;
-
 template <class Fn>
 void OnGameThread(Fn&& fn) {
     ue_wrap::game_thread::RunAndWait([&fn](std::atomic<int>& d) { fn(); d.store(1); });
 }
 
-void Check(bool ok, const char* what) {
+
+// A failed check is the verdict, and the caller returns without a later step. A pass says what matched; a fail says
+// what was expected and what was read.
+bool Check(bool ok, const std::string& matched, const std::string& expectedVsGot) {
     if (ok) {
-        UE_LOGI("cap-label: PASS %hs", what);
-    } else {
-        ++g_fails;
-        UE_LOGW("cap-label: FAIL %hs", what);
+        UE_LOGI("cap-label: PASS %hs", matched.c_str());
+        return true;
     }
+    UE_LOGW("cap-label: FAIL %hs", expectedVsGot.c_str());
+    coop::rig_verdict::Say("cap-label", coop::rig_verdict::Outcome::Fail, "%s", expectedVsGot.c_str());
+    return false;
 }
+
+// A check whose one sentence is the same either way (a verb that ran, a state reached).
+bool Check(bool ok, const std::string& what) { return Check(ok, what, what); }
 
 std::string Narrow(const std::wstring& w) {
     std::string out;
@@ -107,6 +115,33 @@ std::string Format(const Label& l) {
 std::string ExpectedText(const Label& l) {
     if (!l.module) return "NaN";
     return "[" + std::to_string(l.level + 1) + "]";
+}
+
+// The part of Format that is the desk's own state, the level and the module: what a wire apply writes before it
+// repaints, so a peer showing it has finished the apply.
+std::string StateOf(const std::string& formatted) { return formatted.substr(0, formatted.find('|')); }
+
+// The label is the one this level and module call for: the screen text, and the tag ("Cap level [N]" with the
+// module, the line asking for the module without it).
+bool LabelIsOwn(const Label& l) {
+    if (!l.ok || l.text != ExpectedText(l)) return false;
+    return l.module ? l.tag.find("[" + std::to_string(l.level + 1) + "]") != std::string::npos
+                    : l.tag.find("Auto Processing") != std::string::npos;
+}
+
+std::string Describe(const Label& l) {
+    if (!l.ok) return "nothing (the desk or its label did not read)";
+    return "level " + std::to_string(l.level) + ", module " + (l.module ? "1" : "0") + ", tag '" + l.tag + "', text '" +
+           l.text + "'";
+}
+
+// LabelIsOwn as a check: the pass names the text and level that matched, the fail what the label should have been.
+bool CheckOwn(const Label& l, const std::string& step) {
+    const std::string want = l.module ? "text '" + ExpectedText(l) + "' and a tag naming level " +
+                                            std::to_string(l.level + 1)
+                                      : "text 'NaN' and a tag asking for Auto Processing";
+    return Check(LabelIsOwn(l), step + ": the label is its level's and module's (" + Describe(l) + ")",
+                 step + ": expected " + want + ", got " + Describe(l));
 }
 
 void LogState(const char* step) {
@@ -208,7 +243,7 @@ struct Step {
     Act act;
 };
 
-// After the join (the host's module and third level), each peer in turn: with the module, without it, and the cap
+// After the join (the host's module and final level), each peer in turn: with the module, without it, and the cap
 // pressed both ways.
 constexpr Step kSteps[] = {
     {"2-host-unplug",   true,  Act::Unplug},
@@ -220,9 +255,10 @@ constexpr Step kSteps[] = {
     {"8-host-plug",     true,  Act::Plug},
 };
 
-// The actor acts and waits for its own desk to show the change; the other peer waits for its label to equal the
-// actor's. Both log the step's STATE line.
-void RunSteps(bool host) {
+// The actor acts and waits for its own desk to show the change; the other peer waits for the actor's level and
+// module to arrive and then reads its label once. Both log the step's STATE line, and the first failed check ends
+// the run (false).
+bool RunSteps(bool host) {
     for (const Step& st : kSteps) {
         const std::string seen = std::string(st.name) + "_seen";
         if (st.hostActs == host) {
@@ -233,79 +269,119 @@ void RunSteps(bool host) {
             case Act::Unplug: did = UnplugModule(); break;
             case Act::Press:  did = PressCap(); break;
             }
-            Check(did, (std::string(st.name) + ": the desk's own verb ran").c_str());
-            WaitFor("this desk's change", 15, [&] {
-                const Label l = Read();
-                return l.ok && (l.level != was.level || l.module != was.module);
-            }, false);
+            if (!Check(did, std::string(st.name) + ": the desk's own verb ran")) return false;
+            if (!WaitFor("this desk's level or module to change", 15, [&] {
+                    const Label l = Read();
+                    return l.ok && (l.level != was.level || l.module != was.module);
+                }))
+                return false;
             const Label now = Read();
             LogState(st.name);
-            Check(now.ok && now.text == ExpectedText(now),
-                  (std::string(st.name) + ": the actor's label is its level's and module's").c_str());
+            if (!CheckOwn(now, std::string(st.name) + " (the actor)")) return false;
             Mark(st.name, Format(now));
-            if (!Await(seen.c_str())) return;
+            if (!Await(seen.c_str())) return false;
         } else {
             std::string theirs;
-            if (!AwaitText(st.name, theirs)) return;
-            const bool same = WaitFor("this peer's label to equal the actor's", 15, [&] {
-                const Label l = Read();
-                return l.ok && Format(l) == theirs;
-            }, false);
+            if (!AwaitText(st.name, theirs)) return false;
+            if (!WaitFor("this peer's level and module to be the actor's", 15, [&] {
+                    const Label l = Read();
+                    return l.ok && StateOf(Format(l)) == StateOf(theirs);
+                }))
+                return false;
+            const Label l = Read();
             LogState(st.name);
-            Check(same, (std::string(st.name) + ": this peer's label is the actor's ('" + theirs + "')").c_str());
+            if (!Check(l.ok && Format(l) == theirs,
+                       std::string(st.name) + ": this peer's label is the actor's, '" + theirs + "'",
+                       std::string(st.name) + ": expected the actor's label '" + theirs + "', got '" + Format(l) + "'"))
+                return false;
             Mark(seen.c_str());
         }
     }
+    return true;
 }
 
-void RunHost() {
-    if (!Await("host_loaded")) return;
-    if (!WaitFor("the desk and its label readable", 120, [&] { return Read().ok; })) return;
-    LogState("0-host-loaded");
-    // Before the join: the module plugged and the cap at its third level, so the join has a label to carry.
-    if (!Read().module) Check(PlugModule(), "0: the host's module plugged before the join");
+// The module plugged and the cap at its third level, through the desk's own verbs; `prepared` is the label then.
+bool PrepareCap(const char* stateName, Label& prepared) {
+    if (!Read().module && !Check(PlugModule(), "0: the host's module plugged")) return false;
     for (int i = 0; i < 3 && Read().level != 2; ++i) {
         const int32_t was = Read().level;
         PressCap();
-        WaitFor("the host's cap press", 10, [&] { return Read().level != was; }, false);
+        if (!WaitFor("the host's cap press", 10, [&] { return Read().level != was; })) return false;
     }
-    const Label prepared = Read();
+    prepared = Read();
+    LogState(stateName);
+    return Check(prepared.module && prepared.level == 2 && prepared.text == "[3]",
+                 "0: the host shows the third level (" + Describe(prepared) + ")",
+                 "0: expected the third level with the module and text '[3]', got " + Describe(prepared));
+}
+
+std::string Arm() { return coop::config::ResolveEnum(coop::config_registry::rows::cap_label_drill); }
+
+// The saved arm's host: its world was loaded from the rig's own save, whose desk the gamemode's load restored before
+// this lane installed, so its label is right only if the lane's install repaint ran. Its state (level, module) is
+// what the joiner waits for; the host's label is judged at the event the fresh arm judges the joiner's, the joiner's
+// own apply, by which the host's session has ticked.
+void RunSavedHost() {
     LogState("0-before-join");
-    Check(prepared.module && prepared.level == 2 && prepared.text == "[3]", "0: the host shows the third level");
+    if (!Await("client_begun")) return;
+    const Label loaded = Read();
+    if (!loaded.module) {  // without the module the right label is the default one at every level
+        coop::rig_verdict::Say("cap-label", coop::rig_verdict::Outcome::Invalid,
+                               "the save holds no Auto Processing: the right label is the default one, so a stale "
+                               "label could not be told from it");
+        return;
+    }
+    Mark("host_prepared", Format(loaded));
+    if (!Await("client_joined")) return;
+    const Label held = Read();
+    LogState("1-host-after-join");
+    if (!CheckOwn(held, "1 (the host's loaded desk)")) return;
+    UE_LOGI("cap-label: DONE");
+    coop::rig_verdict::Say("cap-label", coop::rig_verdict::Outcome::Pass,
+                           "the host's loaded desk and the joiner's show the saved level and module's label: %s",
+                           Describe(held).c_str());
+}
+
+void RunHost() {
+    if (!WaitFor("the desk and its label readable", 120, [&] { return Read().ok; })) return;
+    if (Arm() == "saved") {
+        RunSavedHost();
+        return;
+    }
+    LogState("0-host-loaded");
+    Label prepared;
+    if (!PrepareCap("0-before-join", prepared)) return;
     if (!Await("client_begun")) return;
     Mark("host_prepared", Format(prepared));
     if (!Await("client_joined")) return;
-    RunSteps(true);
-    UE_LOGI("cap-label: DONE fails=%d", g_fails);
+    if (!RunSteps(true)) return;
+    UE_LOGI("cap-label: DONE");
+    // Every step was confirmed by the peer that did not act before the next ran: a client's failure said FAIL itself.
+    coop::rig_verdict::Say("cap-label", coop::rig_verdict::Outcome::Pass,
+                           "the cap label read the level and module's own on both peers after every step");
 }
 
 void RunClient() {
     Mark("client_begun");
-    bool ready = false;
-    for (int i = 0; i < 480 && !ready; ++i) {
-        OnGameThread([&] { ready = coop::net_pump::HasAnnouncedWorldReady(); });
-        if (!ready) ::Sleep(500);
-    }
-    if (!WaitFor("the host's puppet", 60, [&] {
-            bool have = false;
-            OnGameThread([&] {
-                coop::RemotePlayer* p = coop::players::Registry::Get().Puppet(0);
-                have = p && p->valid();
-            });
-            return have;
-        }))
-        return;
+    if (!disc_drill::HostPuppetUp()) return;
     std::string hostLabel;
     if (!AwaitText("host_prepared", hostLabel)) return;
-    const bool same = WaitFor("the joined label to equal the host's", 30, [&] {
-        const Label l = Read();
-        return l.ok && Format(l) == hostLabel;
-    }, false);
+    if (!WaitFor("the joined desk's level and module to be the host's", 30, [&] {
+            const Label l = Read();
+            return l.ok && StateOf(Format(l)) == StateOf(hostLabel);
+        }))
+        return;
+    const Label joined = Read();
     LogState("1-after-join");
-    Check(same, ("1: the joined label is the host's ('" + hostLabel + "')").c_str());
+    // The saved host judges its own label at this apply, so the saved joiner is judged against its own level.
+    if (Arm() == "saved") {
+        if (!CheckOwn(joined, "1 (the joined desk)")) return;
+    } else if (!Check(joined.ok && Format(joined) == hostLabel, "1: the joined label is the host's, '" + hostLabel + "'",
+                      "1: expected the host's label '" + hostLabel + "', got '" + Format(joined) + "'"))
+        return;
     Mark("client_joined");
-    RunSteps(false);
-    UE_LOGI("cap-label: DONE fails=%d", g_fails);
+    if (Arm() != "saved" && !RunSteps(false)) return;
+    UE_LOGI("cap-label: DONE");
 }
 
 }  // namespace

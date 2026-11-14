@@ -26,6 +26,7 @@
 #include "coop/creatures/geom_octa_relay.h"   // the Geom Octa's decisions replayed on a client
 #include "coop/creatures/orb_authority.h"     // the black orb's encounter, judged by the host
 #include "coop/world/ufo_sync.h"              // the ambient UFOs' paths and the Midas run, the host's
+#include "coop/props/prop_nametag.h"      // a prop's nametag, the host's
 #include "coop/props/prop_save_data.h"    // the per-prop save record lane
 #include "coop/props/prop_stick_sync.h"
 #include "coop/props/prop_throw.h"        // JudgeRelease: the bounds and the relay of a client's release
@@ -757,6 +758,20 @@ bool HandleEntityEvent(net::Session& session,
                 : static_cast<uint8_t>(0xFF);
         coop::prop_save_data::OnChunk(
             session, sd, sdslot, msg.kind == net::ReliableKind::PropSaveDataIntent);
+        break;
+    }
+    case net::ReliableKind::PropNametag: {
+        // A prop's nametag, a chunked blob (op 1 a client's, to the host; op 2 the host's tag for every client; op 3 the
+        // host's refusal). Handled in the drain, in arrival order, as PropSaveData is: the hand state ahead of a request
+        // on the one Default lane is applied before the request is judged.
+        if (msg.payloadLen < sizeof(net::BlobChunkPayload)) {
+            UE_LOGW("event_feed: PropNametag payload too short (%zu < %zu)", static_cast<size_t>(msg.payloadLen),
+                    sizeof(net::BlobChunkPayload));
+            break;
+        }
+        net::BlobChunkPayload chunk{};
+        std::memcpy(&chunk, msg.payload, sizeof(chunk));
+        ::coop::prop_nametag::OnChunk(session, chunk, msg.senderPeerSlot);
         break;
     }
     default:

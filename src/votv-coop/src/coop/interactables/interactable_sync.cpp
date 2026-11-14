@@ -142,6 +142,17 @@ const Adapter g_garageAdapter = {
     &ue_wrap::garage::TryReadOpen,
     [](void* a, bool on) -> bool { return ue_wrap::garage::ApplyOpen(a, on); },
 };
+// A state the wire brought to an appliance. A faucet whose state changed here was pressed on another peer, whose game
+// played its click there: this peer plays it at the faucet (coop/world/world_sound_sync).
+bool ApplyApplianceState(void* a, bool on) {
+    bool was = on;
+    const bool read = ue_wrap::appliance::TryReadState(a, was);
+    const bool applied = ue_wrap::appliance::ApplyState(a, on);
+    if (applied && read && was != on && ue_wrap::reflection::ClassNameOf(a) == L"faucet_C")
+        coop::world_sound_sync::OnFaucetChanged(a);
+    return applied;
+}
+
 // The appliance family (six Aactor_save_C descendants: faucet, sink, shower, kitchen oven,
 // serverBox, wall-unit tapes), symmetric single-bool toggles with no auto-revert. One adapter:
 // ue_wrap::appliance dispatches by class to the right bool offset and refresh verb, so the peer's
@@ -153,14 +164,7 @@ const Adapter g_applianceAdapter = {
     &ue_wrap::appliance::IsAppliance,
     &ue_wrap::appliance::GetKeyString,
     &ue_wrap::appliance::TryReadState,
-    [](void* a, bool on) -> bool {
-        bool was = on;
-        const bool read = ue_wrap::appliance::TryReadState(a, was);
-        const bool applied = ue_wrap::appliance::ApplyState(a, on);
-        if (applied && read && was != on && ue_wrap::reflection::ClassNameOf(a) == L"faucet_C")
-            coop::world_sound_sync::OnFaucetChanged(a);
-        return applied;
-    },
+    &ApplyApplianceState,
     nullptr,
     &ue_wrap::appliance::ResolvedClassCount,
 };
@@ -265,9 +269,9 @@ Channel g_cameraActive{g_cameraActiveAdapter, Channel::Mode::HostAuth};
 Channel g_cameraLight{g_cameraLightAdapter, Channel::Mode::HostAuth};
 Channel g_cremator{g_crematorAdapter, Channel::Mode::HostAuth};  // the lever run is the host's machine
 // The cargo lift, the base's elevator (cargoLift_C), host-authoritative: its `dir`, the direction its last press sent
-// it. A client applies a direction
-// by pressing its own copy, held while that copy moves (coop/interactables/cargo_lift); a client's press reaches the
-// host as a CargoLiftIntent. Keyed by the level-export FName, as the garage.
+// it, or the direction its own obstruction reversal left. A client applies a direction by pressing its own copy, or by
+// turning it when it moves (coop/interactables/cargo_lift); a client's press reaches the host as a CargoLiftIntent.
+// Keyed by the level-export FName, as the garage.
 const Adapter g_cargoLiftAdapter = {
     "cargo_lift", coop::net::ReliableKind::CargoLiftState,
     &ue_wrap::cargo_lift::EnsureResolved,
@@ -275,7 +279,7 @@ const Adapter g_cargoLiftAdapter = {
     &ue_wrap::cargo_lift::GetNameKey,
     &coop::cargo_lift::ReadState,
     &coop::cargo_lift::ApplyState,
-    &coop::cargo_lift::TickApply,
+    nullptr,  // no TickApply: a copy that moves is turned at once
 };
 Channel g_cargoLift{g_cargoLiftAdapter, Channel::Mode::HostAuth};
 // Keypads (ApasswordLock_C) are not a toggle (a typed buffer and three state bools, with an
@@ -369,7 +373,7 @@ void* ResolveCargoLift(const std::wstring& key) {
 
 void OnCargoLiftVerb(void* lift) { g_cargoLift.OnLocalEdge(lift); }
 
-void ResendCargoLiftTo(void* /*lift*/, uint8_t slot) { g_cargoLift.QueueConnectBroadcastForSlot(slot); }
+void ResendCargoLiftsTo(uint8_t slot) { g_cargoLift.QueueConnectBroadcastForSlot(slot); }
 
 bool ApplyingLightGroup(void* root) { return root && root == g_applyingGroup; }
 

@@ -5,13 +5,15 @@
 // the hook; run on a client's copy it would do that there alone. So on a client it is refused and asked of the host
 // by the hook's save key, the name every copy shares. The host takes its hook away without a drop when an end is
 // within the sender's reach and tells every client the hook is gone, naming the taker, whose copy then runs the
-// game's pickup. The host player's own pickup runs the game's and is told the same way. A refused request has no
-// answer: the copy stays. A player's own hook before its second end anchors is the owner lane's (hook_sync).
-// Game thread.
+// game's pickup. The host player's own pickup runs the game's and is told the same way. A refused request is answered
+// to its sender alone and the copy stays. A client holds one request per hook in flight: a press on that hook asks
+// nothing more until the host's Gone or Refused for it, or the session's end. A player's own hook before its second
+// end anchors is the owner lane's (hook_sync). Game thread.
 
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 namespace coop::net {
 class Session;
@@ -33,8 +35,33 @@ void OnMsg(const coop::net::HookRetrievePayload& p, int senderPeerSlot);
 // and nothing is pushed by it.
 void PrepareAnchoredCopy(void* mirror);
 
+// HOST: a joiner's save was just cut. Keeps the keys of the anchored hooks the world holds, which that save holds too.
+// A joiner's save is a photograph, and a Gone is not sent to a slot before its world-ready.
+void CaptureJoinHooks(int slot);
+
+// HOST: the slot's connect replay (inside the snapshot scope, ahead of the snapshot). Each hook kept at its cut that the
+// host no longer holds is named gone to that slot alone, so a hook taken while the joiner loaded leaves no copy there.
+// A no-op without a cut (the stale-fallback join), and for a hook still standing.
+void SendJoinGone(int slot);
+
+// A peer left: its kept keys go.
+void OnPeerLeftSlot(int slot);
+
 // HOST: the pickups granted to a client since the process started (the drill reads it).
 uint64_t GrantedCount();
+
+// CLIENT, this session: the copies the host's Gone took away with no pickup of this client's (the drill reads it).
+uint64_t GoneCopyCount();
+
+// The live hook on this machine whose save key is `key` (an adopted hook, an anchored mirror, or one a save loaded), or
+// null. For the drill, which judges the one hook the host names.
+void* FindHook(const std::wstring& key);
+
+// CLIENT, this session (the drill reads them): the requests asked of the host, the pickups its grant ran here, and the
+// refusals it answered.
+uint64_t AskedCount();
+uint64_t TakenCount();
+uint64_t RefusedAnswerCount();
 
 void OnDisconnect();
 

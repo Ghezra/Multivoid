@@ -74,6 +74,7 @@ set(VOTVCOOP_SOURCES
     src/coop/dispatch/event_feed.cpp
     src/coop/dispatch/event_dispatch_container_act.cpp
     src/coop/dispatch/event_dispatch_cremator.cpp
+    src/coop/dispatch/event_dispatch_cargo_lift.cpp
     src/coop/dispatch/event_dispatch_economy.cpp
     src/coop/dispatch/event_dispatch_entity.cpp
     src/coop/dispatch/event_dispatch_intent.cpp
@@ -191,6 +192,7 @@ set(VOTVCOOP_SOURCES
     src/coop/player/puppet_cremation.cpp
     src/coop/player/puppet_events.cpp
     src/coop/player/puppet_events_selftest.cpp
+    src/coop/player/puppet_hide.cpp
     src/coop/player/player_hit.cpp
     src/coop/player/cremator_hit.cpp
     src/coop/player/hit_intent.cpp
@@ -264,7 +266,6 @@ set(VOTVCOOP_SOURCES
     src/coop/world/plant_sync.cpp
     src/coop/props/prop_fire_sync.cpp
     src/coop/world/ground_hose_sync.cpp
-    src/coop/interactables/atv_host_sync.cpp
     src/coop/interactables/atv_passenger.cpp
     src/coop/interactables/cargo_lift.cpp
     src/coop/interactables/atv_riders.cpp
@@ -439,6 +440,7 @@ set(VOTVCOOP_SOURCES
     src/coop/session/pause_guard.cpp
     src/coop/session/connect_replay.cpp
     src/coop/session/subsystems.cpp
+    src/coop/session/desk_subsystems.cpp
     src/coop/session/world_ready_answer.cpp
     src/coop/player/local_streams.cpp
     src/coop/interactables/device_occupancy.cpp
@@ -488,6 +490,7 @@ set(VOTVCOOP_SOURCES
     src/coop/player/sleep_sync.cpp
     src/coop/player/nightmare_roll.cpp
     src/coop/player/level_visit.cpp
+    src/coop/player/level_visit_sky.cpp
     src/coop/creatures/wisp_attack_sync.cpp
     src/coop/creatures/wisp_grab_hold.cpp
     src/coop/creatures/wisp_tear_mirror.cpp
@@ -711,9 +714,12 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/meet.cpp
     src/harness/autotest/autotest_seat_ragdoll.cpp
     src/harness/autotest/autotest_move_osc.cpp
+    src/harness/autotest/autotest_beam_look.cpp
+    src/harness/autotest/autotest_desk_view.cpp
+    src/harness/autotest/autotest_cap_label.cpp
+    src/harness/autotest/autotest_dish_sound.cpp
     src/harness/autotest/autotest_save_notice.cpp
     src/harness/autotest/autotest_beam_sweep.cpp
-    src/harness/autotest/autotest_beam_look.cpp
     src/harness/autotest/autotest_class_dump.cpp
     src/harness/autotest/autotest_can_state.cpp
     src/harness/autotest/autotest_food_state.cpp
@@ -721,16 +727,16 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_radio_state.cpp
     src/harness/autotest/autotest_tv_state.cpp
     src/harness/autotest/autotest_world_sound.cpp
-    src/harness/autotest/autotest_dish_sound.cpp
     src/harness/autotest/autotest_farm_harvest.cpp
     src/harness/autotest/autotest_sv_request.cpp
     src/harness/autotest/autotest_module_buy.cpp
-    src/harness/autotest/autotest_seat_ragdoll.cpp
     src/harness/autotest/autotest_desk_short.cpp
     src/harness/autotest/autotest_drone_hover.cpp
     src/harness/autotest/autotest_hacksaw.cpp
     src/harness/autotest/autotest_chipper_feed.cpp
     src/harness/autotest/autotest_body_push.cpp
+    src/harness/autotest/autotest_saveui.cpp
+    src/harness/autotest/autotest_spill.cpp
     src/harness/autotest/autotest_ambient_creature.cpp
     src/harness/autotest/autotest_ambient_field.cpp
     src/harness/autotest/autotest_level_travel.cpp
@@ -739,13 +745,10 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_join_drop.cpp
     src/harness/autotest/autotest_prop_fire.cpp
     src/harness/autotest/autotest_ground_hose.cpp
-    src/harness/autotest/autotest_spill.cpp
     src/harness/autotest/autotest_build.cpp
     src/harness/autotest/autotest_vent_crawler.cpp
     src/harness/autotest/autotest_browser_filter.cpp
     src/harness/autotest/autotest_disc_race.cpp
-    src/harness/autotest/autotest_desk_view.cpp
-    src/harness/autotest/autotest_cap_label.cpp
     src/harness/autotest/autotest_mushroom.cpp
     src/harness/autotest/autotest_crowbar.cpp
     src/harness/autotest/autotest_data_case.cpp
@@ -756,10 +759,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_vidcam_drop.cpp
     src/harness/autotest/autotest_backrooms_probe.cpp
     src/harness/autotest/autotest_container_gaps.cpp
-    src/harness/autotest/peer_signal.cpp
-    src/harness/autotest/meet.cpp
     src/harness/autotest/autotest_plant_gate.cpp
-    src/harness/autotest/autotest_saveui.cpp
     src/harness/autotest/autotest_woodchipper.cpp
     src/harness/autotest/autotest_class_resolve.cpp
     src/harness/autotest/autotest_prop_props.cpp

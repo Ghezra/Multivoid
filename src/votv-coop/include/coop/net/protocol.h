@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 313;
+inline constexpr uint16_t kProtocolVersion = 314;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -714,6 +714,18 @@ enum class ReliableKind : uint16_t {
     // reach, a nametag in the sender's hand) and applies before it tells every peer.
     PropSaveDataIntent = 131,
 
+    // A prop's nametag, named by the prop's key (coop/props/prop_nametag). A chunked blob on the Default lane, so it
+    // is ordered with the hand state and the spawn it follows. op 1 (CLIENT->HOST): this client's player used a nametag
+    // item on the prop, which the client refused there; the request carries the tag the item reads. The host judges it
+    // (a prop of that key here within the sender's reach, a nametag in the sender's hand, the tag well formed, the sender
+    // within its budget), applies the tag and publishes it. op 2 (HOST->ALL): the prop of that key carries this tag now,
+    // and `author` names the slot whose item it was: every client applies it, and the author's held item is spent. op 3
+    // (HOST->the requester): its request was refused, with a reason, the item stays, and the client may use it again; a
+    // client asks once until op 2 for it or op 3 arrives. Never relayed. Late join: a joiner's save carries the tags that
+    // stood at its cut, and its connect replay sends it, alone, an op 2 for each prop whose tag this session published,
+    // ahead of the snapshot's props: a copy the save loaded takes it, a prop the snapshot births waits for it by key.
+    PropNametag = 261,
+
     // A disc-holding device's slot, addressed by the device's index in its own kind's list. Host
     // to all with the canonical set; a peer to the host with the outcome of a slot its own game
     // changed, which the host validates and answers with that canonical. Chunked blob; on
@@ -753,10 +765,13 @@ enum class ReliableKind : uint16_t {
     // sender's reach), destroys its hook without a drop and answers. op 1 (HOST->ALL): the hook of that
     // key is gone on the host -- a client's pickup it granted, or the host player's own -- and every
     // client takes its copy away; `taker`, when it names a client, replays the pickup on that client's
-    // copy, so the item lands in that player's inventory and nowhere else. A refused op 0 is not
-    // answered: the copy stays and the player may use it again. Never relayed; not pre-world. Late join:
-    // none, the save carries the hooks that stand. HookRetrievePayload.
-    HookRetrieve = 254,
+    // copy, so the item lands in that player's inventory and nowhere else. A refused op 0 is answered
+    // with op 2 (HOST->that client): the copy stays and the player may use it again; a client asks once
+    // per hook until op 1 or op 2 for it arrives. Never relayed; not pre-world. Late join: the save carries
+    // the hooks that stand; an op 1 is not sent to a slot before its world-ready, so the connect replay
+    // sends that slot, alone, an op 1 for each hook its save held that the host has taken since.
+    // HookRetrievePayload.
+    HookRetrieve = 260,
 
     // Host to all: the driven prop at eid has come to rest, or a hand took it -- its final pose and
     // velocity, and the claim generation its stream carried. A receiver hands the prop its physics
@@ -1258,7 +1273,7 @@ enum class ReliableKind : uint16_t {
     // a ten-second bound cancels it. A client's copy is relayed to the other clients, on the lane of the release it
     // follows by at least the rest time; a settle that still passes its release is dropped as no released hold.
     // Not pre-world. Late join: none, the snapshot carries the host's pose. PropSettlePayload.
-    PropSettle = 241,
+    PropSettle = 262,
     // HOST->ALL: a world food's temperature, ripeness and use count, sent when they move, and its poison (the two floats a
     // bite adds as an effect), which every send carries. A client's food is refused its tick at the gate, so these are its
     // values. Not pre-world. Late join: every food again at the joiner's ready edge, on the poll's budget, poison included.
@@ -1277,12 +1292,12 @@ enum class ReliableKind : uint16_t {
     // ANY->ALL: this peer's player changed a microwave's or a mini oven's setting, started or stopped it, opened or
     // closed a microwave's door, or changed a grill's coals, fire
     // or lid; the host's burn of a grill's coals goes the same way. A client's copy is relayed. Not pre-world. Late join: every machine not at its defaults, at the ready edge. KitchenStatePayload.
-    KitchenState = 242,
+    KitchenState = 263,
     // HOST->ALL: a placed radio's or TV's track, time, play state and mode, and a TV's channel and picture, on a change and
     // every few seconds while it plays. A track is a hash a peer looks up in its own catalog. CLIENT->HOST: what this
     // client's player changed through its interface; never relayed, the host's next state answers. Not pre-world. Late join: every device again at
     // the ready edge. MediaDeviceStatePayload.
-    MediaDeviceState = 243,
+    MediaDeviceState = 264,
     // HOST->ALL: a plant's identity, place and values, at once on an edge a viewer sees and every few seconds while it changes,
     // or its end. Not relayed, not pre-world. Late join: every plant again at the ready edge. PlantStatePayload.
     PlantState = 224,
@@ -1294,35 +1309,35 @@ enum class ReliableKind : uint16_t {
     // HOST->ALL: a keyed prop of the host's burns, with its flame's fuel and speed, at the edge, on a refuel and every 2 s while
     // it burns, or it stopped. A client's copy shows that flame and burns nothing down. Not relayed, not pre-world. Late join:
     // every burning prop again at the ready edge. PropFirePayload.
-    PropFireState = 244,
+    PropFireState = 265,
     // CLIENT->HOST: this client's player lit a keyed prop with a lighter or a torch, with the fuel the light gives. Never relayed;
     // the host lights its own copy and its next PropFireState answers. PropFirePayload.
-    PropFireRequest = 245,
+    PropFireRequest = 266,
     // HOST->ALL: a finished garden hose of the host's, as its own save record, when it is new or changed, or its key once
     // when it went. A client lays it on its copy, tied to its faucet and sprinkler. Not relayed, not pre-world. Late
     // join: every hose again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
-    GroundHoseState = 246,
+    GroundHoseState = 267,
     // CLIENT->HOST: a hose this client's player finished laying or changed (op 1, its record), or took up (op 2). Never
     // relayed; the host lays or takes up its own and its next GroundHoseState answers. BlobChunkPayload, as above.
-    GroundHoseIntent = 247,
+    GroundHoseIntent = 268,
     // HOST->ALL: a piece of the host's a player built -- a nail, or a custom wall unfinished, wet or finished -- as its own
     // save record, when it is new or changed, or its key once when it went. A client makes it on its copy, or applies the
     // record to its piece of that key, a nail tied to the actors its keys name there. Not relayed, not pre-world. Late join:
     // every piece again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
-    BuildState = 248,
+    BuildState = 269,
     // CLIENT->HOST: a piece this client's player made (op 1, its record), took away (op 2), a wall it hit or repaired
     // (op 3, [f32] the health it lost, negative, or gained), or a nail its pull snapped (op 4). Never relayed; the host
     // makes, destroys, hits, repairs or snaps its own and its BuildState answers. BlobChunkPayload, as above.
-    BuildIntent = 249,
+    BuildIntent = 270,
     // HOST->ALL: a garbage container's contents (the keys of the props its itemsInside lists, the first
     // kGarbageBinKeys of them) and whether it can be held and collected, when any changes, and every container again
     // at the ready edge. A client's copy writes the flags and glues the props as the container's own glue does. Not
     // relayed, not pre-world. GarbageBinPayload.
-    GarbageBinState = 250,
+    GarbageBinState = 271,
     // CLIENT->HOST: a container this client authors (it holds it, threw it or syncs it) took a lethal impact or fire
     // here, which the client cancelled, or its hacksaw cut it (sawn). The host breaks its own copy by the same lethal
     // call, or as the saw does, so the spill is the host's. Never relayed. ContainerBreakPayload.
-    ContainerBreakRequest = 251,
+    ContainerBreakRequest = 272,
     // CLIENT->HOST: this client's player pressed the toolgun's prop-properties tool on a keyed prop, with the tool's
     // own static, frozen, active and sleep, seen from this camera point at this hit point. The host judges the sender's
     // right, a toolgun in its hand, who holds the prop and the sight, applies the tool's values through the game's
@@ -1475,29 +1490,31 @@ enum class ReliableKind : uint16_t {
     // applies it at the copy's birth. Not relayed, not pre-world. WalkerStatePayload.
     WalkerState = 231,
     // HOST->ALL: the host's base computer shorted (a liquid on it, the host's own or a client's it judged): every client
-    // runs its own copy's shortCircuit, which sparks and then puts the base on solar power. Never relayed, not pre-world,
-    // nothing at late join (the short is over in ten seconds). DeskShortPayload.
-    DeskShortState = 252,
-    // CLIENT->HOST: this client's liquid shorted its copy of the base computer. The host checks the sender's world and
-    // reach and runs its own desk's shortCircuit, whose DeskShortState answers. Never relayed. DeskShortPayload.
-    DeskShortRequest = 253,
+    // runs its own copy's shortCircuit, which sparks and then puts the base on solar power (`on` 1). Never relayed, not
+    // pre-world. Sent again to a joiner alone at its ready edge when the host's desk is still shorting, and to a refused
+    // or redundant asker alone with the host's own flag (`on` 0: it does not short). DeskShortPayload.
+    DeskShortState = 243,
+    // CLIENT->HOST: this client's liquid reached its copy of the base computer, whose own call the gate cancelled. The host
+    // checks the sender's world, that it is alive, its reach and its budget, and runs its own desk's shortCircuit, whose
+    // DeskShortState answers every client. Never relayed. DeskShortPayload, `on` always 1.
+    DeskShortRequest = 244,
     // HOST->ALL: the cargo lift's direction (cargoLift_C's `dir`, the base's elevator) after a press, keyed by the lift's
     // level-export name. Host-authored: a client's copy is refused at the host's receive edge; never relayed; not
     // pre-world (a pre-world copy waits for its index). A client presses its own copy to the direction, once that copy
     // has stopped. Late join: the connect snapshot sends every indexed lift's direction at the joiner's world-ready edge.
     // KeyedTogglePayload; its action is the direction (1 up, 0 down).
-    CargoLiftState = 255,
+    CargoLiftState = 241,
     // CLIENT->HOST: a client pressed the cargo lift's call button; its action is the direction the press wants. The host
     // resolves the lift by its key, judges the sender's reach and that its own lift is not moving, and presses it; the
     // run reaches every peer as CargoLiftState. Never relayed; not pre-world; a press whose sender has no body on the
     // host yet waits in its queue. Late join: none, a press is an act. KeyedTogglePayload.
-    CargoLiftIntent = 256,
+    CargoLiftIntent = 242,
     // HOST->CLIENT: the black orb's encounter (npc_orborb_C), which the host judges (coop/creatures/orb_authority).
     // Begin, to every client: the host's orb began its encounter, and each client's copy runs its own begin. Death, to
     // the toucher alone: the orb caught that player, whose machine answers the run's end as a death. Never relayed; not
     // pre-world (a Begin for a copy not yet made is dropped). Late join: none, an encounter is ten seconds. Host-
     // authored: a client's copy is refused at the host's receive edge. OrbEventPayload.
-    OrbEvent = 257,
+    OrbEvent = 273,
     // HOST->CLIENT: the gamemode's ambient UFOs (coop/world/ufo_sync). A path, to every client after the UFO's
     // WorldActorSpawn: what the host's copy rolled at its birth (a ball's turn and two ends, a boo's flight spline in
     // chunks of 16 points), written over the client copy's own roll so every copy flies one path. MidasRun, to every
@@ -1505,15 +1522,15 @@ enum class ReliableKind : uint16_t {
     // pre-world (a path for a copy not yet made waits ten seconds). Late join: the host sends the path of every UFO
     // still flying and the Midas run while it lasts. Host-authored: a client's copy is refused at the host's receive
     // edge. UfoEventPayload.
-    UfoEvent = 258,
+    UfoEvent = 274,
     // HOST->ALL: a robot cleaner (prop_roomba_C) of the host's switched on or off (coop/props/roomba_sync), when its
     // `active` changes and to a joiner at its ready edge; a client's copy takes it through the cleaner's own `use`. While
     // it runs, the host's copy drives and its pose rides PropDrivePose. Never relayed; not pre-world. RoombaPayload.
-    RoombaState = 259,
+    RoombaState = 275,
     // CLIENT->HOST: this client's player pressed a robot cleaner's switch (action 5); `active` is the state it wants.
     // The host judges the sender's reach and presses its own cleaner, whose RoombaState answers. Never relayed.
     // RoombaPayload.
-    RoombaIntent = 260,
+    RoombaIntent = 276,
 };
 
 #pragma pack(push, 1)
@@ -2494,7 +2511,7 @@ static_assert(sizeof(WalkerStatePayload) <= 256 - 20 - 8, "WalkerStatePayload mu
 
 // The base computer's short circuit (DeskShortState), or a client's (DeskShortRequest).
 struct DeskShortPayload {
-    uint8_t on;        // 1 -- 1: the desk shorted
+    uint8_t on;        // 1 -- 0 or 1: the host's desk shorts (a request is always 1)
     uint8_t _pad[3];   // 3 -- zero
 };
 static_assert(sizeof(DeskShortPayload) == 4, "DeskShortPayload must be 4 bytes");
@@ -2603,6 +2620,25 @@ struct PropDestroyPayload {
     uint32_t _pad;            // 4 -- alignment
 };
 static_assert(sizeof(PropDestroyPayload) == 40, "PropDestroyPayload must be 40 bytes");
+
+// PropNametag. The prop is named by its key, the one name every copy of a prop shares. The tag is UTF-16 code
+// units. The game takes a tag from the first line of a notebook page into an FName and bounds no length there (its
+// page limit is 32 lines), so the bound is the FName's: the engine's name size of 1024 less its terminator (not
+// measured here). The message is a chunked blob (BlobChunkPayload, coop/net/blob_chunks) on the Default lane, whose
+// body is, little-endian: [op u8][reason u8][author u8][key length u8, 0..31][key][tag length u16][tag, UTF-16].
+// A receiver reads every length from the body and refuses what does not add up to it exactly.
+inline constexpr uint8_t kPropNametagRequest  = 1;   // CLIENT->HOST: my player's nametag on this prop
+inline constexpr uint8_t kPropNametagPublish  = 2;   // HOST->ALL: this prop carries this tag
+inline constexpr uint8_t kPropNametagRefused  = 3;   // HOST->the requester: its request was refused
+inline constexpr int     kPropNametagMaxChars = 1023;
+// Why a request was refused (op 3's `reason`).
+inline constexpr uint8_t kPropNametagBadTag     = 1;   // the tag is empty, over kPropNametagMaxChars, holds a control unit or invalid UTF-16, or the body is malformed
+inline constexpr uint8_t kPropNametagNoProp     = 2;   // the host holds no prop of that key
+inline constexpr uint8_t kPropNametagNoItem     = 3;   // no nametag in the sender's hand, as the hand lane has it
+inline constexpr uint8_t kPropNametagTooFast    = 4;   // the sender is past its budget
+inline constexpr uint8_t kPropNametagOutOfReach = 5;   // the prop is not within the sender's reach
+inline constexpr uint8_t kPropNametagNotTaken   = 6;   // the host's prop did not take the tag
+inline constexpr uint8_t kPropNametagBusy       = 7;   // an earlier request of the sender still waits for its hand state
 
 // A placement intent (PropDropIntent), client to host: the identity the host needs to spawn the
 // authoritative prop by key (class, key, row name), the placement transform and scale, and the
@@ -3148,6 +3184,7 @@ static_assert(sizeof(HookDestroyPayload) == 4, "HookDestroyPayload must be 4 byt
 // shares: the host's adopted hook, a client's anchored mirror and a joiner's copy from the save.
 inline constexpr uint8_t kHookRetrieveRequest = 0;   // CLIENT->HOST: my player took this hook
 inline constexpr uint8_t kHookRetrieveGone    = 1;   // HOST->ALL: this hook is gone
+inline constexpr uint8_t kHookRetrieveRefused = 2;   // HOST->the requester: its request for this hook was refused
 inline constexpr uint8_t kHookRetrieveNoTaker = 0xFF;
 struct HookRetrievePayload {
     WireKey key;     // 32 -- the hook's save key

@@ -90,9 +90,23 @@ Processing module) and the screen's cap text (`[N]`, or `NaN` without the module
 the cap press and the desk's `upgraded_pcUpgrades`, so a cap level from the wire, a join adopt, or any module plug
 or unplug, the peer's own included, left it showing an old level. Each of those now runs `upgraded_pcUpgrades`
 (`ue_wrap/desk/console_desk` `RepaintCapLevel`), whose other writes re-derive only what the save's upgrades say;
-it is held while the screen widget is not live `[V]` (`harness/autotest/autotest_cap_label.cpp`: the join, then
-each peer plugging and pulling the module and pressing the cap with and without it, the tag and text read the
-same on both peers after every step, 0 fails; with the repaint off, 5 fails on each peer).
+it is owed while the screen widget is not assigned, and the desk's own `ReceiveBeginPlay` (the one write of that
+field) runs it `[?]`, read from the Blueprint, not yet run; a repaint that still cannot run stays owed and runs at the
+desk's next watched event (a local cap press, another cap label repaint), all watched by
+`coop/interactables/desk_input_sync`. The label itself `[V]` (`harness/autotest/autotest_cap_label.cpp`: the join,
+then each peer plugging and pulling the module and pressing the cap with and without it, the tag and text read the
+same on both peers after every step, read once when the actor's level and module arrive; the first check that fails
+says `FAIL` and no later step runs). A desk loaded from a save is restored by the gamemode's load (the desk's
+`setData`, which writes the cap level and the modules back and repaints no label), and on a host that runs before the
+lanes install, so no watch of the host can see it; the lane's start apply is the answer, as for every lane: at the
+first tick with the desk resolved after a session starts, and again after the host's last client leaves, `desk_input_sync` repaints the label (`desk_input: the cap label
+repainted at install`). The drill's `saved` arm `[?]` runs the host on the rig's own save with a client joining, and
+both peers' labels must be the host's loaded level and module. The reds: `dev.cap_label_repaint_off` drops every
+repaint, `dev.cap_label_install_repaint_off` (the host, `saved` arm) only the start apply; which of them FAIL is read
+from the rig runs, not stated here `[?]`. The join's adopt has no red of its own: a cap change the host makes after its world is taken reaches the joiner live, and the
+live apply repaints the label, so a joiner without the adopt's repaint would still show the right label there. The
+repaint owed at the desk's BeginPlay (a state that reaches the desk before its screen widget exists) has no red
+either: no run has made it owed `[?]`.
 
 The download simulation runs on the host only (`coop/interactables/desk_sim_sync`): the host
 rolls both random terms and streams the output vector (decoded, the needle, the rate, the
@@ -121,12 +135,20 @@ state and are re-sent to a joiner from the components' ground truth.
 A liquid on the desk shorts it: a thrown liquid's projectile (`grimeProjectile_C`) that strikes it and a sponge
 bucket's pour that overlaps it call the desk's own `shortCircuit`, which sparks for about ten seconds and then puts
 the base on solar power. Both ran on the peer whose liquid it was alone, so the host's power and every other desk
-went on as before. Each peer now polls the desk's `shortCircuiting`: the host's rising edge goes to every client, and
-a client's goes to the host, which checks the sender's world and that it stands within 15 m, and runs its own desk's
-`shortCircuit`; a client that hears it runs its copy's, and a desk already shorting is left alone, as the event's own
-guard leaves it (`coop/interactables/desk_short_sync`) `[V]` (`harness/autotest/autotest_desk_short.cpp`: a short
-from each peer sparks both desks and leaves both power panels dark; on the code before it a client's short sparked
-its own desk alone and no panel changed).
+went on as before. A script-gate watch on the desk's own `shortCircuit` sees every call of it, the liquid
+Blueprints' and ours, and reads the flag `shortCircuiting` before and after the body: a short that began on the
+host goes to every client; a client's call is cancelled at the gate and asked of the host, which checks the sender's
+world, that it is alive, that it stands within the desk lanes' reach (400 uu, which the authority pads with the pose's
+lag and the desk's bounds) and its budget (a burst of two, one per five seconds), and runs its own desk's
+`shortCircuit`. A client that hears the host's short runs its copy's, so a client's desk sparks only by the host's
+word, and a desk already shorting is left alone, as the event's own guard leaves it. A refused ask is answered to its
+sender alone with the host's state (`on` 0, or 1 when the host's desk already shorts), and an ask nothing answers is
+dropped after ten seconds; a state that finds no desk on a client is held until the desk resolves
+(`coop/interactables/desk_short_sync`) `[?]` (`harness/autotest/autotest_desk_short.cpp` walks the client beside the
+desk with the director and shorts from there; the rewritten drill has not run yet). A joiner whose world is
+up while the host's desk shorts is told at its ready edge and its desk shorts from the start, so its power-down comes
+up to ten seconds after the host's `[?]` (the `join` arm of the same drill: the rejoined client must have had its
+desk shorted by the host; its red is `desk_short_replay_off`).
 
 ### Signals, the catch, the dishes
 
@@ -254,7 +276,7 @@ measured). Nine of the ten have a row on the laptop's panel, since no widget car
 | desk input scalars | the last presser | polled deltas, relayed except to the originator |
 | the download simulation, the needle, the rate | the host | a streamed output vector; the client overwrites its own |
 | the ping | the presser's machine; its verdict the host | 10 Hz visual progress snapshots relayed by the host; observers keep the run flag clear |
-| the desk's short circuit | the host | its edge to every client; a client's short is a request |
+| the desk's short circuit | the host | its edge to every client; a client's short is cancelled and asked of the host |
 | the cursor | whoever moves it | a sixty-hertz stream |
 | the desk's sounds | the presser | effect events at the audio seam |
 | the sky-signal set, the catch, the dishes | the host | roller, the host's event, parked client sim |
@@ -296,7 +318,7 @@ measured). Nine of the ten have a row on the laptop's panel, since no widget car
 | `ServerState` | the host to all | the servers' broken set |
 | `SatConsole` | a client to the host; the host to that client | a typed line with its terminal's context; the lines the host's run printed, and its busy state |
 | `UpgradeLevels`, `UpgradeIntent` | the host to all and to a joiner; a client to the host | the eighteen levels; a buy or sell of one level row |
-| `DeskShortState`, `DeskShortRequest` | the host to all; a client to the host | the desk shorted |
+| `DeskShortState`, `DeskShortRequest` | the host to all; a client to the host | the desk shorted (`on` 1); the host's answer to a refused ask, to its sender alone (`on` 0) |
 
 ## Late join
 
@@ -309,7 +331,7 @@ row that differs from its class default (a row that arrives before its drive wai
 the join), the rack, the module set, the reel slots, the laptop's power, its slot (before its file buffer) and the crate
 arrive as canonical rows from the host, and so do the refiner's state and loaded signal, while the
 joiner's own restore of a saved decode is refused; the desk's two loops are re-sent from component
-truth.
+truth; a short circuit under way on the host's desk is sent again, and the joiner's desk shorts from the start.
 A joiner never sees a running ping's stage visuals, only its outcome. A SAT console typist that leaves
 mid-command while another client keeps the session leaves the command running on the host and, back,
 is bound to its terminal and its busy state as its world is ready; the last client's leave ends the

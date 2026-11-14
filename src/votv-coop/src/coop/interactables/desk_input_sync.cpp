@@ -2,11 +2,15 @@
 
 #include "coop/interactables/desk_input_sync.h"
 
+#include "coop/config/config.h"
+#include "coop/config/config_registry.h"
 #include "coop/interactables/desk_snd_fx.h"
 #include "coop/net/session.h"
 
 #include "ue_wrap/desk/console_desk.h"
 #include "ue_wrap/core/log.h"
+#include "ue_wrap/core/script_gate.h"
+#include "ue_wrap/facts/function_row.h"
 
 #include <atomic>
 #include <chrono>
@@ -16,6 +20,7 @@ namespace coop::desk_input_sync {
 namespace {
 
 namespace CD = ue_wrap::console_desk;
+namespace sg = ue_wrap::script_gate;
 using coop::net::DeskInputField;
 
 using Clock = std::chrono::steady_clock;
@@ -46,14 +51,61 @@ uint8_t g_primedRunSlot = 0xFF;
 
 bool g_scanWidgetWarned = false;  // log-once for the spawnDirs null-guard
 
-// A signal-view mode a wire apply could not draw because the desk's screen widget was not live; Tick
-// applies it once the widget is, and only then moves the baseline (the desk's flag still holds the old
-// mode until then, so the poll sees no local edge).
+// What a wire apply could not do because the desk's screen widget was not assigned: a signal-view mode to draw, the
+// join adopt's updRemap repaint, the cap label's repaint. The widget is assigned in the desk's own ReceiveBeginPlay
+// (the Blueprint dump enters its ubergraph at 13120, the one write of `widget`), which the post watch below
+// announces, so each owed apply runs there and nothing polls for it. The widget's own Construct is no substitute:
+// the precondition is the desk's field, not the widget's slate. A mode applies there and only then moves the
+// baseline (the desk's flag still holds the old mode until then, so the poll sees no local edge). An apply that
+// still cannot run (the desk's class unresolved, or its widget unassigned) stays owed and runs at the desk's next
+// event the lane watches: a local cap press, the cap label repaint of a wire apply or a module change.
 bool g_visPending = false;
 bool g_visPendingValue = false;
 bool g_visDeferWarned = false;
-bool g_remapPending = false;  // the join adopt's updRemap repaint, owed until the widget is live
-bool g_capLabelPending = false;  // the cap label's repaint, owed until the widget is live
+bool g_remapPending = false;
+bool g_capLabelPending = false;
+constexpr int kTagDeskBeginPlay = 0x44534B01;  // 'DSK' 1
+UE_FACT_FN(kRowDeskBeginPlay, "desk_input_sync", L"analogDScreenTest_C", L"ReceiveBeginPlay", Declared);
+
+// The cap-label drill's reds, each a default-off [dev] row that drops one repaint.
+bool CapRepaintOff() {
+    static const bool s_off = coop::config::ResolveFlag(coop::config_registry::rows::cap_label_repaint_off);
+    return s_off;
+}
+bool InstallRepaintOff() {
+    static const bool s_off = coop::config::ResolveFlag(coop::config_registry::rows::cap_label_install_repaint_off);
+    return s_off;
+}
+
+// The lane's start apply: a desk loaded from a save was restored by the gamemode's load (the desk's setData), which
+// repaints no label and ran before this lane installed on a host, so the cap label shows the desk's defaults until
+// something repaints it. At the first tick with the desk resolved after a session starts, and again after the host's
+// last client leaves (OnDisconnect resets the latch there too).
+bool g_installRepaintDone = false;
+
+// Runs the applies the screen widget's absence left owed; one that cannot run yet stays owed. Game thread.
+void RunOwed(const char* at) {
+    if (!g_visPending && !g_remapPending && !g_capLabelPending) return;
+    if (!CD::EnsureResolved()) return;
+    if (g_visPending) {
+        coop::desk_snd_fx::ScopedWireApply guard;  // the mode draw is wire-caused
+        if (CD::ApplyVisualizerMode(g_visPendingValue)) {
+            g_visPending = false;
+            if (g_primed) g_baseline.visualizerMode = g_visPendingValue;
+            UE_LOGI("desk_input: deferred signal-view mode %d applied (at %s)", g_visPendingValue ? 1 : 0, at);
+        }
+    }
+    if (g_remapPending && CD::RepaintRemap()) {
+        g_remapPending = false;
+        UE_LOGI("desk_input: deferred remap repaint done (at %s)", at);
+    }
+    if (g_capLabelPending && CD::RepaintCapLevel()) {
+        g_capLabelPending = false;
+        UE_LOGI("desk_input: deferred cap label repaint done (at %s)", at);
+    }
+}
+
+void OnDeskBeginPlayPost(const sg::Call&) { RunOwed("the desk's BeginPlay"); }
 
 void SendDelta(coop::net::Session* s, DeskInputField field,
                float fv, int32_t iv, bool bv) {
@@ -167,8 +219,10 @@ void PollOnce(coop::net::Session* s) {
         SendDelta(s, DeskInputField::PlayVolume, 0, cur.playVolume, false);
     if (cur.playSelectIndex != g_baseline.playSelectIndex)
         SendDelta(s, DeskInputField::PlaySelectIndex, 0, cur.playSelectIndex, false);
-    if (cur.compMaxLevel != g_baseline.compMaxLevel)
+    if (cur.compMaxLevel != g_baseline.compMaxLevel) {
         SendDelta(s, DeskInputField::CompMaxLevel, 0, cur.compMaxLevel, false);
+        RunOwed("a local cap press");
+    }
     if (cur.remapMin != g_baseline.remapMin && std::isfinite(cur.remapMin))
         SendDelta(s, DeskInputField::RemapMin, cur.remapMin, 0, false);
     if (cur.remapMax != g_baseline.remapMax && std::isfinite(cur.remapMax))
@@ -220,6 +274,9 @@ void PollOnce(coop::net::Session* s) {
 
 void Install(coop::net::Session* session) {
     g_session.store(session, std::memory_order_release);
+    if (!sg::WatchName(kRowDeskBeginPlay, kTagDeskBeginPlay, nullptr, &OnDeskBeginPlayPost))
+        UE_LOGE("desk_input: the desk's BeginPlay watch did not register -- a cap label owed before its screen "
+                "widget exists stays stale");
 }
 
 void Tick() {
@@ -229,22 +286,10 @@ void Tick() {
     if (now < g_nextPoll) return;
     g_nextPoll = now + kPoll;
     if (!CD::EnsureResolved() || !CD::Instance()) return;
-    if (g_visPending) {
-        coop::desk_snd_fx::ScopedWireApply guard;  // the mode draw is wire-caused
-        if (CD::ApplyVisualizerMode(g_visPendingValue)) {
-            g_visPending = false;
-            if (g_primed) g_baseline.visualizerMode = g_visPendingValue;
-            UE_LOGI("desk_input: deferred signal-view mode %d applied (screen widget live)",
-                    g_visPendingValue ? 1 : 0);
-        }
-    }
-    if (g_remapPending && CD::RepaintRemap()) {
-        g_remapPending = false;
-        UE_LOGI("desk_input: deferred remap repaint done (screen widget live)");
-    }
-    if (g_capLabelPending && CD::RepaintCapLevel()) {
-        g_capLabelPending = false;
-        UE_LOGI("desk_input: deferred cap label repaint done (screen widget live)");
+    if (!g_installRepaintDone) {
+        g_installRepaintDone = true;
+        // A repaint that cannot run yet stays owed, and the desk's next watched event runs it.
+        if (!InstallRepaintOff() && RepaintCapLevelOrDefer()) UE_LOGI("desk_input: the cap label repainted at install (the first tick of a session or after the last peer left)");
     }
     if (!s->connected()) {
         // Keep the baseline current while unwired so a (re)connect never
@@ -307,7 +352,7 @@ bool ApplyVisualizerModeOrDefer(bool spectrogram) {
     if (!g_visDeferWarned) {
         g_visDeferWarned = true;
         UE_LOGW("desk_input: signal-view mode %d deferred -- desk screen widget not live yet "
-                "(applied by the poll tick when it is; log-once)", spectrogram ? 1 : 0);
+                "(applied when the desk's BeginPlay assigns it; log-once)", spectrogram ? 1 : 0);
     }
     return false;
 }
@@ -322,12 +367,12 @@ bool RepaintRemapOrDefer() {
 }
 
 bool RepaintCapLevelOrDefer() {
-    if (CD::RepaintCapLevel()) {
-        g_capLabelPending = false;
-        return true;
-    }
-    g_capLabelPending = true;
-    return false;
+    // The cap-label drill's red: no repaint runs, as before the lane.
+    if (CapRepaintOff()) return false;
+    const bool ran = CD::RepaintCapLevel();
+    g_capLabelPending = !ran;
+    if (ran) RunOwed("a cap label repaint");  // the widget stands: what else was owed can run
+    return ran;
 }
 
 void OnDeskScan(const coop::net::DeskScanEventPayload& p, uint8_t senderSlot) {
@@ -404,6 +449,7 @@ void OnDisconnect() {
     g_visDeferWarned = false;
     g_remapPending = false;
     g_capLabelPending = false;
+    g_installRepaintDone = false;
     g_nextPoll = {};
 }
 

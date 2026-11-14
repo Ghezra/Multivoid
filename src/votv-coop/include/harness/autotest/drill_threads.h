@@ -128,14 +128,8 @@ DWORD WINAPI FlashBatteryThread(LPVOID arg);
 // VOTVCOOP_RUN_DESK_VIEW, both peers -- harness/autotest/autotest_desk_view.cpp
 DWORD WINAPI DeskViewThread(LPVOID arg);
 
-// VOTVCOOP_RUN_CAP_LABEL, both peers -- harness/autotest/autotest_cap_label.cpp
+// cap_label_drill, both peers -- harness/autotest/autotest_cap_label.cpp
 DWORD WINAPI CapLabelThread(LPVOID arg);
-
-// VOTVCOOP_RUN_MUSHROOM, both peers -- harness/autotest/autotest_mushroom.cpp
-DWORD WINAPI MushroomThread(LPVOID arg);
-
-// VOTVCOOP_RUN_CROWBAR, both peers -- harness/autotest/autotest_crowbar.cpp
-DWORD WINAPI CrowbarThread(LPVOID arg);
 
 // VOTVCOOP_RUN_DISH_SOUND, both peers -- harness/autotest/autotest_dish_sound.cpp
 DWORD WINAPI DishSoundThread(LPVOID arg);
@@ -214,15 +208,48 @@ DWORD WINAPI SusHoleThread(LPVOID arg);
 // VOTVCOOP_RUN_PLANT_STATE, both peers -- harness/autotest/autotest_plant_state.cpp
 DWORD WINAPI PlantStateThread(LPVOID arg);
 
+// class_resolve_drill, both peers -- harness/autotest/autotest_class_resolve.cpp
+DWORD WINAPI ClassResolveDrillThread(LPVOID arg);
+
+// VOTVCOOP_RUN_CARGO_LIFT, both peers -- harness/autotest/autotest_cargo_lift.cpp
+// cargo_lift_drill (VOTVCOOP_RUN_CARGO_LIFT), both peers -- harness/autotest/autotest_cargo_lift.cpp
+DWORD WINAPI CargoLiftThread(LPVOID arg);
+// woodchipper_drill, both peers -- harness/autotest/autotest_woodchipper.cpp
+DWORD WINAPI WoodchipperThread(LPVOID arg);
+// VOTVCOOP_RUN_SV_REQUEST, both peers -- harness/autotest/autotest_sv_request.cpp
+DWORD WINAPI SvRequestThread(LPVOID arg);
+
+// VOTVCOOP_RUN_MODULE_BUY, both peers -- harness/autotest/autotest_module_buy.cpp
+DWORD WINAPI ModuleBuyThread(LPVOID arg);
+
+// VOTVCOOP_RUN_PROP_PROPS, both peers -- harness/autotest/autotest_prop_props.cpp
+DWORD WINAPI PropPropsThread(LPVOID arg);
+
+// VOTVCOOP_RUN_SEAT_RAGDOLL, both peers -- harness/autotest/autotest_seat_ragdoll.cpp
+DWORD WINAPI SeatRagdollThread(LPVOID arg);
+
+// VOTVCOOP_RUN_DRONE_HOVER, both peers -- harness/autotest/autotest_drone_hover.cpp
+DWORD WINAPI DroneHoverThread(LPVOID arg);
+// desk_short_drill, both peers -- harness/autotest/autotest_desk_short.cpp
+DWORD WINAPI DeskShortThread(LPVOID arg);
+// world_sound_drill, both peers -- harness/autotest/autotest_world_sound.cpp
+DWORD WINAPI WorldSoundThread(LPVOID arg);
+// nightmare_drill, both peers -- harness/autotest/autotest_nightmare.cpp
+DWORD WINAPI NightmareThread(LPVOID arg);
+// level_visit_drill, both peers -- harness/autotest/autotest_level_visit.cpp
+DWORD WINAPI LevelVisitThread(LPVOID arg);
+
+// VOTVCOOP_RUN_MUSHROOM, both peers -- harness/autotest/autotest_mushroom.cpp
+DWORD WINAPI MushroomThread(LPVOID arg);
+
+// VOTVCOOP_RUN_CROWBAR, both peers -- harness/autotest/autotest_crowbar.cpp
+DWORD WINAPI CrowbarThread(LPVOID arg);
 
 // VOTVCOOP_RUN_ATV_RIDERS, both peers -- harness/autotest/autotest_atv_riders.cpp
 DWORD WINAPI AtvRidersThread(LPVOID arg);
 
 // VOTVCOOP_RUN_ATV_PASSENGER, both peers -- harness/autotest/autotest_atv_passenger.cpp
 DWORD WINAPI AtvPassengerThread(LPVOID arg);
-
-// VOTVCOOP_RUN_CARGO_LIFT, both peers -- harness/autotest/autotest_cargo_lift.cpp
-DWORD WINAPI CargoLiftThread(LPVOID arg);
 
 // VOTVCOOP_RUN_KERFUS_WHEELS, both peers -- harness/autotest/autotest_kerfus_wheels.cpp
 DWORD WINAPI KerfusWheelsThread(LPVOID arg);
@@ -272,35 +299,8 @@ DWORD WINAPI RadioStateThread(LPVOID arg);
 // VOTVCOOP_RUN_TV_STATE, both peers -- harness/autotest/autotest_tv_state.cpp
 DWORD WINAPI TvStateThread(LPVOID arg);
 
-
-
-
-// VOTVCOOP_RUN_WORLD_SOUND, both peers -- harness/autotest/autotest_world_sound.cpp
-DWORD WINAPI WorldSoundThread(LPVOID arg);
 // VOTVCOOP_RUN_FARM_HARVEST, both peers -- harness/autotest/autotest_farm_harvest.cpp
 DWORD WINAPI FarmHarvestThread(LPVOID arg);
-// class_resolve_drill, both peers -- harness/autotest/autotest_class_resolve.cpp
-DWORD WINAPI ClassResolveDrillThread(LPVOID arg);
-
-// woodchipper_drill, both peers -- harness/autotest/autotest_woodchipper.cpp
-DWORD WINAPI WoodchipperThread(LPVOID arg);
-// VOTVCOOP_RUN_SV_REQUEST, both peers -- harness/autotest/autotest_sv_request.cpp
-DWORD WINAPI SvRequestThread(LPVOID arg);
-
-// VOTVCOOP_RUN_MODULE_BUY, both peers -- harness/autotest/autotest_module_buy.cpp
-DWORD WINAPI ModuleBuyThread(LPVOID arg);
-
-// VOTVCOOP_RUN_PROP_PROPS, both peers -- harness/autotest/autotest_prop_props.cpp
-DWORD WINAPI PropPropsThread(LPVOID arg);
-
-// VOTVCOOP_RUN_SEAT_RAGDOLL, both peers -- harness/autotest/autotest_seat_ragdoll.cpp
-DWORD WINAPI SeatRagdollThread(LPVOID arg);
-
-// VOTVCOOP_RUN_DESK_SHORT, both peers -- harness/autotest/autotest_desk_short.cpp
-DWORD WINAPI DeskShortThread(LPVOID arg);
-
-// VOTVCOOP_RUN_DRONE_HOVER, both peers -- harness/autotest/autotest_drone_hover.cpp
-DWORD WINAPI DroneHoverThread(LPVOID arg);
 
 // VOTVCOOP_RUN_HACKSAW, both peers -- harness/autotest/autotest_hacksaw.cpp
 DWORD WINAPI HacksawThread(LPVOID arg);
@@ -308,15 +308,8 @@ DWORD WINAPI HacksawThread(LPVOID arg);
 // VOTVCOOP_RUN_CHIPPER_FEED, both peers -- harness/autotest/autotest_chipper_feed.cpp
 DWORD WINAPI ChipperFeedThread(LPVOID arg);
 
-
 // VOTVCOOP_RUN_BODY_PUSH, both peers -- harness/autotest/autotest_body_push.cpp
 DWORD WINAPI BodyPushThread(LPVOID arg);
-
-// VOTVCOOP_RUN_NIGHTMARE, both peers -- harness/autotest/autotest_nightmare.cpp
-DWORD WINAPI NightmareThread(LPVOID arg);
-
-// VOTVCOOP_RUN_LEVEL_VISIT, both peers -- harness/autotest/autotest_level_visit.cpp
-DWORD WINAPI LevelVisitThread(LPVOID arg);
 
 // VOTVCOOP_RUN_UPGRADE_BUY, both peers -- harness/autotest/autotest_upgrade_buy.cpp
 DWORD WINAPI UpgradeBuyThread(LPVOID arg);

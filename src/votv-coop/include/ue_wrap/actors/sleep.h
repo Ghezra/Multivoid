@@ -45,7 +45,8 @@ void* OrigPawn();
 bool SetDreamProbability(float v);
 
 // The chance the game's own nightmare roll draws from, without the dreamProbability override: the bed's dreamProb,
-// 0.15 with no bed, and 0 when the gamemode's nightmaresEnabled is off. False while unresolved. Game thread.
+// 0.15 with no bed (bedSleepProb's literal), and 0 when the gamemode's nightmaresEnabled is off. Read from the fields:
+// bedSleepProb itself prints its figure on screen, so it is not called. False while unresolved. Game thread.
 bool ReadNightmareChance(float& out);
 
 // mainGamemode.dreaming: the player is in a nightmare (createDream set it, leaveDream clears it).

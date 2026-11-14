@@ -208,7 +208,9 @@ dropped camera keeps recording ([ui.md](ui.md), the camera's hint). In a running
 question those two buttons ask is answered "no event" at the script-body gate, so they act; Save,
 the blur and the pause keep the game's answer, and solo nothing changes
 (`coop/player/leave_in_event`). `[V]` for a client's Main Menu press during a recording (a
-two-peer run: the press reached the travel and the session ended).
+two-peer run: the press reached the travel and the session ended). The rig drill presses it during
+an event the drill starts itself (`pause_quit_drill` with `pause_quit_event`, `rig: VERDICT
+pause-quit`; its red `leave_in_event_red` switches the answer off and must FAIL) `[?]` until run.
 
 A refused run-ending is answered with a revive in its place: a floor point beside the base's bed (the base gate when no bed or NavMesh point is found, which is open sky `[?]`),
 health, the dead flag, the ragdoll, the pause an ending set, and the screen artifacts the travel
@@ -230,20 +232,24 @@ host, which relays it to every other client; the host's own sleeping flag goes t
 one chat line naming the host when it rises. A joiner is sent the host's flag and every peer's
 state that is not awake, and a leaver is told to every client as awake.
 
-A nightmare is one player's. The game rolls for one every 500 s of sleep counted in world time,
-which the host's sleep runs at 20 and a client's rest keeps at 1, so on a client the game's own
-roll would come once in 500 real seconds, past the end of any rest. A client's roll is held at
-zero and the mod rolls in its place every 25 real seconds of a rest, the host's pace, with the
-chance the game would use: the bed's own, 0.15 with no bed, none when the save turns nightmares
-off. A win runs the game's own wake and dream, on that player's machine alone: only that player
-is woken and teleported into the dream, and every other player sleeps on. A dream is spawned far
-outside the map, so on every other machine the dreamer's copy is hidden while its rest state
-says it dreams (`coop/player/nightmare_roll`). `[V]` for a client's nightmare beside a sleeping
-host, and a host's beside an awake client (the nightmare drill, two runs), and by hand with three
-peers: a client's nightmares played out beside two sleepers, and two clients in different
-nightmares at once, each machine hiding the right dreamer. Any running event ends a dream, the
-game's own rule, and a client counts the host world's events too. A host's dream spawns props
-that are mirrored to every client where it was spawned, far outside the map.
+A nightmare is one player's. The game rolls once per sleep, 500 s of world time after the sleeper
+falls asleep, and the host's sleep runs the world at 20, so a host rolls 25 real seconds into a
+rest. A client's rest keeps its world at 1, so the same wait would end after 500 real seconds. The
+timing is the one piece the mod owns: it rolls once, 25 real seconds (500 over the same factor 20)
+into a rest the client's sleep watch announces, and the rest ends on the game's own wake, which a
+second watch announces. The chance is the game's: the bed's own, 0.15 with no bed, none when the
+save turns nightmares off. The game's own roll stays held at zero on a client, so it never rolls a
+second time 500 real seconds into a long rest. A win
+runs the game's own wake and dream, on that player's machine alone: only that player is woken and
+teleported into the dream, and every other player sleeps on. A dream is spawned far outside the
+map, so on every other machine the dreamer's copy is hidden while its rest state says it dreams:
+the hide is taken from the sleep lane's announcement of a state change and from the puppet's
+spawn, so a copy born after the dream began is hidden at once (`coop/player/nightmare_roll`). The
+dream's own spawns are a mannequin (`dream_mann`) and boulders (`dream_boulders`), neither a prop
+nor a lane actor, so no lane carries them to another peer: they stay on the dreamer's machine
+(read from the dream scripts, `[?]`). Any running event ends a dream, the game's own rule, and a
+client counts the host world's events too. `[?]` until the nightmare drill (`nightmare_drill`,
+one run, two reds) has run on the rig.
 
 ### Another map: the backrooms
 
@@ -254,8 +260,21 @@ player who is sitting, ragdolled, noclipping, asleep or dreaming. A session hold
 took the player out of it, or every player with the host. In a session the travel is refused and the
 map is loaded into the running world instead, far below it, on the clipping player's machine alone
 (`coop/player/level_visit`, `ue_wrap/world/level_instance`): the player goes in, everyone else
-stays in the world, and on every other machine the player's copy is hidden while it is down there.
-The same trip authored by another player's copy on this machine is refused outright.
+stays in the world, and every other machine hides the player's copy by its pose: each pose a peer
+sends carries its position, so a pose below the visit floor (`level_visit::kVisitFloorZ`) is a
+player in a visited map, read on every pose, and the copy is shown again by the first pose back
+above it. A trip is this machine's own player's alone: a peer's copy cannot author one (the
+game's clip tick trips only for the player the local view follows, and a copy's actor tick is
+off), but the visited map's placed player can, so a clip check or a loadLevel from any other
+player is refused, as is a second loadLevel while a visit is under way.
+
+A player who joins while another is in one of the maps needs no snapshot of it: the first pose
+the joiner applies for that player is below the floor, so its copy is hidden from that pose, and a
+copy born or respawned below, or a lost pose, is corrected by the next one. MTA keeps a player's
+interior and dimension as a reliable state with a join snapshot; here the map is a place in the
+same world, so the position the pose already carries is the state `[?]`. What the host's save
+capture holds while the host itself is in a map (its player below the world, its game instance
+flags changed for the visit) is not measured `[?]`.
 
 None of the three maps has a way out. Each ends the game itself: the backrooms after ten minutes,
 the secret maps on their own timers and triggers (`untitled_219` after ten minutes as well and at
@@ -272,25 +291,26 @@ controller goes back to the visitor, and the placed player and the black screen 
 removed. The world's sky reaches that far down without bound: its height fog covered the map in its
 colour, and its sun, sky light and post process lit a maze the game leaves dark but for the
 lantern. All of it is hidden on the visitor's machine while it is there. The visitor's own clip check sees the view jump into the map and back
-out: the game mode's `backroomsEnabled` is off for the visit and five seconds after it, and a trip
-asked while seated or driving is refused, as the game's own check refuses it. What a map's script
+out: the game's check (`mainGamemode_C::canBackrooms`, which the player's tick asks before every
+clip) is answered no for the visit and five seconds after it, and a trip asked while seated or
+driving is refused, as the game's own check refuses it. What a map's script
 spawns lands in the world's own level, far below it: it stays out of the prop lanes and is removed
 with the map. `untitled_untitled`'s hook check counts a hook in the map only, not the world's own.
 Its ATV and `untitled_219`'s day-night cycle, copies of the world's own, are removed or held.
 
 The host can close the backrooms for everyone: "Allow the backrooms" (`world.backrooms`, on by
 default) in F1's `Administration > Server settings`, or `/set world.backrooms 0`. Off, every peer
-holds its game mode's `backroomsEnabled` off, so the game's own clip check takes no clip, and a
-trip to one of the three maps is refused; a player already in one stays until the visit ends.
-Turned back on, each peer gives `backroomsEnabled` the value it had.
+answers the game's own clip check no for its own player, so no clip is taken and no trip is
+sent (the game rewrites `backroomsEnabled` itself, so the mod answers the check, which is the one
+place that reads it, and writes nothing into the game's state); a clip already past the check
+when the host closes is refused at its loadLevel; a player already in one stays until the visit ends. Turned back on, the game's own logic answers the check again.
 
-`[V]` on the rig: each map visited by a client and by the host, the game's own clip on both roles,
-each end (the map's end, its quit, a real death) and the backrooms' real ten-minute end; the
-visitor's controller held its player and its view was in the map and then back with it, the
-other player saw the copy hidden and shown again, and the visitor came back with its hand item
-every time. A rider of the ATV, at the handlebars or behind them, was not sent, the game's clip
-and the clip's own call alike, and a rider who got off and was sent left the ATV and its table as
-they were.
+`[?]` on the rig, pending this change's own run folder: each map visited by a client and by the
+host, the game's own clip on both roles, each end (the map's end, its quit, a real death) and the
+backrooms' real ten-minute end; the visitor's controller held its player and its view was in the
+map and then back with it, the other player saw the copy hidden by its pose and shown again, and
+the visitor came back with its hand item every time. The drill is `level_visit_drill`
+(`client`, `host`, `close`, `join`).
 
 ### Inventory
 

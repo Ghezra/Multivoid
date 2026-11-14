@@ -46,8 +46,10 @@ bool HandleStateEvent(net::Session& session,
 // Signal-pipeline family: the sky-signal chain, the laptop with its blobs and floppy box, the dish
 // and its aim, the play deck, the drive slots and their rack, the desk with its input, log, scans
 // and physics mods, the refiner's decode pane, the task board, the meadow store and the
-// saved-signal list.
-bool HandleSignalEvent(const net::Session::ReliableMessage& msg);
+// saved-signal list. The desk's short circuit is here too: DeskShortState is the HOST->CLIENT state, dropped on the
+// host and from any sender but slot 0, and DeskShortRequest a client's cancelled short, checked for role()==Host AND a
+// client sender slot; `session` is for those two checks.
+bool HandleSignalEvent(net::Session& session, const net::Session::ReliableMessage& msg);
 
 // CLIENT->HOST intent and request family: a client asks the host to perform something it alone is
 // authoritative for. Read the case for its gate rather than assuming one. GrabIntent, ThrowIntent,
@@ -70,6 +72,12 @@ bool HandleContainerActEvent(net::Session& session,
 // handle press, checked for role()==Host AND a client sender slot.
 bool HandleCrematorEvent(net::Session& session,
                          const net::Session::ReliableMessage& msg);
+// Cargo lift family: the lift's direction and a call-button press. CargoLiftState is the HOST->CLIENT state, dropped on
+// the host and from any sender but slot 0; CargoLiftIntent is a client's press, checked for role()==Host AND a client
+// sender slot.
+bool HandleCargoLiftEvent(net::Session& session,
+                          const net::Session::ReliableMessage& msg);
+
 // Requester-feedback family: what a verb the host ran for a client showed on the host (a hint, a glossary entry, a
 // 2D sound), sent to that client for its own machine to show. RequesterFeedback is the HOST->CLIENT kind, dropped
 // on the host and from any sender but slot 0.

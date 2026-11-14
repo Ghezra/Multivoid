@@ -7,8 +7,10 @@
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
 #include "coop/player/death_revive.h"
+#include "coop/player/level_visit_sky.h"
 #include "coop/player/players_registry.h"
-#include "coop/player/remote_player.h"
+#include "coop/player/puppet_events.h"
+#include "coop/player/puppet_hide.h"
 
 #include "ue_wrap/actors/vitals.h"
 #include "ue_wrap/core/call.h"
@@ -19,6 +21,7 @@
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/core/script_gate.h"
+#include "ue_wrap/core/sdk_profile_names.h"
 #include "ue_wrap/core/ufunction_hook.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_attach.h"
@@ -27,6 +30,7 @@
 #include "ue_wrap/facts/function_row.h"
 #include "ue_wrap/world/active_events.h"
 #include "ue_wrap/world/level_instance.h"
+#include "ue_wrap/world/world_instances.h"
 #include "ue_wrap/world/world_singleton.h"
 
 #include <windows.h>
@@ -52,13 +56,14 @@ UE_FACT_FN(kRowEnd, "level_visit", L"lib_C", L"End", Declared);
 UE_FACT_FN(kRowQuitGame, "level_visit", L"KismetSystemLibrary", L"QuitGame", Declared);
 constexpr int kTagLoadLevel = 0x4C564C56;  // 'LVLV'
 constexpr int kTagEnd = 0x4C56454E;        // 'LVEN'
+// The game's own clip check, a Blueprint function on the game mode: a name watch on the class that owns it.
+UE_FACT_FN(kRowCanBackrooms, "level_visit", L"mainGamemode_C", L"canBackrooms", Declared);
+constexpr int kTagCanBackrooms = 0x4C564342;  // 'LVCB'
 
 // The maps the clip picks (mainPlayer_C's ReceiveTick); the tutorial's own pick is not a session's.
 constexpr const wchar_t* kMaps[] = {L"sl_backroomsObsolete", L"untitled_untitled", L"untitled_219"};
 // Where a visited map is put: far below the world, where nothing of the world reaches.
 constexpr ue_wrap::FVector kOrigin{0.f, 0.f, -60000.f};
-// A copy below this height is a player in a visited map: hidden on every other machine.
-constexpr float kAwayZ = -30000.f;
 // A visitor this far from the map's origin, above it, came back by another way (the usual revive).
 constexpr float kBackCm = 40000.f;
 constexpr ULONGLONG kLoadBoundMs = 180000;
@@ -71,10 +76,13 @@ int32_t g_quitCtxOff = -1;  // QuitGame's WorldContextObject in its parameters
 
 // Game thread: the visit.
 Phase g_phase = Phase::None;
+// A trip the loadLevel watch let through, until the posted task that starts its visit has run: the gap in which no phase
+// says a visit is under way yet.
+bool g_tripPending = false;
 std::wstring g_map, g_lastEnd;
 void* g_streaming = nullptr;
 void* g_level = nullptr;
-void* g_controller = nullptr;  // this machine's player controller, as the placed player held it
+void* g_controller = nullptr;  // this machine's player controller, kept at the trip's start for the visit's end
 // The world's own actors (its persistent level's) when the visit began: what a map's script spawns lands in that level
 // too, far below the world, and is told apart from them at the end and removed with the map.
 std::unordered_set<void*> g_worldActors;
@@ -90,17 +98,16 @@ std::wstring g_slotName;   // the game instance's slot name before the map's scr
 std::wstring g_pass;       // and its NewVar_6, which the clip writes for untitled_219
 uint8_t g_gameMode = 0;    // and its game mode byte
 bool g_haveGameMode = false;
-// The game mode's backroomsEnabled, which the clip check reads: off while a visit runs and kQuietMs after, so the
-// view's jump into the map and back out of it is not a clip, and off while the host's world.backrooms is. The value it
-// had before; -1 when nothing is held.
-int g_backroomsWas = -1;
 // Raised by a script callback, run by the next tick: the visit's end, and whether a revive is owed.
 std::atomic<bool> g_endAsked{false};
 std::atomic<bool> g_endIsDeath{false};
 std::wstring g_endBy;  // which calls asked for the end, for its log line
-// Until when a trip to a visit map is the view's jump back out of the visit, not a clip.
+// Until when the game's clip check is answered no after a visit: the view's jump back out of it is not a clip.
 std::atomic<ULONGLONG> g_quietUntilMs{0};
 constexpr ULONGLONG kQuietMs = 5000;
+
+// A visit is under way from the moment its trip is let through, before and after its phase says so.
+bool VisitUnderway() { return g_phase != Phase::None || g_tripPending; }
 
 bool InSession() {
     coop::net::Session* s = g_session.load(std::memory_order_acquire);
@@ -114,6 +121,13 @@ bool IsVisitMap(const R::FName& level) {
 }
 
 void* Local() { return coop::players::Registry::Get().Local(); }
+
+// This machine's own player: the pawn the game's clip may send on a trip. Every other mainPlayer_C is a peer's copy or a
+// map's placed player, and none of them is a trip of this machine's.
+bool OwnPlayer(void* obj) { return obj && obj == Local(); }
+bool IsPlayerPawn(void* obj) {
+    return obj && R::NameEquals(R::NameOf(R::ClassOf(obj)), ue_wrap::profile::name::MainPlayerClass);
+}
 
 // `pc` possesses `pawn` (AController::Possess): the pawn it had is let go, and the view follows the new one.
 bool Possess(void* pc, void* pawn) {
@@ -136,11 +150,12 @@ void Teleport(void* player, const ue_wrap::FVector& at) {
 }
 
 // Every actor of the world's own level (the level the local player is in): what the object index lists with that
-// outer.
+// outer, over the actor classes only (the walk skips every other class's instances, most of the object array).
 std::vector<void*> WorldLevelActors() {
     struct Ctx { void* level; std::vector<void*> out; } c{R::OuterOf(Local()), {}};
     if (!c.level) return {};
     OI::ForEachClass([](void* ctx, void* cls, void*) {
+        if (!ue_wrap::world_instances::IsActorClass(cls)) return;
         OI::ForEachInstance(cls, [](void* ctx2, void* o, int32_t) {
             auto* k = static_cast<Ctx*>(ctx2);
             if (R::OuterOf(o) == k->level && R::IsLive(o)) k->out.push_back(o);
@@ -156,44 +171,102 @@ void* HeldActor(void* me) {
     return h && R::IsLive(h) ? h : nullptr;
 }
 
-// The game mode's backroomsEnabled: read (-1 when unreadable) and written.
-int BackroomsEnabled(int set = -1) {
-    void* gm = ue_wrap::world_singleton::Gamemode();
-    int32_t off = -1;
-    uint8_t mask = 0;
-    if (!gm || !R::FindBoolProperty(R::ClassOf(gm), L"backroomsEnabled", off, mask)) return -1;
-    uint8_t* b = static_cast<uint8_t*>(gm) + off;
-    if (set == 0) *b = static_cast<uint8_t>(*b & ~mask);
-    if (set == 1) *b = static_cast<uint8_t>(*b | mask);
-    return (*b & mask) ? 1 : 0;
-}
-
-// The host's world.backrooms, the session's value on every peer: off, no clip is taken and no trip is sent.
-bool Closed() { return !coop::config::ResolveFlag(coop::config_registry::rows::world_backrooms); }
-
-// backroomsEnabled held off while a visit runs, kQuietMs after it, and while the host closes the backrooms; given its
-// own value back once none of them holds. Each tick: the game's own writes to it are undone while it is held.
-void HoldClipSwitch() {
-    static int s_closed = -1;
-    const bool closed = Closed();
-    if (s_closed != (closed ? 1 : 0)) {
-        if (s_closed >= 0 || closed)
-            UE_LOGI("level_visit: the host %hs the backrooms", closed ? "closed" : "opened");
-        s_closed = closed ? 1 : 0;
-    }
-    const bool hold = closed || g_phase != Phase::None || ::GetTickCount64() < g_quietUntilMs.load();
-    if (hold) {
-        if (g_backroomsWas < 0) g_backroomsWas = BackroomsEnabled();
-        if (g_backroomsWas >= 0 && BackroomsEnabled() != 0) BackroomsEnabled(0);
-    } else if (g_backroomsWas >= 0) {
-        BackroomsEnabled(g_backroomsWas);
-        g_backroomsWas = -1;
-    }
-}
-
 bool InVisitedLevel(void* obj) { return obj && g_level && R::IsLive(obj) && R::OuterOf(obj) == g_level; }
 
+// Whether `obj` belongs to the visited map, for the whole visit: once the level is known, its own objects; while it
+// still loads (its BeginPlay and first ticks run inside the engine's add-to-world, before the tick below sees it), any
+// object of a level other than the world's own.
+bool FromVisitedMap(void* obj) {
+    if (g_phase == Phase::None || !obj || !R::IsLive(obj)) return false;
+    if (g_level) return InVisitedLevel(obj);
+    void* level = R::OuterOf(obj);
+    void* mine = R::OuterOf(Local());
+    return level && mine && level != mine && R::NameEquals(R::NameOf(R::ClassOf(level)), L"Level");
+}
+
+// The host's world.backrooms, the session's value on every peer, kept as it changes (config::Subscribe): the clip check
+// below asks for it on every tick, and a layered resolve reads the environment each time.
+std::atomic<bool> g_closed{false};
+void OnBackroomsRow() {
+    const bool closed = !coop::config::ResolveFlag(coop::config_registry::rows::world_backrooms);
+    if (g_closed.exchange(closed) != closed) UE_LOGI("level_visit: the host %hs the backrooms", closed ? "closed" : "opened");
+}
+
+// [dev] The drill's counts, and its red arms (each latched once).
+std::atomic<uint32_t> g_tripsStarted{0}, g_clipsHeldClosed{0}, g_clipChecksAsked{0};
+std::atomic<int> g_lastClipWhy{-1};
+bool CloseOff() {
+    static const bool off = coop::config::ResolveFlag(coop::config_registry::rows::backrooms_close_off);
+    return off;
+}
+
 // ---- the watches (game thread, inside the VM's body loop: decisions only, the work is the tick's) ----------------
+
+// The game's own clip check, mainGamemode_C::canBackrooms(out return): mainPlayer_C's tick asks it every tick, and its
+// answer gates the whole clip chain (black screen, teleport, save, then lib_C::loadLevel). It is answered no, in the out
+// parameter, for this machine's own player while the host has closed the backrooms, a visit runs, or the quiet window
+// after one is open (the view's jump into the map and back out would read as a clip); otherwise the game's own logic
+// runs. A player that is not this machine's own (a copy, whose tick is off, or the visited map's placed player, which
+// ticks and is the view target until it is taken) is always answered no: a trip is this machine's own player's alone.
+// When the out parameter cannot be written the body runs and the clip is not held: said once.
+bool AnswerNo(const sg::Call& call) {
+    static void* sFn = nullptr;
+    static int32_t sOff = -1;
+    if (call.function != sFn) {
+        sFn = call.function;
+        sOff = R::FindParamOffset(call.function, L"return");
+    }
+    uint8_t* out = sOff >= 0 ? sg::OutParamPtr(call, sOff) : nullptr;
+    if (!out) {
+        static bool s_warned = false;
+        if (!s_warned) {
+            s_warned = true;
+            UE_LOGW("level_visit: canBackrooms's result cannot be written -- the clip is NOT held (said once)");
+        }
+        return false;
+    }
+    *out = 0;
+    return true;
+}
+
+sg::Verdict OnCanBackroomsPre(const sg::Call& call) {
+    if (!call.function || !call.callerObject || !InSession() || CloseOff()) return sg::Verdict::Run;
+    if (!OwnPlayer(call.callerObject)) {
+        static bool s_saidOther = false;
+        if (!s_saidOther) {
+            s_saidOther = true;
+            UE_LOGI("level_visit: the game's clip check is answered no for a player that is not this machine's own "
+                    "(said once)");
+        }
+        return AnswerNo(call) ? sg::Verdict::Cancel : sg::Verdict::Run;
+    }
+    const bool closed = g_closed.load();
+    const bool visiting = VisitUnderway();
+    const int why = closed ? 1 : visiting ? 2 : ::GetTickCount64() < g_quietUntilMs.load() ? 3 : 0;
+    ++g_clipChecksAsked;
+    g_lastClipWhy = why;
+    static int s_said = 0;
+    if (why != s_said) {
+        s_said = why;
+        if (why)
+            UE_LOGI("level_visit: the game's clip check is answered no -- %hs",
+                    why == 1 ? "the host has closed the backrooms" : why == 2 ? "a visit runs" : "a visit just ended");
+    }
+    if (!why || !AnswerNo(call)) return sg::Verdict::Run;
+    if (closed) ++g_clipsHeldClosed;
+    return sg::Verdict::Cancel;
+}
+
+// A clip chain that reached loadLevel has put up its black screen (mainPlayer_C's tick: Create(blackScreen_C),
+// AddToViewport 666, teleportWObackrooms, then loadLevel). With the call refused nothing follows that would take it
+// down, so it is detached here, on the next game-thread turn (the detach runs engine code, which the VM's body loop
+// must not).
+void ClearRefusedClipScreen() {
+    ue_wrap::game_thread::Post([] {
+        const bool cleared = coop::death_revive::ClearBlackScreenNow();
+        UE_LOGI("level_visit: the black screen a refused clip put up is cleared (%d)", cleared ? 1 : 0);
+    });
+}
 
 sg::Verdict OnLoadLevelPre(const sg::Call& call) {
     if (!call.locals || !call.function || !InSession()) return sg::Verdict::Run;
@@ -206,21 +279,17 @@ sg::Verdict OnLoadLevelPre(const sg::Call& call) {
     const R::FName level = *reinterpret_cast<const R::FName*>(call.locals + sLevelOff);
     if (!IsVisitMap(level)) return sg::Verdict::Run;
     void* author = *reinterpret_cast<void* const*>(call.locals + sAuthorOff);
-    if (author && author != Local() && coop::players::Registry::Get().IsPuppet(author)) {
-        UE_LOGW("level_visit: REFUSED a trip to %ls authored by a peer's copy -- the clip is that player's machine's",
-                R::ToString(level).c_str());
-        return sg::Verdict::Cancel;
-    }
-    if (author != Local()) return sg::Verdict::Run;
-    if (Closed()) {
-        UE_LOGI("level_visit: a trip to %ls is refused -- the host has closed the backrooms", R::ToString(level).c_str());
-        return sg::Verdict::Cancel;
-    }
-    // The player's own clip check sees the view jump into the map and back out of it: a trip asked while a visit runs,
-    // or within kQuietMs of its end, is that jump, not a clip.
-    if (g_phase != Phase::None || ::GetTickCount64() < g_quietUntilMs.load()) {
-        UE_LOGI("level_visit: a trip to %ls while a visit %hs is refused -- the view's jump, not a clip",
-                R::ToString(level).c_str(), g_phase != Phase::None ? "runs" : "just ended");
+    // A copy cannot author a trip (a copy is never the view target and its actor tick is off), but the visited map's
+    // placed player can: it ticks the clip chain as the player does and holds the view until it is taken. So the author
+    // is judged by ownership: a player that is not this machine's own is refused, and only its own player's call goes on.
+    if (!OwnPlayer(author)) {
+        if (!IsPlayerPawn(author)) return sg::Verdict::Run;
+        static bool s_saidOther = false;
+        if (!s_saidOther) {
+            s_saidOther = true;
+            UE_LOGW("level_visit: a trip to %ls authored by a player that is not this machine's own is refused (said "
+                    "once)", R::ToString(level).c_str());
+        }
         return sg::Verdict::Cancel;
     }
     // The game's own clip is not taken seated or riding (mainGamemode_C::canBackrooms); a trip asked so is not one.
@@ -229,13 +298,27 @@ sg::Verdict OnLoadLevelPre(const sg::Call& call) {
     if ((E::ReadMainPlayerSittingOn(author, on) && on) || (E::GetAttachParentActor(author, parent) && parent)) {
         UE_LOGW("level_visit: a trip to %ls while the player is seated or riding is refused -- the clip never sends "
                 "one", R::ToString(level).c_str());
+        ClearRefusedClipScreen();
         return sg::Verdict::Cancel;
     }
     const std::wstring map = R::ToString(level);
+    // The host's closed switch holds for a chain that passed the clip check before the row reached this machine too.
+    if (g_closed.load() && !CloseOff()) {
+        UE_LOGI("level_visit: a trip to %ls is refused -- the host has closed the backrooms", map.c_str());
+        ClearRefusedClipScreen();
+        return sg::Verdict::Cancel;
+    }
+    // One visit at a time: a second call of the clip chain (or of a clip after the first is let through) is not a trip.
+    if (g_phase != Phase::None || g_tripPending) {
+        UE_LOGI("level_visit: a trip to %ls is refused -- a visit is already under way", map.c_str());
+        return sg::Verdict::Cancel;
+    }
+    g_tripPending = true;
+    ++g_tripsStarted;
     UE_LOGI("level_visit: the clip's trip to %ls is this player's alone -- the map is loaded below the world",
             map.c_str());
     ue_wrap::game_thread::Post([map] {
-        if (g_phase != Phase::None) return;
+        struct Settled { ~Settled() { g_tripPending = false; } } settled;
         void* me = Local();
         if (!me) return;
         g_map = map;
@@ -254,8 +337,7 @@ sg::Verdict OnLoadLevelPre(const sg::Call& call) {
                                                                  ? L"$TPzHL8tj^f@6DJ!JmqkMmhHQUPG*5rTfxWR"
                                                                  : L"");
         }
-        if (g_backroomsWas < 0) g_backroomsWas = BackroomsEnabled();
-        BackroomsEnabled(0);
+        g_controller = E::GetController(me);  // the placed player takes it as its level begins play: kept now
         coop::death_revive::ClearBlackScreenNow();
         g_worldActors.clear();
         for (void* a : WorldLevelActors()) g_worldActors.insert(a);
@@ -266,6 +348,7 @@ sg::Verdict OnLoadLevelPre(const sg::Call& call) {
         g_loadAtMs = ::GetTickCount64();
         g_endAsked.store(false);
         g_phase = g_streaming ? Phase::Loading : Phase::None;
+        if (!g_streaming) g_controller = nullptr;
         UE_LOGI("level_visit: %ls %hs", g_map.c_str(), g_streaming ? "loading" : "did NOT load -- the player stays");
     });
     return sg::Verdict::Cancel;
@@ -283,7 +366,7 @@ bool HookInMap() {
         OI::ForEachInstance(cls, [](void* ctx, void* o, int32_t) {
             ue_wrap::FVector at{};
             if (R::IsLive(o) && !R::NameStartsWith(R::NameOf(o), L"Default__") && E::TryGetActorLocation(o, at) &&
-                at.Z < kAwayZ)
+                at.Z < kVisitFloorZ)
                 *static_cast<bool*>(ctx) = true;
         }, &found);
     return found;
@@ -297,7 +380,7 @@ sg::Verdict OnEndPre(const sg::Call& call) {
     static int32_t sCtxOff = -1;
     if (sCtxOff < 0) sCtxOff = R::FindParamOffset(call.function, L"__WorldContext");
     void* ctx = sCtxOff >= 0 ? *reinterpret_cast<void* const*>(call.locals + sCtxOff) : nullptr;
-    if (!InVisitedLevel(ctx) && !InVisitedLevel(call.callerObject)) return sg::Verdict::Run;
+    if (!FromVisitedMap(ctx) && !FromVisitedMap(call.callerObject)) return sg::Verdict::Run;
     if (::GetTickCount64() - g_loadAtMs < kUntitledSequenceMs && call.callerObject &&
         R::NameStartsWith(R::NameOf(R::ClassOf(call.callerObject)), L"untitled_untitled") &&
         !HookInMap()) {
@@ -310,6 +393,13 @@ sg::Verdict OnEndPre(const sg::Call& call) {
         }
         return sg::Verdict::Cancel;
     }
+    if (!g_level) {
+        static bool s_saidLoading = false;
+        if (!s_saidLoading) {
+            s_saidLoading = true;
+            UE_LOGI("level_visit: the visited map's End during loading is cancelled");
+        }
+    }
     const std::wstring by = call.callerObject ? R::ClassNameOf(call.callerObject) : std::wstring(L"?");
     const std::wstring in = call.callerFunction ? R::ToString(R::NameOf(call.callerFunction)) : std::wstring(L"?");
     g_endBy += L", End from " + by + L"." + in + L" on " + (ctx ? R::ClassNameOf(ctx) : std::wstring(L"?"));
@@ -321,11 +411,18 @@ sg::Verdict OnEndPre(const sg::Call& call) {
 sg::Verdict OnQuitGamePre(void* context, void* sourceObject, const uint8_t* parms) {
     if (g_phase == Phase::None) return sg::Verdict::Run;
     void* worldContext = (parms && g_quitCtxOff >= 0) ? *reinterpret_cast<void* const*>(parms + g_quitCtxOff) : nullptr;
-    if (!InVisitedLevel(sourceObject) && !InVisitedLevel(context) && !InVisitedLevel(worldContext))
+    if (!FromVisitedMap(sourceObject) && !FromVisitedMap(context) && !FromVisitedMap(worldContext))
         return sg::Verdict::Run;
     if (g_hookCheckQuit) {
         g_hookCheckQuit = false;
         return sg::Verdict::Cancel;
+    }
+    if (!g_level) {
+        static bool s_saidLoading = false;
+        if (!s_saidLoading) {
+            s_saidLoading = true;
+            UE_LOGI("level_visit: the visited map's QuitGame during loading is cancelled");
+        }
     }
     g_endBy += L", QuitGame from " + (sourceObject ? R::ClassNameOf(sourceObject) : std::wstring(L"?")) + L" on " +
                (worldContext ? R::ClassNameOf(worldContext) : std::wstring(L"?"));
@@ -353,98 +450,6 @@ void EndLevelEvents() {
     }
 }
 
-// The world's sky: what lights or covers a level without a bound on its reach. A map travelled to is a world of its own
-// with none of the world's; loaded in place, 600 m below, it would have all of it. The height fog's density grows
-// without bound below its height and covers the map in its colour; the sun and the sky light light a maze the game
-// leaves dark but for the player's lantern; the world's unbound post process sets the view's exposure and grading.
-// The components are hidden and the volumes switched off for the visit on this machine, and put back after.
-constexpr const wchar_t* kWorldSkyClasses[] = {L"ExponentialHeightFogComponent", L"DirectionalLightComponent",
-                                               L"SkyLightComponent", L"SkyAtmosphereComponent",
-                                               L"VolumetricCloudComponent"};
-constexpr const wchar_t* kMapLightClasses[] = {L"PointLightComponent", L"SpotLightComponent", L"RectLightComponent",
-                                               L"DirectionalLightComponent", L"SkyLightComponent",
-                                               L"ExponentialHeightFogComponent"};
-std::vector<void*> g_hiddenSky;
-std::vector<void*> g_offVolumes;
-ULONGLONG g_skyHeldAtMs = 0;
-
-bool SetComponentVisible(void* comp, bool on) {
-    void* fn = comp && R::IsLive(comp) ? R::FindDispatchFunctionCached(R::ClassOf(comp), L"SetVisibility") : nullptr;
-    ue_wrap::ParamFrame pf(fn);
-    return fn && pf.valid() && pf.Set<bool>(L"bNewVisibility", on) && pf.Set<bool>(L"bPropagateToChildren", false) &&
-           ue_wrap::Call(comp, pf);
-}
-
-// Every live instance of the class named, split by whether its level (a component's actor's, or an actor's own) is
-// the visited one.
-void InstancesOf(const wchar_t* name, bool component, std::vector<void*>& world, std::vector<void*>& map) {
-    void* cls = OI::ClassByName(name);
-    if (!cls) return;
-    struct Ctx { bool component; std::vector<void*>* world; std::vector<void*>* map; } c{component, &world, &map};
-    OI::ForEachInstance(cls, [](void* ctx, void* o, int32_t) {
-        auto* k = static_cast<Ctx*>(ctx);
-        if (!R::IsLive(o) || R::NameStartsWith(R::NameOf(o), L"Default__")) return;
-        void* level = k->component ? R::OuterOf(R::OuterOf(o)) : R::OuterOf(o);
-        (level == g_level ? k->map : k->world)->push_back(o);
-    }, &c);
-}
-
-// A post process volume's bitfield bool, read or written.
-bool VolumeBit(void* v, const wchar_t* name, int set = -1) {
-    int32_t off = -1;
-    uint8_t mask = 0;
-    if (!R::FindBoolProperty(R::ClassOf(v), name, off, mask) || off < 0) return false;
-    uint8_t& b = *(static_cast<uint8_t*>(v) + off);
-    if (set >= 0) b = set ? (b | mask) : (b & ~mask);
-    return (b & mask) != 0;
-}
-
-void HideWorldSky() {
-    std::wstring said, map;
-    for (const wchar_t* name : kWorldSkyClasses) {
-        std::vector<void*> world, inMap;
-        InstancesOf(name, true, world, inMap);
-        int hidden = 0;
-        for (void* c : world)
-            if (SetComponentVisible(c, false)) { g_hiddenSky.push_back(c); ++hidden; }
-        if (!world.empty()) said += L" " + std::wstring(name) + L"=" + std::to_wstring(hidden);
-    }
-    std::vector<void*> volumes, mapVolumes;
-    InstancesOf(L"PostProcessVolume", false, volumes, mapVolumes);
-    for (void* v : volumes)
-        if (VolumeBit(v, L"bEnabled")) { VolumeBit(v, L"bEnabled", 0); g_offVolumes.push_back(v); }
-    for (const wchar_t* name : kMapLightClasses) {
-        std::vector<void*> world, inMap;
-        InstancesOf(name, true, world, inMap);
-        if (!inMap.empty()) map += L" " + std::wstring(name) + L"=" + std::to_wstring(inMap.size());
-    }
-    int unbound = 0;
-    for (void* v : mapVolumes) unbound += VolumeBit(v, L"bUnbound") ? 1 : 0;
-    g_skyHeldAtMs = ::GetTickCount64();
-    UE_LOGI("level_visit: the world's sky hidden for the visit:%ls PostProcessVolume=%zu; the map's own:%ls "
-            "PostProcessVolume=%zu (unbound %d)", said.c_str(), g_offVolumes.size(), map.empty() ? L" no light" : map.c_str(),
-            mapVolumes.size(), unbound);
-}
-
-// The day-night cycle sets the sun and the sky as it runs; what it shows again is hidden again, once a second.
-void HoldWorldSky() {
-    if (::GetTickCount64() - g_skyHeldAtMs < 1000) return;
-    g_skyHeldAtMs = ::GetTickCount64();
-    for (void* c : g_hiddenSky)
-        if (R::IsLive(c)) SetComponentVisible(c, false);
-    for (void* v : g_offVolumes)
-        if (R::IsLive(v) && VolumeBit(v, L"bEnabled")) VolumeBit(v, L"bEnabled", 0);
-}
-
-void ShowWorldSky() {
-    for (void* c : g_hiddenSky)
-        if (R::IsLive(c)) SetComponentVisible(c, true);
-    for (void* v : g_offVolumes)
-        if (R::IsLive(v)) VolumeBit(v, L"bEnabled", 1);
-    g_hiddenSky.clear();
-    g_offVolumes.clear();
-}
-
 void Finish(bool revive, const wchar_t* why) {
     if (g_phase == Phase::None) return;
     void* me = Local();
@@ -461,7 +466,7 @@ void Finish(bool revive, const wchar_t* why) {
     if (me && E::GetController(me) == nullptr && g_controller && R::IsLive(g_controller))
         UE_LOGW("level_visit: the player had no controller at the visit's end -- possessed again (ok=%d)",
                 Possess(g_controller, me) ? 1 : 0);
-    ShowWorldSky();
+    coop::level_visit_sky::Show();
     // What the map's script spawned into the world's level goes with the map; the visitor, the copies of other
     // players and what the visitor holds stay. The visitor's own item, dropped down there, comes back: the actor it
     // held, or, when the game's death replaced that one with a new drop, the new one of its class.
@@ -472,7 +477,7 @@ void Finish(bool revive, const wchar_t* why) {
     for (void* a : WorldLevelActors()) {
         ue_wrap::FVector at{};
         void* parent = nullptr;
-        if (a == me || a == held || g_worldActors.count(a) || !E::TryGetActorLocation(a, at) || at.Z >= kAwayZ ||
+        if (a == me || a == held || g_worldActors.count(a) || !E::TryGetActorLocation(a, at) || at.Z >= kVisitFloorZ ||
             coop::players::Registry::Get().IsPuppetBody(a) ||
             (E::GetAttachParentActor(a, parent) && parent && (parent == me || parent == held)))
             continue;
@@ -484,7 +489,7 @@ void Finish(bool revive, const wchar_t* why) {
     }
     ue_wrap::FVector carriedAt{};
     if (!carriedGone && g_carried && g_carried != held && E::TryGetActorLocation(g_carried, carriedAt) &&
-        carriedAt.Z < kAwayZ)
+        carriedAt.Z < kVisitFloorZ)
         dropped = g_carried;
     if (dropped) {
         E::TeleportTo(dropped, {g_home.X, g_home.Y, g_home.Z + 50.f}, ue_wrap::FRotator{});
@@ -507,6 +512,7 @@ void Finish(bool revive, const wchar_t* why) {
                       : "the player is already back");
     g_lastEnd = why;
     g_endBy.clear();
+    g_controller = nullptr;
     g_quietUntilMs.store(::GetTickCount64() + kQuietMs);
     g_phase = Phase::None;
     g_streaming = nullptr;
@@ -567,7 +573,6 @@ ue_wrap::FVector TakePlacedPlayer(void* me) {
         E::TryGetActorLocation(c.found, at);
         void* pc = E::GetController(c.found);
         if (pc && me && E::GetController(me) == nullptr) {
-            g_controller = pc;
             UE_LOGI("level_visit: the map's placed player had taken the controller -- given back (ok=%d)",
                     Possess(pc, me) ? 1 : 0);
         }
@@ -578,28 +583,26 @@ ue_wrap::FVector TakePlacedPlayer(void* me) {
     return at;
 }
 
-// Every copy below the world is a player in a visited map: hidden there, shown again once it is back.
-void HideAway() {
-    static ULONGLONG s_next = 0;
-    static void* s_copy[coop::net::kMaxPeers] = {};
-    static bool s_hidden[coop::net::kMaxPeers] = {};
-    const ULONGLONG now = ::GetTickCount64();
-    if (now < s_next) return;
-    s_next = now + 1000;
-    auto& reg = coop::players::Registry::Get();
-    for (int slot = 0; slot < static_cast<int>(coop::net::kMaxPeers); ++slot) {
-        coop::RemotePlayer* p = reg.Puppet(static_cast<uint8_t>(slot));
-        void* actor = p ? p->actor() : nullptr;
-        ue_wrap::FVector at{};
-        const bool away = actor && E::TryGetActorLocation(actor, at) && at.Z < kAwayZ;
-        if (actor == s_copy[slot] && away == s_hidden[slot]) continue;
-        if (actor) E::SetActorHiddenInGame(actor, away);
-        if (away != s_hidden[slot])
-            UE_LOGI("level_visit: slot %d's copy %hs", slot, away ? "hidden -- that player is in another map"
-                                                               : "shown -- that player is back");
-        s_copy[slot] = actor;
-        s_hidden[slot] = away;
-    }
+// What each slot's last applied pose says: its player stands below the visit floor, in a visited map. The pose
+// listener only records (coop/player/puppet_events.h); Tick hands the record to puppet_hide, which owns the flag.
+// Recorded on every pose, so a copy born below, a respawned copy and a lost packet all follow the next pose.
+bool g_below[coop::players::kMaxPeers] = {};
+
+void OnPose(uint8_t slot, const coop::net::PoseSnapshot& pose) {
+    if (slot < coop::players::kMaxPeers) g_below[slot] = pose.z < kVisitFloorZ;
+}
+
+// [dev red] level_visit_hide_off: the record never hides a copy.
+bool HideOff() {
+    static const bool off = coop::config::ResolveFlag(coop::config_registry::rows::level_visit_hide_off);
+    return off;
+}
+
+// The visit reason of every copy's hidden flag, from the record. The same answer again changes nothing there.
+void ApplyVisitHide() {
+    const bool off = HideOff();
+    for (int slot = 0; slot < static_cast<int>(coop::players::kMaxPeers); ++slot)
+        coop::puppet_hide::Set(static_cast<uint8_t>(slot), coop::puppet_hide::Reason::Visit, g_below[slot] && !off);
 }
 
 
@@ -624,31 +627,56 @@ void GiveBack() {
     UE_LOGI("level_visit: the item the visitor dropped in the map is back %hs", inHand ? "in its hand" : "at its feet");
     g_return = nullptr;
 }
+// QuitGame's pre hook, tried again by the tick until it is in: one attempt a second at most while it fails, said once.
+void HookQuitGame() {
+    static ULONGLONG s_nextTryMs = 0;
+    if (::GetTickCount64() < s_nextTryMs) return;
+    s_nextTryMs = ::GetTickCount64() + 1000;
+    const ue_wrap::facts::Resolved quit = ue_wrap::facts::Resolve(kRowQuitGame);
+    if (quit.Fn()) g_quitCtxOff = R::FindParamOffset(quit.Fn(), L"WorldContextObject");
+    if (quit.Fn() && ue_wrap::ufunction_hook::InstallPreHook(quit, &OnQuitGamePre, /*armed=*/true)) {
+        g_quitHooked = true;
+        UE_LOGI("level_visit: QuitGame from a visited map is refused");
+        return;
+    }
+    static bool s_warned = false;
+    if (!s_warned) {
+        s_warned = true;
+        UE_LOGW("level_visit: QuitGame cannot be hooked yet -- a visited map's QuitGame is not refused until it is "
+                "(retried each second, said once)");
+    }
+}
 }  // namespace
 
 void Install(coop::net::Session* session) {
     g_session.store(session, std::memory_order_release);
+    static bool s_following = false;
+    if (!s_following) {
+        s_following = true;
+        coop::config::Subscribe(coop::config_registry::rows::world_backrooms, &OnBackroomsRow);
+        OnBackroomsRow();
+    }
     if (!g_watching && sg::IsInstalled() && sg::WatchName(kRowLoadLevel, kTagLoadLevel, &OnLoadLevelPre, nullptr) &&
-        sg::WatchName(kRowEnd, kTagEnd, &OnEndPre, nullptr)) {
+        sg::WatchName(kRowEnd, kTagEnd, &OnEndPre, nullptr) &&
+        sg::WatchName(kRowCanBackrooms, kTagCanBackrooms, &OnCanBackroomsPre, nullptr)) {
         g_watching = true;
-        UE_LOGI("level_visit: watching lib_C::loadLevel and lib_C::End -- a clip's trip is the clipping player's "
-                "alone");
+        UE_LOGI("level_visit: watching lib_C::loadLevel, lib_C::End and the clip check -- a clip's trip is the clipping "
+                "player's alone");
     }
-    if (!g_quitHooked) {
-        const ue_wrap::facts::Resolved quit = ue_wrap::facts::Resolve(kRowQuitGame);
-        if (quit.Fn()) g_quitCtxOff = R::FindParamOffset(quit.Fn(), L"WorldContextObject");
-        if (quit.Fn() && ue_wrap::ufunction_hook::InstallPreHook(quit, &OnQuitGamePre, /*armed=*/true)) {
-            g_quitHooked = true;
-            UE_LOGI("level_visit: QuitGame from a visited map is refused");
-        }
-    }
+    if (!g_quitHooked) HookQuitGame();
+    static bool s_listening = false;
+    if (!s_listening && !(s_listening = coop::puppet_events::AddPoseListener(&OnPose)))
+        UE_LOGW("level_visit: the pose listener list is full -- a visitor's copy is not hidden");
+}
+
+void OnPeerLeft(uint8_t slot) {
+    if (slot < coop::players::kMaxPeers) g_below[slot] = false;
 }
 
 void Tick() {
     if (!InSession()) return;
     if (!g_watching || !g_quitHooked) Install(g_session.load(std::memory_order_acquire));
-    HideAway();
-    HoldClipSwitch();
+    ApplyVisitHide();
     if (g_phase == Phase::None) {
         GiveBack();
         return;
@@ -659,8 +687,13 @@ void Tick() {
         g_carried = h;
         g_carriedClass = R::ClassOf(h);
     }
-    if (g_endAsked.load()) return Finish(g_endIsDeath.load(), L"the map's own end");
+    // A map that ends before it has loaded ends a visit the player never began: it is still in the world.
+    if (g_endAsked.load()) return Finish(g_phase == Phase::In && g_endIsDeath.load(), L"the map's own end");
     if (g_phase == Phase::Loading) {
+        // Polled: the streaming level's own loaded event (ULevelStreaming's OnLevelLoaded / OnLevelShown) would announce
+        // it, but no production code of ours binds an engine delegate (the one binder in the tree, coop/dev/
+        // pause_menu_probe_bind, measures a bound pair and not the engine's own broadcast), so nothing announces the
+        // load through our substrate yet. A delegate-binding substrate is its own package; the poll goes with it.
         g_level = LI::LoadedLevel(g_streaming);
         static ULONGLONG s_said = 0;
         if (!g_level && ::GetTickCount64() - s_said > 5000) {
@@ -669,7 +702,7 @@ void Tick() {
                     LI::DescribeState(g_streaming).c_str());
         }
         if (!g_level) {
-            if (::GetTickCount64() - g_loadAtMs > kLoadBoundMs) Finish(true, L"the map did not load");
+            if (::GetTickCount64() - g_loadAtMs > kLoadBoundMs) Finish(false, L"the map did not load");
             return;
         }
         const ue_wrap::FVector start = TakePlacedPlayer(me);
@@ -679,16 +712,16 @@ void Tick() {
         UE_LOGI("level_visit: the black screen the map's player put up is cleared (%d)", cleared ? 1 : 0);
         RemoveWorldDuplicates();
         HoldCycleTick();
-        HideWorldSky();
+        coop::level_visit_sky::Hide(g_level);
         if (me) Teleport(me, {start.X, start.Y, start.Z + 50.f});
         g_phase = Phase::In;
         UE_LOGI("level_visit: %ls loaded below the world; the player is in it at (%.0f,%.0f,%.0f)", g_map.c_str(),
                 start.X, start.Y, start.Z);
         return;
     }
-    HoldWorldSky();
+    coop::level_visit_sky::Hold();
     ue_wrap::FVector at{};
-    if (me && E::TryGetActorLocation(me, at) && at.Z > kAwayZ) {
+    if (me && E::TryGetActorLocation(me, at) && at.Z > kVisitFloorZ) {
         const float dx = at.X - kOrigin.X, dy = at.Y - kOrigin.Y, dz = at.Z - kOrigin.Z;
         if (std::sqrt(dx * dx + dy * dy + dz * dz) > kBackCm) Finish(false, L"the player came back another way");
     }
@@ -700,8 +733,8 @@ void OnDisconnect() {
         Finish(false, L"the session ended");
         if (me) Teleport(me, g_home);
     }
-    if (g_backroomsWas >= 0) BackroomsEnabled(g_backroomsWas);
-    g_backroomsWas = -1;
+    g_return = nullptr;  // an item the visit gave back to the home spot stays there: it is not handed over in a next session
+    for (bool& b : g_below) b = false;
 }
 
 bool IsVisitMap(const std::wstring& level) {
@@ -717,12 +750,16 @@ bool InVisitedMap(void* actor) {
     if (me && level && level != R::OuterOf(me)) return true;
     // What the map's own script spawns is in the persistent level, at the map's place far below the world.
     ue_wrap::FVector at{};
-    return E::TryGetActorLocation(actor, at) && at.Z < kAwayZ;
+    return E::TryGetActorLocation(actor, at) && at.Z < kVisitFloorZ;
 }
 
-bool Visiting() { return g_phase != Phase::None; }
+bool Visiting() { return VisitUnderway(); }
 std::wstring CurrentMap() { return g_phase != Phase::None ? g_map : std::wstring(); }
 std::wstring LastEnd() { return g_lastEnd; }
 void* CurrentLevel() { return g_phase == Phase::In ? g_level : nullptr; }
+bool ReturnPending() { return g_return != nullptr; }
+DrillStats Stats() {
+    return {g_tripsStarted.load(), g_clipsHeldClosed.load(), g_clipChecksAsked.load(), g_lastClipWhy.load()};
+}
 
 }  // namespace coop::level_visit
