@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 321;
+inline constexpr uint16_t kProtocolVersion = 322;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1565,6 +1565,11 @@ enum class ReliableKind : uint16_t {
     // the sender's reach and its own desk's or station's state, runs the change on its copy, and CoverState answers.
     // Never relayed. CoverPayload.
     CoverIntent = 278,
+    // A player's held item's own save record (coop/player/hand_record_sync), chunked (BlobChunkPayload) as
+    // [u8 slot][the record]: its owner's, when the item or its record changes, a client's to the host, which checks the
+    // sender's hand holds that class and sends it on to everyone, the host's own to everyone, and every hand's to a
+    // joiner at its ready edge. Each peer writes it into its mirror of that hand through the item's own loadData.
+    HandRecord = 279,
 };
 
 #pragma pack(push, 1)

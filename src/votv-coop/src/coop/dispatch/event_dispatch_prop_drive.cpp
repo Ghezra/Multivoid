@@ -25,6 +25,7 @@
 #include "coop/props/miner_sync.h"   // a GPU mining rig's counts and points, the host's
 #include "coop/props/fireext_sync.h"  // an extinguisher's thrust and a player's spray
 #include "coop/world/cover_sync.h"    // the desk's back plates and the stations' doors
+#include "coop/player/hand_record_sync.h"  // a held item's own record on its hand mirrors
 #include "coop/world/build_sync.h"
 #include "coop/world/ground_hose_sync.h"
 #include "coop/interactables/garbage_bin_sync.h"
@@ -403,6 +404,14 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         if (intent) ::coop::fireext_sync::OnIntent(msg.senderPeerSlot, p);
         else ::coop::fireext_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::HandRecord: {
+        // Any peer to the host, the host to all (coop/player/hand_record_sync); chunked.
+        if (msg.payloadLen < sizeof(net::BlobChunkPayload)) break;
+        net::BlobChunkPayload c{};
+        std::memcpy(&c, msg.payload, sizeof(c));
+        ::coop::hand_record_sync::OnChunk(c, static_cast<uint8_t>(msg.senderPeerSlot));
         break;
     }
     case net::ReliableKind::CoverState:

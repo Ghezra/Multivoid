@@ -48,6 +48,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::MinerIntent:
     case ReliableKind::FireExtIntent:
     case ReliableKind::CoverIntent:
+    case ReliableKind::HandRecord:
     case ReliableKind::GroundHoseIntent:
     case ReliableKind::SpillIntent:
     case ReliableKind::SpillPourIntent:
