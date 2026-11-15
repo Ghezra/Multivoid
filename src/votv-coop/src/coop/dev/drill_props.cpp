@@ -74,6 +74,19 @@ int PropsNearPlayer() {
     return n;
 }
 
+void* PropNear(float x, float y, float z, float radiusCm, float heightCm, void* ignore) {
+    static std::vector<coop::element::Registry::ActorIdPair> pairs;
+    coop::element::Registry::Get().SnapshotActorsByType(coop::element::ElementType::Prop, pairs);
+    for (const auto& a : pairs) {
+        ue_wrap::FVector pos{};
+        if (!a.actor || a.actor == ignore || !R::IsLiveByIndex(a.actor, a.internalIdx) || !E::TryGetActorLocation(a.actor, pos))
+            continue;
+        const float dx = pos.X - x, dy = pos.Y - y, dz = pos.Z - z;
+        if (dx * dx + dy * dy <= radiusCm * radiusCm && (dz < 0.f ? -dz : dz) <= heightCm) return a.actor;
+    }
+    return nullptr;
+}
+
 bool HasKey(void* actor) {
     const std::wstring key = ue_wrap::prop::GetInteractableKeyString(actor);
     return !key.empty() && key != L"None";

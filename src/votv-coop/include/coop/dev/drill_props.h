@@ -34,6 +34,10 @@ inline constexpr float kNearCm = 300.f;
 // an item would have grown.
 int PropsNearPlayer();
 
+// A live prop within `radiusCm` of (x, y) on the ground plane and within `heightCm` of z, other than `ignore`: one a
+// spawn there would land on or against. Null when none.
+void* PropNear(float x, float y, float z, float radiusCm, float heightCm, void* ignore = nullptr);
+
 // Does this prop carry a minted key (neither empty nor "None")?
 bool HasKey(void* actor);
 

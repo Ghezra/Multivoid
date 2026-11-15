@@ -168,7 +168,9 @@ struct BinLoad {
     FVector binAt{}, itemAt{};
     bool haveBinAt = false, haveItemAt = false, dropped = false, rested = false;
     uint64_t phaseMs = 0;   // the sinceMs at which the current wait began
+    int righted = 0;        // the times the bin came to rest on its side and was stood up again
 };
+constexpr int kBinRightTries = 3;   // a bin that lands on its side is stood up this many times, then the run is INVALID
 BinLoad g_bin;
 
 bool Unmoved(const FVector& a, const FVector& b) { return a.X == b.X && a.Y == b.Y && a.Z == b.Z; }
@@ -229,7 +231,20 @@ const char* LoadBin(void* bin, uint64_t sinceMs, bool* done) {
         if (!rest) return sinceMs > kBinLoadBoundMs ? BinInvalid(bin, "the bin never came to rest") : nullptr;
         const FVector up = E::GetActorUpVector(bin);
         if (up.X == 0.f && up.Y == 0.f && up.Z == 0.f) return BinFail(bin, "the bin's up vector is unread");
-        if (up.Z <= kBinUprightZ) return BinFail(bin, "the bin came to rest on its side");
+        if (up.Z <= kBinUprightZ) {
+            // The spawn's own physics laid it down: a staging accident, not the lane's. Stood up where it lies, a little
+            // above the floor, and awaited at rest again; past the tries the run measured nothing.
+            if (g_bin.righted >= kBinRightTries) return BinInvalid(bin, "the bin came to rest on its side every time");
+            ++g_bin.righted;
+            ue_wrap::FRotator was{};
+            E::TryGetActorRotation(bin, was);
+            E::SetActorRotation(bin, {0.f, was.Yaw, 0.f});
+            E::SetActorLocation(bin, {binAt.X, binAt.Y, binAt.Z + 20.f});
+            g_bin.haveBinAt = false;
+            UE_LOGI("%s host bin prep: the bin came to rest on its side -- stood up again (%d of %d)", kTag, g_bin.righted,
+                    kBinRightTries);
+            return nullptr;
+        }
         void* const cls = ue_wrap::asset_load::LoadObjectByPath(kPills);
         if (!cls) return BinFail(bin, "the pills class did not load");
         void* const item = E::SpawnActor(cls, {binAt.X, binAt.Y, binAt.Z + kBinDropCm});

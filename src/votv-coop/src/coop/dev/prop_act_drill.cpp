@@ -4,6 +4,7 @@
 
 #include "coop/comms/chat_log.h"
 #include "coop/comms/chat_sync.h"
+#include "coop/dev/drill_chat.h"
 #include "coop/config/config.h"
 #include "coop/config/config_registry.h"
 #include "coop/creatures/kerfur_entity.h"
@@ -58,7 +59,9 @@ std::string DragHead(const Row& r, bool fromHost) {
     return std::string(kTag) + (fromHost ? " host " : " c" + std::to_string(kClientSlot) + " ") + r.name + " dragged: ";
 }
 
-void Say(const std::string& line) { coop::chat_sync::QueueSend(line); }
+// Through the drills' chat queue: one line in flight, the next once the host's echo of the last is seen and the host's
+// talk pace allows it, so no line is lost to the host's chat bucket, as one was over a long honest phase.
+void Say(const std::string& line) { coop::dev::drill_chat::Say(line); }
 
 void RigSay(End e, const std::string& why) {
     using O = coop::rig_verdict::Outcome;
@@ -102,6 +105,10 @@ constexpr float kDropCm = 40.f;          // above the floor, so the prop settles
 constexpr float kFloorDownCm = 400.f;    // how far under the puppet's middle the floor is looked for
 constexpr float kMinColumnCm = 20.f;     // a column whose floor is nearer than this to its start began inside geometry
 constexpr float kNpcLiftCm = 60.f;       // a kerfur NPC is placed above the floor so its capsule clears it
+// A column with another prop this near is skipped: the floor trace meets the first thing below, so a spawn there would
+// land on that prop (a wastebasket on the base's green bin tipped and was taken in) or stand behind it from the client.
+constexpr float kClearCm = 90.f;
+constexpr float kClearHeightCm = 200.f;
 
 const Phase* ActivePhase() {
     static const Phase* const p = PhaseName() == "honest" ? &Honest() : PhaseName() == "snack" ? &Snack() : nullptr;
@@ -436,6 +443,10 @@ void HostTick(coop::net::Session* s, const Phase& ph) {
             return;
         case Judged::Pass:
             UE_LOGI("%s host %s step %s PASS -- %s", kTag, ph.name, row.name, why.c_str());
+            // A target that outlived its step (a loaded bin, a refused take) goes before the next spawn, so it stands in
+            // no later step's walk or aim; the host's destroy reaches the client's copy through the destroy seam.
+            for (ue_wrap::CachedObjRef* t : {&g_target, &g_target2})
+                if (t->Alive()) E::DestroyActor(t->Get());
             ResetStep();
             if (++g_hrow < ph.count) {
                 HEnter(HStep::Spawn);
@@ -517,6 +528,13 @@ const char* SpawnTarget(const Row& row, float extraCm, void** out) {
             float floorZ = 0.f;
             void* p = nullptr;
             if (!DP::FloorAt(player, x, y, at.Z, kFloorDownCm, kMinColumnCm, &floorZ)) continue;
+            // A pair's second is kPairGapCm past a first already found clear, which this check would find beside it.
+            void* const beside = second ? nullptr : DP::PropNear(x, y, floorZ, kClearCm, kClearHeightCm);
+            if (beside) {
+                UE_LOGI("%s host %s: the column %.0f uu away at %.0f deg has a %ls beside it -- skipped", kTag, row.name,
+                        ahead, kFanDeg[i], ue_wrap::reflection::ClassNameOf(beside).c_str());
+                continue;
+            }
             if (!coop::director::RouteInLegs(player, at, FVector{x, y, floorZ}, kReachCm)) {
                 UE_LOGI("%s host %s: no route from slot 1's puppet reaches the column %.0f uu away at %.0f deg",
                         kTag, row.name, ahead, kFanDeg[i]);
