@@ -7,10 +7,12 @@
 #include "ue_wrap/core/game_thread.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
+#include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/devices/atv.h"
 #include "ue_wrap/facts/function_row.h"
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 
 // InstallHitGuard and PublishOwned sit at namespace scope because they are the definitions the
@@ -77,6 +79,28 @@ int32_t g_impulseOff[7] = {-1, -1, -1, -1, -1, -1, -1};
 // silent fall-through to a mirror authoring damage.
 std::atomic<unsigned long long> g_hitUnresolved{0};
 
+// [dev] VOTVCOOP_ATV_HIT_LOG=1: an owned copy's hit strong enough to cost health (the game's impulse takes
+// 2 * |NormalImpulse| / 500000 of it, past 500000), with what it hit and the health before.
+const wchar_t* const kHitName[7] = {L"mesh", L"capsule", L"backWheel_R", L"backWheel_L", L"frontWheel_R",
+                                    L"frontWheelRoot", L"backWheelRoot"};
+int32_t g_otherOff[7] = {-1, -1, -1, -1, -1, -1, -1};
+
+void LogOwnedHit(void* self, void* params, int idx) {
+    static const bool on = coop::config::ReadEnv("VOTVCOOP_ATV_HIT_LOG") == "1";
+    const int32_t off = g_impulseOff[idx];
+    if (!on || !params || off < 0) return;
+    const float* v = reinterpret_cast<const float*>(static_cast<const uint8_t*>(params) + off);
+    const float mag = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (mag <= 500000.f) return;
+    void* other = g_otherOff[idx] >= 0
+                      ? *reinterpret_cast<void* const*>(static_cast<const uint8_t*>(params) + g_otherOff[idx])
+                      : nullptr;
+    UE_LOGI("[ATV-HIT] %p %ls |impulse|=%.0f (health cost %.1f) health before %.1f, other %ls '%ls'", self,
+            kHitName[idx], mag, 2.f * mag / 500000.f, ue_wrap::atv::GetHealth(self),
+            other ? R::ClassNameOf(other).c_str() : L"none",
+            other ? R::ToString(R::NameOf(other)).c_str() : L"");
+}
+
 }  // namespace
 
 void PublishOwned(void** owned, int n) {
@@ -103,7 +127,11 @@ bool NeuterHit(void* self, void* params, int idx) {
     for (int i = 0; i < kMaxOwned; ++i) {
         void* p = g_ownedAtvs[i].load(std::memory_order_acquire);
         if (!p) break;
-        if (p == self) { g_hitAllowed.fetch_add(1, std::memory_order_relaxed); return false; }
+        if (p == self) {
+            g_hitAllowed.fetch_add(1, std::memory_order_relaxed);
+            LogOwnedHit(self, params, idx);
+            return false;
+        }
     }
     const int32_t off = g_impulseOff[idx];
     if (!params || off < 0) {
@@ -154,6 +182,7 @@ void InstallHitGuard() {
     for (int i = 0; i < 7; ++i) {
         if (!fns[i]) continue;
         g_impulseOff[i] = R::FindParamOffset(fns[i].Fn(), L"NormalImpulse");
+        g_otherOff[i] = R::FindParamOffset(fns[i].Fn(), L"OtherActor");
         if (g_impulseOff[i] >= 0) ++offsOk;
     }
     using Cb = bool (*)(void*, void*);

@@ -7,7 +7,9 @@
 #include "coop/interactables/atv_sync.h"
 
 #include "ue_wrap/core/log.h"
+#include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/script_gate.h"
+#include "ue_wrap/devices/atv.h"
 #include "ue_wrap/facts/function_row.h"
 
 #include <chrono>
@@ -40,6 +42,14 @@ SG::Verdict Judge(Row row, const SG::Call& c) {
         return SG::Verdict::Cancel;
     }
     ++g_counters.ran[row];
+    // [dev] VOTVCOOP_ATV_HIT_LOG=1: the explosions an owned copy runs, with its health then.
+    static const bool s_log = coop::config::ReadEnv("VOTVCOOP_ATV_HIT_LOG") == "1";
+    static const wchar_t* const kName[] = {L"addDamage", L"exploded", L"explode"};
+    if (s_log && row != kAddDamage)
+        UE_LOGI("[ATV-HIT] %p runs %ls, health %.1f, called from %ls", c.object, kName[row],
+                ue_wrap::atv::GetHealth(c.object),
+                c.callerFunction ? ue_wrap::reflection::ToString(ue_wrap::reflection::NameOf(c.callerFunction)).c_str()
+                                 : L"native");
     return SG::Verdict::Run;
 }
 

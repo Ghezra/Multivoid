@@ -64,6 +64,7 @@ uint32_t g_destroysApplied = 0; // actors destroyed for an AtvDestroy
 uint32_t g_setEdgesApplied = 0;
 uint32_t g_deliberateParks = 0; // the spawn drill's park arm
 bool g_parkedFirst = false;     // the park arm's latch, once per session
+bool g_drillParkArmed = false;  // [dev] under the ATV gate drill the park waits for ArmDrillPark
 
 std::wstring WireClassNameToString(const coop::net::WireClassName& in) {
     std::wstring s;
@@ -145,6 +146,7 @@ void ResetArrivalState() {
     g_pending = PendingSet{};
     g_adoptedEver = g_spawnedEver = g_destroysApplied = g_setEdgesApplied = g_deliberateParks = 0;
     g_parkedFirst = false;
+    g_drillParkArmed = false;
 }
 
 void OnAtvSpawn(const coop::net::AtvSpawnPayload& payload) {
@@ -204,7 +206,7 @@ void ResolveSpawn(const std::wstring& key, const coop::net::AtvSpawnPayload& pay
     // once per session, as if the world were not ready, so the park's hand-back is what spawns it. A hand-back
     // of its own is let through by the latch; one of a park the world forced is parked once more.
     static const bool s_parkFirst = coop::config::ResolveFlag(coop::config_registry::rows::atv_park_first_spawn);
-    if (s_parkFirst && !g_parkedFirst) {
+    if (s_parkFirst && !g_parkedFirst && (!coop::atv_drill_events::On() || g_drillParkArmed)) {
         g_parkedFirst = true;
         ++g_deliberateParks;
         spawn_park::Park(key, payload, "the drill parks the first spawn", /*say*/ true);
@@ -239,6 +241,8 @@ void ResolveSpawn(const std::wstring& key, const coop::net::AtvSpawnPayload& pay
     UE_LOGI("atv: spawned ATV mirror key='%ls' class='%ls' actor=%p loc=(%.0f, %.0f, %.0f)",
             key.c_str(), className.c_str(), spawned, loc.X, loc.Y, loc.Z);
 }
+
+void ArmDrillPark() { g_drillParkArmed = true; }
 
 size_t ParkPending() { return spawn_park::Pending(); }
 uint32_t AdoptedEver() { return g_adoptedEver; }

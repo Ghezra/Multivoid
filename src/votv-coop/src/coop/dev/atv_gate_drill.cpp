@@ -11,6 +11,7 @@
 
 #include "coop/interactables/atv_drill_events.h"
 #include "coop/interactables/atv_host_sync.h"
+#include "coop/interactables/atv_sync.h"
 #include "coop/player/players_registry.h"
 #include "coop/player/remote_player.h"
 #include "coop/session/net_pump.h"
@@ -18,8 +19,11 @@
 #include "coop/config/config.h"
 
 #include "ue_wrap/core/cached_obj_ref.h"
+#include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/trace.h"
+#include "ue_wrap/devices/atv.h"
 #include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/engine_nav.h"
 
 #include "ue_wrap/core/log.h"
 
@@ -224,6 +228,31 @@ bool WorldUp() {
 // VOTVCOOP_ATV_DRILL_SPAWN=1: the host spawns the drill's ATV on the NavMesh in clear sight of itself and names it,
 // rather than the world's nearest, for a world whose ATVs stand where no walk arrives (one left on a roof by an earlier
 // run). Empty, with `why`, when the spawn, its key or its rest failed.
+// Room for an ATV at `pt`: no static, dynamic or physics body within 1.4 m of it, by eight traces out from it at the
+// wheels', the seat's and the handlebars' heights (`floorZ` the host's feet). An ATV born into a bunk bed is pushed out
+// with impulses that take all its health, and explodes before the drill begins (Ghezra/Multivoid#35). `what` names the
+// first thing in the way.
+bool RoomForAtv(void* me, const ue_wrap::FVector& pt, float floorZ, std::wstring& what) {
+    static const uint8_t kTypes[] = {0, 1, 3};   // WorldStatic, WorldDynamic, PhysicsBody
+    for (const float up : {40.f, 80.f, 130.f}) {
+        const ue_wrap::FVector c{pt.X, pt.Y, floorZ + up};
+        for (int b = 0; b < 8; ++b) {
+            const float a = static_cast<float>(b) * 0.7853982f;
+            const ue_wrap::FVector e{c.X + 140.f * std::cos(a), c.Y + 140.f * std::sin(a), c.Z};
+            ue_wrap::trace::Hit hit;
+            if (!ue_wrap::trace::LineHitForObjects(me, c, e, kTypes, 3, nullptr, 0, &hit)) {
+                what = L"(no trace)";
+                return false;
+            }
+            if (hit.blocked) {
+                what = hit.actor ? ue_wrap::reflection::ClassNameOf(hit.actor) : std::wstring(L"(no actor)");
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 std::wstring SpawnOwnAtv(std::string& why) {
     namespace SN = coop::dev::atv_spawn_near;
     namespace E = ue_wrap::engine;
@@ -233,19 +262,36 @@ std::wstring SpawnOwnAtv(std::string& why) {
         void* const me = coop::players::Registry::Get().Local();
         ue_wrap::FVector at{};
         if (!me || !E::TryGetActorLocation(me, at)) return;
-        // The first spot, by bearing round the host at 5 m then 7 m, that the host sees with nothing between: an act
-        // aims at the ATV from beside it, and a door or a wall in the way takes the player's trace.
+        // The first spot, by bearing round the host at 5 and 7 m that the host sees with nothing between (an act aims at
+        // the ATV from beside it, and a door or a wall in the way takes the player's trace), then at 10 to 25 m with room
+        // round it alone: from a cramped room like the base's dorm the director walks the players out to it.
         const ue_wrap::FVector f = E::GetActorForwardVector(me);
-        why = "no spot round the host at 5 or 7 m is in clear sight and on the NavMesh";
-        for (const float ahead : {500.f, 700.f}) {
-            for (int b = 0; b < 8 && !spawned; ++b) {
-                const float a = static_cast<float>(b) * 0.7853982f;
+        // The host's capsule stands its half height above its feet.
+        const float floorZ = at.Z - 85.f;
+        why = "no spot round the host at 5 to 25 m is clear of things for an ATV and on the NavMesh";
+        for (const float ahead : {500.f, 700.f, 1000.f, 1500.f, 2000.f, 2500.f}) {
+            for (int b = 0; b < 16 && !spawned; ++b) {
+                const float a = static_cast<float>(b) * 0.3926991f;
                 const float dx = f.X * std::cos(a) - f.Y * std::sin(a), dy = f.X * std::sin(a) + f.Y * std::cos(a);
                 const ue_wrap::FVector pt{at.X + dx * ahead, at.Y + dy * ahead, at.Z};
                 ue_wrap::trace::Hit hit;
-                if (!ue_wrap::trace::LineHitStatDyn(me, at, pt, &hit) || hit.blocked) continue;
+                if (ahead < 800.f && (!ue_wrap::trace::LineHitStatDyn(me, at, pt, &hit) || hit.blocked)) continue;
+                // The NavMesh point the spawn will use, on the host's own floor: the query's box reaches 3 m up, onto
+                // a shelf or a floor above, and the room is judged where the ATV will be born.
+                ue_wrap::FVector nav{};
+                if (!E::ProjectToNav(me, pt, {SN::kProjectCm, SN::kProjectCm, SN::kProjectCm}, &nav)) continue;
+                if (std::fabs(nav.Z - floorZ) > 60.f) {
+                    UE_LOGI("atv-drill: no room for the ATV %.0f m out at bearing %d: its NavMesh point is %.0f cm off "
+                            "the host's floor", ahead / 100.f, b, nav.Z - floorZ);
+                    continue;
+                }
+                std::wstring what;
+                if (!RoomForAtv(me, nav, nav.Z, what)) {
+                    UE_LOGI("atv-drill: no room for the ATV %.0f m out at bearing %d: %ls", ahead / 100.f, b, what.c_str());
+                    continue;
+                }
                 SN::Spawned sp;
-                if (!SN::SpawnAtNav(me, pt, sp)) continue;
+                if (!SN::SpawnAtNav(me, nav, sp)) continue;
                 atv.Set(sp.actor);
                 spawned = true;
             }
@@ -283,6 +329,13 @@ std::wstring SpawnOwnAtv(std::string& why) {
     });
     if (!rested) {
         why = "the spawned ATV did not come to rest";
+        return {};
+    }
+    // Whole after settling: an ATV that took a hit on the way down is no fixture for the steps.
+    float health = -1.f;
+    OnGt([&] { void* const a = atv.Get(); health = a ? ue_wrap::atv::GetHealth(a) : -1.f; });
+    if (health < 99.5f) {
+        why = "the spawned ATV was damaged settling (health " + std::to_string(health) + ")";
         return {};
     }
     UE_LOGI("atv-drill: the host spawned its own ATV for the drill, key='%ls', at rest", key.c_str());
@@ -329,6 +382,7 @@ bool Arrive() {
     g_key.assign(t.begin(), t.end());
     if (!WaitUntil("the ATV copy under the host's key", 120, [] { return CopyResolves(g_key); })) return false;
     PS::Mark(g_me == kClient ? "client_has_atv" : "observer_has_atv");
+    if (g_me == kClient) OnGt([] { coop::atv_sync::ArmDrillPark(); });   // step 10's ATV is the next spawn parked
     if (g_me == kClient) {
         std::string why;
         if (!WalkToAtv(g_key, why)) {

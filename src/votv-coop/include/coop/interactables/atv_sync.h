@@ -189,6 +189,9 @@ uint32_t SpawnedEver();
 uint32_t DestroysApplied();
 uint32_t SetEdgesApplied();
 uint32_t DeliberateParks();
+// [dev] The ATV gate drill's client: atv_park_first_spawn's park is armed from here on, so the first spawn it parks is
+// the joiner step's ATV, not the drill's own ATV the client's copy of comes first. Under the drill the park waits for it.
+void ArmDrillPark();
 size_t ParkPending();
 std::vector<std::wstring> ReceivedSpawnKeys();
 
