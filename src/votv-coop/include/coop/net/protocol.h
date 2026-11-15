@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 325;
+inline constexpr uint16_t kProtocolVersion = 326;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -4318,11 +4318,12 @@ struct WoodchipperFeedTail {
 };
 static_assert(sizeof(WoodchipperFeedTail) == 32, "WoodchipperFeedTail must be 32 bytes");
 // An ATV's host state (AtvHostState), or a client's request (AtvRequest). One payload, told apart by `op`: a request's
-// is 1..4 or 6, a state's 16 or 17. The syncer's horn is neither: it is a bit of AtvState's stateBits (kAtvHorn).
+// is 1..7, a state's 16 or 17. The syncer's horn is neither: it is a bit of AtvState's stateBits (kAtvHorn).
 namespace atv_host_op {
-// AtvRequest (client -> host): the four acts of a player's item on an ATV, and a copy's ask for the host's state (kSync: sent
+// AtvRequest (client -> host): the acts of a player's item on an ATV -- a refuel, a repair, a module fitted or taken off, a
+// battery fitted (`amount` the held battery's charge) or unscrewed -- and a copy's ask for the host's state (kSync: sent
 // when a copy is adopted holding none; the host answers with its state and applies nothing).
-inline constexpr uint8_t kRefuel = 1, kRepair = 2, kFit = 3, kTakeoff = 4, kSync = 6;
+inline constexpr uint8_t kRefuel = 1, kRepair = 2, kFit = 3, kTakeoff = 4, kBatteryIn = 5, kSync = 6, kBatteryOut = 7;
 // AtvHostState (host -> clients): the host copy's vitals, and the answer to a request.
 inline constexpr uint8_t kState = 16, kAnswer = 17;
 }  // namespace atv_host_op
@@ -4333,8 +4334,9 @@ inline constexpr uint8_t kOk = 0, kNotReady = 1, kGone = 2, kReach = 3, kNoItem 
                          kNotHeld = 7, kNotSyncer = 8, kMalformed = 9, kFull = 10;
 }  // namespace atv_host_reason
 // `flags`: the host copy's empty and broken marks (a state, an answer);
-// kAtvHostNoState, on an answer that carries no state (the fuel, health, marks and modules are zero and mean nothing).
-inline constexpr uint8_t kAtvHostEmpty = 0x08, kAtvHostBroken = 0x10, kAtvHostNoState = 0x20;
+// kAtvHostNoState, on an answer that carries no state (the fuel, health, marks and modules are zero and mean nothing);
+// kAtvHostBattery, the battery field read on the host's copy (without it a receiver leaves its copy's battery alone).
+inline constexpr uint8_t kAtvHostEmpty = 0x08, kAtvHostBroken = 0x10, kAtvHostNoState = 0x20, kAtvHostBattery = 0x40;
 struct AtvHostPayload {
     WireKey  key;          // 32 -- the ATV's Key
     float    fuel;         // 4 -- the host copy's fuel (a state, an answer)
@@ -4347,8 +4349,9 @@ struct AtvHostPayload {
     uint8_t  module;       // 1 -- a fitted or taken-off module's value (request); an answer's atv_host_reason
     uint8_t  moduleCount;  // 1 -- how many of `modules` are fitted (a state, an answer)
     uint8_t  modules[16];  // 16 -- the host copy's fitted module values, in the ATV's order (a state, an answer)
+    float    battery;      // 4 -- the host copy's battery charge, -1 with none fitted (a state, an answer)
 };
-static_assert(sizeof(AtvHostPayload) == 72, "AtvHostPayload must be 72 bytes");
+static_assert(sizeof(AtvHostPayload) == 76, "AtvHostPayload must be 76 bytes");
 
 // The edge a PropConvert re-skins.
 namespace propconvert_kind {
