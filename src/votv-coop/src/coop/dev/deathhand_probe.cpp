@@ -1,6 +1,7 @@
 // coop/dev/deathhand_probe.cpp -- [dev] a player dies with an item in its hand and is revived
-// (VOTVCOOP_DEATHHAND_PROBE=host|client names who dies; VOTVCOOP_DEATHHAND_NODEATH=1 the control: the hand
-// emptied and a toolbox put down at its feet instead of the death).
+// (VOTVCOOP_DEATHHAND_PROBE=host|client names who dies; VOTVCOOP_DEATHHAND_ITEM=row:class the item, the
+// toolbox by default; VOTVCOOP_DEATHHAND_NODEATH=1 the control: the hand
+// emptied, and the host puts a world item of the class down at the player's feet, instead of the death).
 //
 // In a session a death's run-ending travel is cancelled and the player revived in place (coop/player/death_revive),
 // where single player reloads the save. THE DYING PLAYER: at 20 s a toolbox into its hand (the hand is the inventory's
@@ -17,12 +18,15 @@
 #include "coop/dev/drill_hand.h"
 #include "coop/net/session.h"
 #include "coop/player/players_registry.h"
+#include "coop/player/puppet_drive.h"
+#include "coop/player/remote_player.h"
 #include "ue_wrap/actors/inventory.h"
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/engine_attach.h"
 #include "ue_wrap/engine/engine_mainplayer.h"
 
 #include <windows.h>
@@ -66,6 +70,30 @@ void Log(void* me, const char* when) {
             Describe(gs.holdingActor).c_str(), Describe(gs.grabbingActor).c_str());
 }
 
+// The item, "row:class" (VOTVCOOP_DEATHHAND_ITEM), the toolbox by default.
+const std::wstring& ItemRow() {
+    static std::wstring row;
+    static std::wstring cls;
+    if (row.empty()) {
+        std::string v = coop::config::ReadEnv("VOTVCOOP_DEATHHAND_ITEM");
+        if (v.find(':') == std::string::npos) v = "toolbox:prop_toolbox_C";
+        const size_t c = v.find(':');
+        row.assign(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(c));
+        cls.assign(v.begin() + static_cast<std::ptrdiff_t>(c) + 1, v.end());
+    }
+    return row;
+}
+const std::wstring& ItemClass() {
+    static std::wstring cls;
+    if (cls.empty()) {
+        ItemRow();
+        std::string v = coop::config::ReadEnv("VOTVCOOP_DEATHHAND_ITEM");
+        if (v.find(':') == std::string::npos) v = "toolbox:prop_toolbox_C";
+        cls.assign(v.begin() + static_cast<std::ptrdiff_t>(v.find(':')) + 1, v.end());
+    }
+    return cls;
+}
+
 bool NoDeath() {
     static const bool v = coop::config::ReadEnv("VOTVCOOP_DEATHHAND_NODEATH") == "1";
     return v;
@@ -74,7 +102,7 @@ bool NoDeath() {
 void* NearestToolbox(const ue_wrap::FVector& at) {
     void* best = nullptr;
     float bestD = 1e30f;
-    for (void* o : R::FindObjectsByClass(L"prop_toolbox_C")) {
+    for (void* o : R::FindObjectsByClass(ItemClass().c_str())) {
         ue_wrap::FVector p{};
         if (!o || !R::IsLive(o) || R::NameStartsWith(R::NameOf(o), L"Default__") || !E::TryGetActorLocation(o, p)) continue;
         const float d = (p.X - at.X) * (p.X - at.X) + (p.Y - at.Y) * (p.Y - at.Y) + (p.Z - at.Z) * (p.Z - at.Z);
@@ -96,7 +124,24 @@ void* g_box = nullptr;
 void Tick(coop::net::Session* session) {
     if (Dier().empty() || !session || !session->running() || !session->connected()) return;
     const bool host = session->role() == coop::net::Role::Host;
-    if ((Dier() == "host") != host) return;
+    if ((Dier() == "host") != host) {
+        // The control's other half: the host puts a toolbox of its own down at the client's feet, a world prop as the
+        // death's drop is, at 24 s.
+        static bool spawned = false;
+        static uint64_t armedAt = 0;
+        if (!armedAt) armedAt = Now();
+        if (host && NoDeath() && !spawned && Now() - armedAt >= 24000u) {
+            coop::RemotePlayer& rp = coop::puppet_drive::Puppet(1);
+            ue_wrap::FVector at{};
+            if (rp.valid() && E::TryGetActorLocation(rp.GetActor(), at)) {
+                spawned = true;
+                void* const cls = R::FindClass(ItemClass().c_str());
+                UE_LOGI("[DEATHHAND] host: a world item put down at the client's feet (ok=%d)",
+                        cls && E::SpawnActor(cls, {at.X + 60.f, at.Y, at.Z - 40.f}) ? 1 : 0);
+            }
+        }
+        return;
+    }
     if (!g_startAt) {
         g_startAt = Now();
         UE_LOGI("[DEATHHAND] probe armed role=%s", host ? "host" : "client");
@@ -107,18 +152,21 @@ void Tick(coop::net::Session* session) {
     if (g_step == 0 && t >= 20000u) {
         g_step = 1;
         UE_LOGI("[DEATHHAND] a toolbox into the hand (ok=%d)",
-                coop::dev::drill_hand::TakeIntoHandNow(L"toolbox", L"prop_toolbox_C") ? 1 : 0);
+                coop::dev::drill_hand::TakeIntoHandNow(ItemRow().c_str(), ItemClass().c_str()) ? 1 : 0);
     }
     if (g_step == 1 && t >= 25000u) {
         g_step = 2;
         E::TryGetActorLocation(me, g_diedAt);
         Log(me, "before the death");
         if (NoDeath()) {
-            // The control: the hand emptied and a toolbox put down at the player's feet, as the death's drop leaves it.
-            const bool emptied = coop::dev::drill_hand::TakeIntoHandNow(L"None", nullptr);
-            void* const cls = R::FindClass(L"prop_toolbox_C");
-            void* const box = cls ? E::SpawnActor(cls, {g_diedAt.X, g_diedAt.Y, g_diedAt.Z - 40.f}) : nullptr;
-            UE_LOGI("[DEATHHAND] control: hand emptied (ok=%d), a toolbox put down (ok=%d)", emptied ? 1 : 0, box ? 1 : 0);
+            // The control: the hand emptied; the host's own item lies at this player's feet, put down by the host.
+            UE_LOGI("[DEATHHAND] control: hand emptied (ok=%d)",
+                    coop::dev::drill_hand::TakeIntoHandNow(L"None", nullptr) ? 1 : 0);
+            if (host) {   // the host's own world item, put down by the host at its own feet
+                void* const cls = R::FindClass(ItemClass().c_str());
+                UE_LOGI("[DEATHHAND] host: a world item put down at its own feet (ok=%d)",
+                        cls && E::SpawnActor(cls, {g_diedAt.X + 60.f, g_diedAt.Y, g_diedAt.Z - 40.f}) ? 1 : 0);
+            }
         } else {
             UE_LOGI("[DEATHHAND] the lethal hit (ok=%d)", E::InvokeAddPlayerDamage(me, 400.f, true) ? 1 : 0);
         }
@@ -136,6 +184,11 @@ void Tick(coop::net::Session* session) {
         Log(me, "after the revive");
         // The toolbox the death dropped, collected as the use key's collect does: looked at, then collectObject.
         void* const box = g_box && R::IsLive(g_box) ? g_box : nullptr;
+        UE_LOGI("[DEATHHAND] the item to collect: simulating %d, frozen %d", box && E::IsActorRootSimulatingPhysics(box) ? 1 : 0,
+                Bool(box, L"frozen"));
+        ue_wrap::inventory::LivePersonalStore before;
+        UE_LOGI("[DEATHHAND] the inventory holds %d record(s) before the collect",
+                ue_wrap::inventory::ReadLivePersonalStore(before) ? static_cast<int>(before.records.size()) : -1);
         // putObjectInventory2(actor): where every collect key ends (the drop key's, the use key's).
         bool ran = false, put = false;
         if (box) {
@@ -154,8 +207,8 @@ void Tick(coop::net::Session* session) {
         ue_wrap::inventory::LivePersonalStore store;
         if (ue_wrap::inventory::ReadLivePersonalStore(store))
             for (const auto& r : store.records)
-                if (r.className == L"prop_toolbox_C") ++carried;
-        for (void* o : R::FindObjectsByClass(L"prop_toolbox_C"))
+                if (r.className == ItemClass()) ++carried;
+        for (void* o : R::FindObjectsByClass(ItemClass().c_str()))
             if (o && R::IsLive(o) && !R::NameStartsWith(R::NameOf(o), L"Default__")) ++live;
         UE_LOGI("[DEATHHAND] after the collect: toolboxes in the inventory %d, in the world %d", carried, live);
         Log(me, "after the collect");
