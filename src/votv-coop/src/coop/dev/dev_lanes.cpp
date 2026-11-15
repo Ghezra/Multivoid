@@ -139,6 +139,9 @@
 #include "coop/dev/binput_probe.h"  // [dev] a client's puts from its inventory into a garbage bin, logged on both
 #include "coop/dev/vidcam_probe.h"  // [dev] a camcorder recording driven through the game's calls
 #include "coop/dev/dial_probe.h"  // [dev] a client turning the desk's frequency dial, logged on both
+#include "coop/dev/deskaudio_probe.h"  // [dev] the signal desk's sound components: spatial or not
+#include "coop/dev/grime_census.h"  // [dev] the grime decals counted per class with their dirt
+#include "coop/dev/dingus_probe.h"  // [dev] the dingus found, pocketed and dropped, its music logged on every peer
 #include "coop/dev/wall_fill_probe.h"  // [dev] an unfinished wall filled with bricks by both players, logged on both
 #include "coop/dev/wall_preview_probe.h"  // [dev] a client's wall builder preview, logged on both
 #include "coop/dev/tower_poof_probe.h"  // [dev] the stolen radio tower fired on the host, its tower read on both
@@ -473,6 +476,9 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::binput_probe::Tick(&session);  // [dev] puts into a garbage bin (a latched read when off)
     coop::dev::vidcam_probe::Tick(&session);  // [dev] a camcorder recording (a latched read when off)
     coop::dev::dial_probe::Tick(&session);  // [dev] the desk's frequency dial (a latched read when off)
+    coop::dev::deskaudio_probe::Tick(&session);  // [dev] the desk's sound components (a latched read when off)
+    coop::dev::grime_census::Tick();  // [dev] the grime census (a latched read when off)
+    coop::dev::dingus_probe::Tick(&session);  // [dev] the dingus (a latched read when off)
     coop::dev::wall_fill_probe::Tick(&session);  // [dev] an unfinished wall's bricks on both peers (a latched read when off)
     coop::dev::wall_preview_probe::Tick(&session);  // [dev] a wall builder's preview on both peers (a latched read when off)
     coop::dev::tower_poof_probe::Tick(&session);  // [dev] the radio tower on both peers (a latched read when off)

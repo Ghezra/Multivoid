@@ -394,6 +394,9 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/binput_probe.cpp
     src/coop/dev/vidcam_probe.cpp
     src/coop/dev/dial_probe.cpp
+    src/coop/dev/deskaudio_probe.cpp
+    src/coop/dev/grime_census.cpp
+    src/coop/dev/dingus_probe.cpp
     src/coop/dev/wall_fill_probe.cpp
     src/coop/dev/wall_preview_probe.cpp
     src/coop/dev/tower_poof_probe.cpp

@@ -4,6 +4,7 @@
 #include "coop/dev/atv_gate_drill.h"
 
 #include "atv_gate_drill_detail.h"  // co-located private header (src tree, not include/)
+#include "atv_spawn_near.h"         // SpawnAtNav, KeyOf (co-located private header)
 
 #include "harness/autotest.h"   // IsClientRole
 #include "harness/autotest/peer_signal.h"
@@ -14,6 +15,10 @@
 #include "coop/player/remote_player.h"
 #include "coop/session/net_pump.h"
 #include "coop/session/rig_verdict.h"
+#include "coop/config/config.h"
+
+#include "ue_wrap/core/cached_obj_ref.h"
+#include "ue_wrap/engine/engine.h"
 
 #include "ue_wrap/core/log.h"
 
@@ -214,6 +219,43 @@ bool WorldUp() {
            });
 }
 
+// VOTVCOOP_ATV_DRILL_SPAWN=1: the host spawns the drill's ATV on the NavMesh 5 m before itself and names it, rather than
+// the world's nearest, for a world whose ATVs stand where no walk arrives (one left on a roof by an earlier run). Empty,
+// with `why`, when the spawn or its key failed.
+std::wstring SpawnOwnAtv(std::string& why) {
+    namespace SN = coop::dev::atv_spawn_near;
+    namespace E = ue_wrap::engine;
+    ue_wrap::CachedObjRef atv;
+    bool spawned = false;
+    OnGt([&] {
+        void* const me = coop::players::Registry::Get().Local();
+        ue_wrap::FVector at{};
+        if (!me || !E::TryGetActorLocation(me, at)) return;
+        const ue_wrap::FVector f = E::GetActorForwardVector(me);
+        SN::Spawned sp;
+        spawned = SN::SpawnAtNav(me, {at.X + f.X * 500.f, at.Y + f.Y * 500.f, at.Z}, sp);
+        if (spawned) atv.Set(sp.actor);
+        else why = std::string(sp.what ? sp.what : "the spawn") + ": " + sp.got;
+    });
+    if (!spawned) return {};
+    std::wstring key;
+    const char* bad = nullptr;
+    SN::Key state = SN::Key::Wait;
+    const bool keyed = WaitUntil("the spawned ATV in the host's table", 30, [&] {
+        OnGt([&] {
+            void* const a = atv.Get();
+            state = a ? SN::KeyOf(a, &key, &bad) : SN::Key::Bad;
+        });
+        return state != SN::Key::Wait;
+    });
+    if (!keyed || state == SN::Key::Bad) {
+        why = bad ? bad : "the spawned ATV did not enter the host's table";
+        return {};
+    }
+    UE_LOGI("atv-drill: the host spawned its own ATV for the drill, key='%ls'", key.c_str());
+    return key;
+}
+
 // Every peer's way into its place: the ATV chosen by the host, its copy resolved on each client, the director walking the
 // client and then the host beside it.
 bool Arrive() {
@@ -221,7 +263,16 @@ bool Arrive() {
     if (g_me == kHost) {
         for (const char* m : {"client_ready", "observer_ready"})
             if (!AwaitMark(m, t, kJoinS)) return false;
-        g_key = ChooseAtv();
+        if (coop::config::ReadEnv("VOTVCOOP_ATV_DRILL_SPAWN") == "1") {
+            std::string why;
+            g_key = SpawnOwnAtv(why);
+            if (g_key.empty()) {
+                End('I', "the host's own ATV: " + why);
+                return false;
+            }
+        } else {
+            g_key = ChooseAtv();
+        }
         if (g_key.empty()) {
             End('I', "the world holds no ATV a route from the host reaches");
             return false;
