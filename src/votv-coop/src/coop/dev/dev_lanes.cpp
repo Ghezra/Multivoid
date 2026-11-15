@@ -138,6 +138,7 @@
 #include "coop/dev/cookpad_probe.h"  // [dev] a food a client sets on a cooking pad, logged on both
 #include "coop/dev/binput_probe.h"  // [dev] a client's puts from its inventory into a garbage bin, logged on both
 #include "coop/dev/vidcam_probe.h"  // [dev] a camcorder recording driven through the game's calls
+#include "coop/dev/dial_probe.h"  // [dev] a client turning the desk's frequency dial, logged on both
 #include "coop/dev/wall_fill_probe.h"  // [dev] an unfinished wall filled with bricks by both players, logged on both
 #include "coop/dev/wall_preview_probe.h"  // [dev] a client's wall builder preview, logged on both
 #include "coop/dev/tower_poof_probe.h"  // [dev] the stolen radio tower fired on the host, its tower read on both
@@ -471,6 +472,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::cookpad_probe::Tick(&session);  // [dev] a food set on a cooking pad (a latched read when off)
     coop::dev::binput_probe::Tick(&session);  // [dev] puts into a garbage bin (a latched read when off)
     coop::dev::vidcam_probe::Tick(&session);  // [dev] a camcorder recording (a latched read when off)
+    coop::dev::dial_probe::Tick(&session);  // [dev] the desk's frequency dial (a latched read when off)
     coop::dev::wall_fill_probe::Tick(&session);  // [dev] an unfinished wall's bricks on both peers (a latched read when off)
     coop::dev::wall_preview_probe::Tick(&session);  // [dev] a wall builder's preview on both peers (a latched read when off)
     coop::dev::tower_poof_probe::Tick(&session);  // [dev] the radio tower on both peers (a latched read when off)
