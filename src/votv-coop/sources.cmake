@@ -9,9 +9,11 @@
 # wrapper), then src/coop/ (gameplay and network), then src/ui/ and src/harness/, with the
 # resource scripts last. The developer drills and probes of src/coop/dev/ are a list of their
 # own (sources_dev.cmake), appended at the end. The src/ue_wrap/ lines are two lists in
-# sources_ue_wrap.cmake, expanded in place.
+# sources_ue_wrap.cmake, expanded in place, and so is the src/harness/ and src/l10n/ tail, in
+# sources_harness.cmake.
 
 include(${CMAKE_CURRENT_LIST_DIR}/sources_ue_wrap.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/sources_harness.cmake)
 
 set(VOTVCOOP_SOURCES
     src/bootstrap/dllmain.cpp
@@ -554,6 +556,7 @@ set(VOTVCOOP_SOURCES
     src/coop/voice/voice_capture.cpp
     src/coop/voice/voice_playback.cpp
     src/coop/voice/camcorder_voice.cpp
+    src/coop/props/dingus_sync.cpp
     src/coop/net/session_voice.cpp
     src/ui/voice_icons.cpp
     src/ui/voice_panel.cpp
@@ -663,137 +666,7 @@ set(VOTVCOOP_SOURCES
     src/coop/permissions/permissions_cases_files.cpp
     src/coop/permissions/permissions_cases_grants.cpp
     src/coop/commands/command_sync.cpp
-    src/harness/harness.cpp
-    src/harness/session_runtime.cpp
-    src/harness/join_leave.cpp
-    src/harness/pump.cpp
-    src/harness/world_boot.cpp
-    src/harness/harness_diag.cpp
-    src/harness/browser_click_arm.cpp
-    src/harness/autotest/autotest_grab.cpp
-    src/harness/autotest/autotest_grabintent.cpp
-    src/harness/autotest/autotest_hostthrow.cpp
-    src/harness/autotest/autotest_pilelook.cpp
-    src/harness/autotest/autotest_broomstroke.cpp
-    src/harness/autotest/autotest_broomstroke_world.cpp
-    src/harness/autotest/autotest_chippile.cpp
-    src/harness/autotest/autotest_trashpark.cpp
-    src/harness/autotest/autotest_driveslot.cpp
-    src/harness/autotest/autotest_clump.cpp
-    src/harness/autotest/autotest_flashlight.cpp
-    src/harness/autotest/autotest_tracker_selftest.cpp
-    src/harness/autotest/autotest_weather.cpp
-    src/harness/autotest/autotest_seeddrill.cpp
-    src/harness/autotest/autotest_scanparity.cpp
-    src/harness/autotest/autotest_worldrules.cpp
-    src/harness/autotest/autotest_menuspawn.cpp
-    src/harness/autotest/autotest_config.cpp
-    src/harness/autotest/autotest_dispatch.cpp
-    src/harness/autotest/autotest_wait.cpp
-    src/harness/autotest/autotest_damage.cpp
-    src/harness/autotest/autotest_dmghazard.cpp
-    src/harness/autotest/autotest_playerdmg.cpp
-    src/harness/autotest/death_state_probe.cpp
-    src/harness/autotest/autotest_death.cpp
-    src/harness/autotest/death_badsun_arm.cpp
-    src/harness/autotest/autotest_puppetframe.cpp
-    src/harness/autotest/autotest_ragdoll.cpp
-    src/harness/autotest/autotest_ragdoll_spawn_probe.cpp
-    src/harness/autotest/autotest_menutravel_probe.cpp
-    src/harness/autotest/autotest_reloadchurn.cpp
-    src/harness/autotest/autotest_islive_drill.cpp
-    src/harness/autotest/autotest_fog_probe.cpp
-    src/harness/autotest/autotest_hud_tint.cpp
-    src/harness/autotest/autotest_eventforce.cpp
-    src/harness/autotest/autotest_alarmforce.cpp
-    src/harness/autotest/autotest_piramidforce.cpp
-    src/harness/autotest/autotest_wisplane.cpp
-    src/harness/autotest/autotest_navprobe.cpp
-    src/harness/autotest/autotest_kwisp_probe.cpp
-    src/harness/autotest/autotest_pauseguard.cpp
-    src/harness/autotest/autotest_kickprobe.cpp
-    src/harness/autotest/autotest_floodprobe.cpp
-    src/harness/autotest/autotest_scriptgate.cpp
-    src/harness/autotest/autotest_runend.cpp
-    src/harness/autotest/autotest_slip.cpp
-    src/harness/autotest/autotest_flash_battery.cpp
-    src/harness/autotest/autotest_upgrade_buy.cpp
-    src/harness/autotest/autotest_info_hint.cpp
-    src/harness/autotest/peer_signal.cpp
-    src/harness/autotest/meet.cpp
-    src/harness/autotest/autotest_seat_ragdoll.cpp
-    src/harness/autotest/autotest_move_osc.cpp
-    src/harness/autotest/autotest_beam_look.cpp
-    src/harness/autotest/autotest_desk_view.cpp
-    src/harness/autotest/autotest_cap_label.cpp
-    src/harness/autotest/autotest_dish_sound.cpp
-    src/harness/autotest/autotest_save_notice.cpp
-    src/harness/autotest/autotest_beam_sweep.cpp
-    src/harness/autotest/autotest_class_dump.cpp
-    src/harness/autotest/autotest_can_state.cpp
-    src/harness/autotest/autotest_food_state.cpp
-    src/harness/autotest/autotest_cook_state.cpp
-    src/harness/autotest/autotest_radio_state.cpp
-    src/harness/autotest/autotest_tv_state.cpp
-    src/harness/autotest/autotest_world_sound.cpp
-    src/harness/autotest/autotest_farm_harvest.cpp
-    src/harness/autotest/autotest_sv_request.cpp
-    src/harness/autotest/autotest_module_buy.cpp
-    src/harness/autotest/autotest_desk_short.cpp
-    src/harness/autotest/autotest_drone_hover.cpp
-    src/harness/autotest/autotest_hacksaw.cpp
-    src/harness/autotest/autotest_chipper_feed.cpp
-    src/harness/autotest/autotest_body_push.cpp
-    src/harness/autotest/autotest_saveui.cpp
-    src/harness/autotest/autotest_spill.cpp
-    src/harness/autotest/autotest_ambient_creature.cpp
-    src/harness/autotest/autotest_ambient_field.cpp
-    src/harness/autotest/autotest_level_travel.cpp
-    src/harness/autotest/autotest_plant_state.cpp
-    src/harness/autotest/autotest_sus_hole.cpp
-    src/harness/autotest/autotest_join_drop.cpp
-    src/harness/autotest/autotest_prop_fire.cpp
-    src/harness/autotest/autotest_ground_hose.cpp
-    src/harness/autotest/autotest_build.cpp
-    src/harness/autotest/autotest_vent_crawler.cpp
-    src/harness/autotest/autotest_browser_filter.cpp
-    src/harness/autotest/autotest_disc_race.cpp
-    src/harness/autotest/autotest_mushroom.cpp
-    src/harness/autotest/autotest_crowbar.cpp
-    src/harness/autotest/autotest_data_case.cpp
-    src/harness/autotest/autotest_atv_riders.cpp
-    src/harness/autotest/autotest_atv_passenger.cpp
-    src/harness/autotest/autotest_cargo_lift.cpp
-    src/harness/autotest/autotest_kerfus_wheels.cpp
-    src/harness/autotest/autotest_vidcam_drop.cpp
-    src/harness/autotest/autotest_backrooms_probe.cpp
-    src/harness/autotest/autotest_container_gaps.cpp
-    src/harness/autotest/autotest_plant_gate.cpp
-    src/harness/autotest/autotest_woodchipper.cpp
-    src/harness/autotest/autotest_class_resolve.cpp
-    src/harness/autotest/autotest_prop_props.cpp
-    src/harness/autotest/autotest_nightmare.cpp
-    src/harness/autotest/autotest_level_visit.cpp
-    src/harness/autotest/autotest_ufo.cpp
-    src/harness/autotest/autotest_orb.cpp
-    src/harness/autotest/autotest_sky_tp.cpp
-    src/harness/autotest/autotest_roomba.cpp
-    src/ui/input_focus.cpp
-    src/harness/screenshot.cpp
-    src/harness/mod_environment.cpp
-    src/harness/compat_boot.cpp
-    src/harness/compat_report.cpp
-    src/harness/fingerprint_capture.cpp
-    src/harness/fingerprint_census.cpp
-    src/harness/sdk_check.cpp
-    src/l10n/po_reader.cpp
-    src/l10n/plural_expr.cpp
-    src/l10n/printf_check.cpp
-    src/l10n/fmt.cpp
-    src/l10n/catalog.cpp
-    src/l10n/locale_choice.cpp
-    src/l10n/l10n.cpp
-    src/l10n/l10n_selftest.cpp
+    ${VOTVCOOP_SOURCES_HARNESS}
 )
 
 include(${CMAKE_CURRENT_LIST_DIR}/sources_dev.cmake)

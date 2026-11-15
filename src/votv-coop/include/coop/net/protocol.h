@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 324;
+inline constexpr uint16_t kProtocolVersion = 325;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1575,6 +1575,10 @@ enum class ReliableKind : uint16_t {
     // sends it on, the host's own to everyone. Each peer shows it on its mirror of that hand. Not pre-world.
     // WallPreviewPayload.
     WallPreview = 280,
+    // The dingus found (coop/props/dingus_sync): a client's report of one it found, to the host (op 0), and the host's
+    // word that one is found, to every client and to a joiner (op 1); each peer marks its copies under the key found and
+    // turns their music off. Not pre-world. DingusFoundPayload.
+    DingusFound = 281,
 };
 
 #pragma pack(push, 1)
@@ -2475,6 +2479,16 @@ struct WallPreviewPayload {
     float   pivotB[3];     // the far corner, while editing
 };
 static_assert(sizeof(WallPreviewPayload) == 64, "WallPreviewPayload must be 64 bytes");
+
+// DingusFound. A dingus is named by its save key, which it keeps through the inventory.
+inline constexpr uint8_t kDingusFoundReport = 0;   // CLIENT->HOST: this peer's copy of it was found
+inline constexpr uint8_t kDingusFoundHost   = 1;   // HOST->ALL: it is found
+struct DingusFoundPayload {
+    WireKey key;     // 32 -- the dingus's save key
+    uint8_t op;      // 1 -- kDingusFound*
+    uint8_t pad[3];  // 3 -- zero
+};
+static_assert(sizeof(DingusFoundPayload) == 36, "DingusFoundPayload must be 36 bytes");
 
 // A burning prop (PropFireState), or a client's light (PropFireRequest).
 struct PropFirePayload {
