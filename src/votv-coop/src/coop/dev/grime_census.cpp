@@ -1,10 +1,13 @@
 // coop/dev/grime_census.cpp -- [dev] the world's grime decals counted (VOTVCOOP_GRIME_CENSUS=1), for Ghezra/Multivoid
-// issue 36: 20 s after the world is up and every 30 s after, per grime class (the walls' cracks, the dust, the spills),
-// how many decals stand and their summed `process`, the dirt the game paints them by (`[GRIME]`). Needs no session.
+// issue 36: 20 s after the world is up, every 30 s after and right after an optional save (VOTVCOOP_GRIME_SAVE_AT), per
+// grime class (the walls' cracks, the dust, the spills), how many decals stand and their summed `process`, the dirt the
+// game paints them by (`[GRIME]`). Needs no session.
 
 #include "coop/dev/grime_census.h"
 
 #include "coop/config/config.h"
+#include "ue_wrap/actors/inventory.h"
+#include "ue_wrap/core/call.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
@@ -13,6 +16,7 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <map>
 #include <string>
 
@@ -38,6 +42,25 @@ void Tick() {
     if (!g_startAt) {
         g_startAt = now;
         g_nextAt = now + 20000u;
+    }
+    // VOTVCOOP_GRIME_SAVE_AT=<s>: this peer saves the world once, that many seconds in, through saveSlot_C::save as the
+    // game's own save funnels (the main slot), so a later launch can load what a hosted session wrote.
+    static const uint64_t s_saveAt = 1000ull * std::strtoull(coop::config::ReadEnv("VOTVCOOP_GRIME_SAVE_AT").c_str(), nullptr, 10);
+    static bool s_saved = false;
+    if (s_saveAt && !s_saved && now - g_startAt >= s_saveAt) {
+        s_saved = true;
+        void* const slot = ue_wrap::inventory::ResolveSaveSlot();
+        void* const fn = slot ? R::FindFunction(R::ClassOf(slot), L"save") : nullptr;
+        ue_wrap::ParamFrame f(fn);
+        bool ran = false;
+        if (f.valid()) {
+            f.Set(L"quicksave", false);
+            f.Set(L"overwriteSubsave", false);
+            f.Set(L"isForcedSave", true);
+            ran = ue_wrap::Call(slot, f);
+        }
+        UE_LOGI("[GRIME] saved the world through saveSlot_C::save (ran=%d)", ran ? 1 : 0);
+        g_nextAt = now;   // a census right after it
     }
     if (now < g_nextAt) return;
     g_nextAt = now + 30000u;

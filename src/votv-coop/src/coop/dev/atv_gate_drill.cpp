@@ -18,10 +18,12 @@
 #include "coop/config/config.h"
 
 #include "ue_wrap/core/cached_obj_ref.h"
+#include "ue_wrap/core/trace.h"
 #include "ue_wrap/engine/engine.h"
 
 #include "ue_wrap/core/log.h"
 
+#include <cmath>
 #include <cstdint>
 #include <string>
 
@@ -219,9 +221,9 @@ bool WorldUp() {
            });
 }
 
-// VOTVCOOP_ATV_DRILL_SPAWN=1: the host spawns the drill's ATV on the NavMesh 5 m before itself and names it, rather than
-// the world's nearest, for a world whose ATVs stand where no walk arrives (one left on a roof by an earlier run). Empty,
-// with `why`, when the spawn or its key failed.
+// VOTVCOOP_ATV_DRILL_SPAWN=1: the host spawns the drill's ATV on the NavMesh in clear sight of itself and names it,
+// rather than the world's nearest, for a world whose ATVs stand where no walk arrives (one left on a roof by an earlier
+// run). Empty, with `why`, when the spawn, its key or its rest failed.
 std::wstring SpawnOwnAtv(std::string& why) {
     namespace SN = coop::dev::atv_spawn_near;
     namespace E = ue_wrap::engine;
@@ -231,11 +233,24 @@ std::wstring SpawnOwnAtv(std::string& why) {
         void* const me = coop::players::Registry::Get().Local();
         ue_wrap::FVector at{};
         if (!me || !E::TryGetActorLocation(me, at)) return;
+        // The first spot, by bearing round the host at 5 m then 7 m, that the host sees with nothing between: an act
+        // aims at the ATV from beside it, and a door or a wall in the way takes the player's trace.
         const ue_wrap::FVector f = E::GetActorForwardVector(me);
-        SN::Spawned sp;
-        spawned = SN::SpawnAtNav(me, {at.X + f.X * 500.f, at.Y + f.Y * 500.f, at.Z}, sp);
-        if (spawned) atv.Set(sp.actor);
-        else why = std::string(sp.what ? sp.what : "the spawn") + ": " + sp.got;
+        why = "no spot round the host at 5 or 7 m is in clear sight and on the NavMesh";
+        for (const float ahead : {500.f, 700.f}) {
+            for (int b = 0; b < 8 && !spawned; ++b) {
+                const float a = static_cast<float>(b) * 0.7853982f;
+                const float dx = f.X * std::cos(a) - f.Y * std::sin(a), dy = f.X * std::sin(a) + f.Y * std::cos(a);
+                const ue_wrap::FVector pt{at.X + dx * ahead, at.Y + dy * ahead, at.Z};
+                ue_wrap::trace::Hit hit;
+                if (!ue_wrap::trace::LineHitStatDyn(me, at, pt, &hit) || hit.blocked) continue;
+                SN::Spawned sp;
+                if (!SN::SpawnAtNav(me, pt, sp)) continue;
+                atv.Set(sp.actor);
+                spawned = true;
+            }
+            if (spawned) break;
+        }
     });
     if (!spawned) return {};
     std::wstring key;
@@ -252,7 +267,25 @@ std::wstring SpawnOwnAtv(std::string& why) {
         why = bad ? bad : "the spawned ATV did not enter the host's table";
         return {};
     }
-    UE_LOGI("atv-drill: the host spawned its own ATV for the drill, key='%ls'", key.c_str());
+    // Born above the NavMesh, it drops and settles: named only once its place has held still for a second, so no
+    // client's copy is still being corrected onto it while an act aims at it.
+    ue_wrap::FVector last{};
+    int still = 0;
+    const bool rested = WaitUntil("the spawned ATV at rest", 20, [&] {
+        ue_wrap::FVector now{};
+        bool read = false;
+        OnGt([&] { void* const a = atv.Get(); read = a && E::TryGetActorLocation(a, now); });
+        if (!read) return false;
+        const float dx = now.X - last.X, dy = now.Y - last.Y, dz = now.Z - last.Z;
+        still = dx * dx + dy * dy + dz * dz < 1.f ? still + 1 : 0;
+        last = now;
+        return still >= 10;   // ten reads 100 ms apart
+    });
+    if (!rested) {
+        why = "the spawned ATV did not come to rest";
+        return {};
+    }
+    UE_LOGI("atv-drill: the host spawned its own ATV for the drill, key='%ls', at rest", key.c_str());
     return key;
 }
 
