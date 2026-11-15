@@ -87,4 +87,9 @@ void SeedPingAttributionFromMachine();
 
 void OnDisconnect();
 
+namespace dev {   // the dial probe reads them; compiled always
+// The DeskInput deltas this peer sent and received this session, by field (DeskInputField::Count of each).
+void Counts(uint32_t* sent, uint32_t* received);
+}  // namespace dev
+
 }  // namespace coop::desk_input_sync

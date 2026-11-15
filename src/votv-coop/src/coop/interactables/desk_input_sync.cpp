@@ -40,6 +40,14 @@ struct DialOwn {
     uint64_t untilMs = 0;
 };
 DialOwn g_dial[2];
+uint32_t g_sentBy[static_cast<int>(DeskInputField::Count)] = {};       // dev::Counts
+uint32_t g_receivedBy[static_cast<int>(DeskInputField::Count)] = {};
+
+// The dial handoff off (dev.desk_dial_fast_off): the speeds at the poll, no dial kept, no stopped offset sent.
+bool DialFastOff() {
+    static const bool s_off = coop::config::ResolveFlag(coop::config_registry::rows::desk_dial_fast_off);
+    return s_off;
+}
 constexpr uint64_t kDialHandoffMs = 1500;   // the longest a stopped dial waits for the host's stream to show its offset
 constexpr float kFrOffsetMax = 1000.f;      // calculate_download clamps DL_FrFilterOffset to 0..1000
 constexpr float kPoOffsetWrap = 360.f;      // and wraps DL_poFilterOffset modulo 360
@@ -139,6 +147,7 @@ void SendDelta(coop::net::Session* s, DeskInputField field,
     p.boolVal = bv ? 1 : 0;
     p.floatVal = fv;
     p.intVal = iv;
+    if (p.field < static_cast<uint8_t>(DeskInputField::Count)) ++g_sentBy[p.field];
     if (s->role() == coop::net::Role::Host)
         s->SendReliable(coop::net::ReliableKind::DeskInput, &p, sizeof(p));
     else
@@ -338,7 +347,7 @@ void Install(coop::net::Session* session) {
 void Tick() {
     auto* s = g_session.load(std::memory_order_acquire);
     if (!s || !s->running()) return;
-    if (s->connected() && CD::EnsureResolved() && CD::Instance()) PollDials(s);
+    if (!DialFastOff() && s->connected() && CD::EnsureResolved() && CD::Instance()) PollDials(s);
     const auto now = Clock::now();
     if (now < g_nextPoll) return;
     g_nextPoll = now + kPoll;
@@ -363,6 +372,7 @@ void OnDeskInput(const coop::net::DeskInputPayload& wire, uint8_t senderSlot) {
     if (!s) return;
     if (wire.field >= static_cast<uint8_t>(DeskInputField::Count)) return;
     if (!std::isfinite(wire.floatVal)) return;
+    ++g_receivedBy[wire.field];
     // The remap bounds are clamped to the range updRemap clamps to (the way a wire codec clamps a field
     // to its range): the echo-prime below then stores what the desk will hold, and a peer's out-of-range
     // value cannot read as a local edge on the next poll and bounce back through the host.
@@ -407,7 +417,7 @@ void OnDeskInput(const coop::net::DeskInputPayload& wire, uint8_t senderSlot) {
 }
 
 bool OwnsDialOffset(int dial, float hostOffset) {
-    if (dial < 0 || dial > 1) return false;
+    if (dial < 0 || dial > 1 || DialFastOff()) return false;
     DialOwn& d = g_dial[dial];
     if (!d.local) return false;
     const float speed = dial == 0 ? g_baseline.dlFrFilterSpeed : g_baseline.dlPoFilterSpeed;
@@ -518,7 +528,17 @@ void OnPeerLeft(int slot) {
     UE_LOGI("desk_input: ping attribution cleared -- setter slot %d left mid-ping", slot);
 }
 
+namespace dev {
+void Counts(uint32_t* sent, uint32_t* received) {
+    for (int i = 0; i < static_cast<int>(DeskInputField::Count); ++i) {
+        if (sent) sent[i] = g_sentBy[i];
+        if (received) received[i] = g_receivedBy[i];
+    }
+}
+}  // namespace dev
+
 void OnDisconnect() {
+    for (DialOwn& d : g_dial) d = DialOwn{};
     // No session-end machine clear either: nothing wire-writes the flag, and a local
     // organic ping ends itself natively.
     g_baseline = {};

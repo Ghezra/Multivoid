@@ -81,10 +81,14 @@ stops until the host's stream shows where it stopped (a second and a half at mos
 its own desk's offset and match for the dial rather than the stream's; at its stop it sends the
 offset, which the host takes, clamped to the range the desk's tick holds it to, and its stream
 carries on. The dial answers the turning hand without a round trip, and every peer settles where
-it stopped `[V]` (`coop/dev/dial_probe`, `VOTVCOOP_DIAL_PROBE=1`: a client's scroll moved its own
-display in 16 ms and the host's in 37 ms, against 277 ms before; both settled at the same offset,
-where the client's moved for 446 ms past its stop before; a 150 ms nudge, which never reached the
-host before and snapped back on the client, reached it in 65 ms and both kept it). The cooldown charge is detected as an upward jump, and the same jump classifies the
+it stopped `[V]` (`coop/dev/dial_probe`, `VOTVCOOP_DIAL_PROBE=1`, three peers, each client
+turning a dial by wheel notches, then the second client the first's dial while the first turned the
+other; `dev.desk_dial_fast_off` is the before arm: the turner's display moved in 10 to 51 ms and
+did not move past its stop, against up to 523 ms past it before; the host moved in 33 to 66 ms,
+against 239 to 282; the other client in 120 to 180 ms, against 251 to 269; all three settled on
+the same offsets in both arms, and an earlier two-peer run lost a 150 ms nudge before. The cost
+is one delta per notch rather than four a second at most, and a stopped offset per stop: the four
+turns' DeskInput deltas, counted where received, went from 63 to 135). The cooldown charge is detected as an upward jump, and the same jump classifies the
 quick-scan, whose accepted-branch effects the mirrors replay.
 
 The signal view's settings ride the same poll: the two bounds of `remapValue` and `visualizerMode`, graph or

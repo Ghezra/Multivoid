@@ -1,6 +1,6 @@
-// coop/dev/dial_probe.h -- [dev] the signal desk's frequency dial turned by a client, its offset logged on both peers
-// (VOTVCOOP_DIAL_PROBE=1), for Ghezra/Multivoid issue 32: the client switches the frequency filter on, sets the dial's
-// speed as a scroll does and sets it back to 0, and both log the desk's frequency offset fifty times a second.
+// coop/dev/dial_probe.h -- [dev] the signal desk's frequency and polarity dials turned by the clients, by wheel
+// notches, logged on every peer (VOTVCOOP_DIAL_PROBE=1, VOTVCOOP_DIAL_SCRIPT=a|b on a client), for Ghezra/Multivoid
+// issue 32: each peer's offsets fifty times a second and its DeskInput counts at the end.
 #pragma once
 
 namespace coop::net { class Session; }
