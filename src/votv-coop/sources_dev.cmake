@@ -399,6 +399,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/dingus_probe.cpp
     src/coop/dev/slip_probe.cpp
     src/coop/dev/reelspam_probe.cpp
+    src/coop/dev/genp_probe.cpp
     src/coop/dev/wall_fill_probe.cpp
     src/coop/dev/wall_preview_probe.cpp
     src/coop/dev/tower_poof_probe.cpp
