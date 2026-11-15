@@ -36,6 +36,7 @@
 #include "coop/world/plant_sync.h"
 #include "coop/world/media_device_sync.h"            // a placed radio's track and play state
 #include "coop/interactables/woodchipper_feed.h"
+#include "coop/interactables/generator_sync.h"
 #include "coop/interactables/woodchipper_sync.h"
 #include "coop/interactables/atv_host_judge.h"
 #include "coop/interactables/atv_host_sync.h"
@@ -522,6 +523,24 @@ bool HandlePropDriveEvent(net::Session& session,
         std::memcpy(&c, msg.payload, sizeof(c));
         if (intent) ::coop::build_sync::OnIntentChunk(c, msg.senderPeerSlot);
         else ::coop::build_sync::OnStateChunk(c, msg.senderPeerSlot);
+        break;
+    }
+    case net::ReliableKind::GeneratorState:
+    case net::ReliableKind::GeneratorIntent: {
+        // GeneratorState HOST->ALL, GeneratorIntent CLIENT->HOST.
+        const bool intent = msg.kind == net::ReliableKind::GeneratorIntent;
+        if (intent != (session.role() == net::Role::Host) || msg.payloadLen < sizeof(net::GeneratorPayload)) {
+            UE_LOGW("event_feed: a generator message the wrong way or too short from slot %d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        net::GeneratorPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.active > 1 || p.op > net::kGeneratorOpPress || !std::isfinite(p.fuel)) {
+            UE_LOGW("event_feed: generator message malformed -- dropping");
+            break;
+        }
+        if (intent) ::coop::generator_sync::OnIntent(msg.senderPeerSlot, p);
+        else ::coop::generator_sync::OnState(p);
         break;
     }
     case net::ReliableKind::WoodchipperState:

@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 326;
+inline constexpr uint16_t kProtocolVersion = 327;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1579,6 +1579,11 @@ enum class ReliableKind : uint16_t {
     // word that one is found, to every client and to a joiner (op 1); each peer marks its copies under the key found and
     // turns their music off. Not pre-world. DingusFoundPayload.
     DingusFound = 281,
+    // A portable generator's fuel and on/off (coop/interactables/generator_sync): the host's, to every client when one
+    // changes, once a second while one runs, and to a joiner (GeneratorState); a client's pour or start/stop press, to the
+    // host, which judges it and runs it on its copy (GeneratorIntent). Not pre-world. GeneratorPayload.
+    GeneratorState = 282,
+    GeneratorIntent = 283,
 };
 
 #pragma pack(push, 1)
@@ -2479,6 +2484,18 @@ struct WallPreviewPayload {
     float   pivotB[3];     // the far corner, while editing
 };
 static_assert(sizeof(WallPreviewPayload) == 64, "WallPreviewPayload must be 64 bytes");
+
+// GeneratorState / GeneratorIntent. A portable generator (prop_generatorP_C) is named by its save key. op 0 a state (fuel
+// and active), op 1 a client's pour (`fuel` the gain its copy took), op 2 its press (`active` the state it wanted).
+inline constexpr uint8_t kGeneratorOpState = 0, kGeneratorOpPour = 1, kGeneratorOpPress = 2;
+struct GeneratorPayload {
+    WireKey key;       // 32 -- the generator's save key
+    float   fuel;      // 4 -- its fuel (0..100); a pour's gain
+    uint8_t active;    // 1 -- running; the state a press wanted
+    uint8_t op;        // 1 -- kGeneratorOp*
+    uint8_t _pad[2];   // 2 -- zero
+};
+static_assert(sizeof(GeneratorPayload) == 40, "GeneratorPayload must be 40 bytes");
 
 // DingusFound. A dingus is named by its save key, which it keeps through the inventory.
 inline constexpr uint8_t kDingusFoundReport = 0;   // CLIENT->HOST: this peer's copy of it was found
