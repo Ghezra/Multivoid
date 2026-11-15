@@ -43,6 +43,7 @@ std::wstring CalleeName(const SC::CallSite& s) {
 void DumpClass(const std::wstring& name) {
     const std::wstring path = L"/Game/objects/" + name + L"." + name + L"_C";
     void* cls = ue_wrap::asset_load::LoadObjectByPath(path.c_str());
+    if (!cls) cls = R::FindClass(name.c_str());   // a native class (a plugin's), already loaded, by its bare name
     if (!cls) { UE_LOGW("class_dump: %ls did not load", path.c_str()); return; }
     std::wstring chain;
     for (void* c = R::SuperStructOf(cls); c; c = R::SuperStructOf(c)) chain += L" < " + R::ToString(R::NameOf(c));

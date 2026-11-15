@@ -553,6 +553,7 @@ set(VOTVCOOP_SOURCES
     src/coop/voice/voice_chat.cpp
     src/coop/voice/voice_capture.cpp
     src/coop/voice/voice_playback.cpp
+    src/coop/voice/camcorder_voice.cpp
     src/coop/net/session_voice.cpp
     src/ui/voice_icons.cpp
     src/ui/voice_panel.cpp
