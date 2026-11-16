@@ -220,9 +220,10 @@ frees the spot. `AtvState` stamps the spot to every client and `AtvAnswer` carri
 - **What the others see.** Each other peer attaches the passenger's body to the ATV in the AnimBP's ATV seat pose, at seat
   1 of the table's seat resolve, behind the driver's (`coop/player/puppet_seat`).
 
-`[?]` (`harness/autotest/autotest_atv_passenger.cpp`, the `VOTVCOOP_RUN_ATV_PASSENGER` drill: a client rides behind the host,
-then the host behind the client over the client's kerfur, through a drive, a cut and the driver getting off.) Ported onto
-the seat table at bg330; the drill's run on that build is below once made.
+`[V]` (`harness/autotest/autotest_atv_passenger.cpp`, the `VOTVCOOP_RUN_ATV_PASSENGER` drill: a client rides behind the
+host, then the host behind the client over the client's kerfur, through a drive, a cut and the driver getting off. On
+bg330, ported onto the seat table, 23 of 24 checks pass per peer, as on bg329 before the port: the one left is the rig
+save's ATV, parked where the game's own unsit sets a player down 2 m above it.)
 
 ## Who owns what
 

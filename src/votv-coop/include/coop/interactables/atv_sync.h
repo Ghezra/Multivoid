@@ -127,10 +127,6 @@ bool IsOccupiedByOther(void* actor, uint8_t* outOccupantSlot = nullptr);
 // IsOccupiedByOther; an entry whose actor is no longer live by its index is skipped. Game thread.
 void* ActorSeatedBy(uint8_t slot);
 
-// The indexed ATV whose passenger spot `slot` holds, by the host's table as stamped to this peer, or nullptr. The same
-// guards as ActorSeatedBy. Game thread.
-void* ActorRiddenBy(uint8_t slot);
-
 // What a drill reads of one ATV's table: the seat, the syncer, the speed of the syncer's last admitted block (the
 // host's; a client's stays 0), whether this machine's own body sits in the seat and the actor the entry holds, the
 // story event's trap (the host's: its own copy's, as of its last Tick; a client's: the last stamp's bit as applied) and

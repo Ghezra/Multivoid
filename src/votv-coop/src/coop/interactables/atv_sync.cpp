@@ -711,13 +711,6 @@ void* ActorSeatedBy(uint8_t slot) {
     return nullptr;
 }
 
-void* ActorRiddenBy(uint8_t slot) {
-    if (slot == 0xFF) return nullptr;
-    if (!IndexCurrent()) return nullptr;
-    for (const auto& kv : g_atvs)
-        if (kv.second.seatPassenger == slot && R::IsLiveByIndex(kv.second.actor, kv.second.idx)) return kv.second.actor;
-    return nullptr;
-}
 
 bool ReadTable(const std::wstring& key, TableView& out) {
     if (!IndexCurrent()) return false;
