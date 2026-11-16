@@ -99,8 +99,10 @@ back down the ordinary birth broadcast.
 - **Births the client cannot avoid.** A reel ejected from a caddy, a module or a drive taken from
 a rack, an item extracted from a container all materialise on the client first; they go through the same door,
 class-checked at the host, born asleep where the class needs it.
-- **Births a player asked for.** The spawn menu, the toolgun, and the scrap a hacksaw cuts (the saw
-runs only where it is held). Not by class -- the menu is the whole catalog, and the world mints those same classes per
+- **Births a player asked for.** The spawn menu, the toolgun, the scrap a hacksaw cuts (the saw
+runs only where it is held), and the crowbar a pry hands back: the pry's begin destroys the crowbar in the hand, and its
+end spawns a new one, freed from the board, dropped at it, or put back in the hand, on the prying player's game only. One
+put back in the hand never crosses as a world prop; the hand item shows it. Not by class -- the menu is the whole catalog, and the world mints those same classes per
 peer, so a class test would double the world. They are admitted on AUTHORSHIP instead: the birth seam asks whether a
 player's own spawn verb is on the stack, which is a fact only that instant holds, since the VM still has the calling
 Blueprint frame there (`coop/props/prop_spawn_authoring`). Such a birth crosses as an ordinary drop intent and is NOT
