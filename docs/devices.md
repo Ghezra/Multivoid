@@ -431,7 +431,11 @@ stops the drone's tick and physics (a touched body spun between writes) and play
 behind the host's times, as late as the link needs, so late or bunched poses do not lurch, and the
 cargo it drops rides the ordinary prop lanes (`coop/interactables/drone_sync`). The sack it draws follows the host's
 `hasSack`: the host's unhook hides it as the loose sack drops, which the client's stopped drone never runs, so the client
-shows or hides its copy's sack mesh on that bit `[V]` (`coop/dev/droneunhook_probe`). The drone's sale
+shows or hides its copy's sack mesh on that bit `[V]` (`coop/dev/droneunhook_probe`). A sack put back is hooked by the
+drone's own putSackOn, which a sack's overlap with the drone's sack box runs on each copy, and reaches the other peers
+only as the loose sack's destroy, which on a copy the drone did not take scolds the player and spawns a new sack at the
+drone. So the host's drone takes a client's hooked sack when its copy lies within 3 m of the sack box, and a client's
+copy destroyed by the host goes as taken, the respawn the host's `[V]` (the probe's `VOTVCOOP_DRONEUNHOOK_REHOOK`). The drone's sale
 runs on the host only, which is what makes selling into it the one economy path that credits the
 group correctly.
 
