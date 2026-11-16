@@ -97,6 +97,7 @@ set(VOTVCOOP_SOURCES
     src/coop/interactables/woodchipper_sync.cpp
     src/coop/interactables/generator_sync.cpp
     src/coop/world/flood_sync.cpp
+    src/coop/world/sound_relay.cpp
     src/coop/props/glowstick_sync.cpp
     src/coop/interactables/woodchipper_feed.cpp
     src/coop/interactables/woodchipper_gate.cpp

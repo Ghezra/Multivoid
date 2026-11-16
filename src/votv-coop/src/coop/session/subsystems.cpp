@@ -146,6 +146,7 @@
 #include "coop/interactables/turbine_sync.h"
 #include "coop/interactables/generator_sync.h"   // a portable generator's fuel and on/off, the host's
 #include "coop/world/flood_sync.h"   // the basement flood, the host's
+#include "coop/world/sound_relay.h"   // a player's own sounds at a place
 #include "coop/props/glowstick_sync.h"   // a glowstick stuck to a surface, on every peer
 #include "coop/interactables/woodchipper_sync.h"
 #include "coop/interactables/atv_gate.h"
@@ -350,6 +351,7 @@ void Install(coop::net::Session& session) {
     coop::vent_crawler_sync::Install(&session);  // the crawl's start, for a client's sounds
     coop::props::prop_can_state::Install(&session);  // a canned food's lid and contents: its record on a change
     coop::world_sound_sync::Install(&session);  // the sky's two sounds, a faucet's click
+    coop::sound_relay::Install(&session);       // a player's own sounds at a place (a melee hit)
     coop::media_device_sync::Install(&session);  // a placed radio's track and play state
     coop::desk_short_sync::Install(&session);  // the base computer's short circuit is the host's
     coop::props::prop_food_sync::Install(&session);  // a world food's one author, the host
@@ -552,6 +554,7 @@ DisconnectStats DisconnectAll() {
     coop::prop_hold_claim::OnDisconnect();  // drop the refusal records and the notice cooldown
     coop::prop_settle::OnDisconnect();  // drop the watched releases
     coop::world_sound_sync::OnDisconnect();
+    coop::sound_relay::OnDisconnect();
     coop::media_device_sync::OnDisconnect();
     coop::plant_sync::OnDisconnect();
     coop::prop_fire_sync::OnDisconnect();

@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 328;
+inline constexpr uint16_t kProtocolVersion = 329;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1589,6 +1589,10 @@ enum class ReliableKind : uint16_t {
     // mends its copy (FloodIntent). Not pre-world. FloodPayload.
     FloodState = 284,
     FloodIntent = 285,
+    // A sound the game played at a place on one machine alone (coop/world/sound_relay): a melee hit's impact sound. Its
+    // player's machine sends it; the host plays a client's and relays it to the other clients. Not pre-world.
+    // SoundAtPayload.
+    SoundAt = 286,
 };
 
 #pragma pack(push, 1)
@@ -2514,6 +2518,17 @@ struct FloodPayload {
     uint8_t _pad[2];   // 2 -- zero
 };
 static_assert(sizeof(FloodPayload) == 40, "FloodPayload must be 40 bytes");
+
+// SoundAt. The Sound and the attenuation as object paths ("/Game/audio/x.x", ASCII, NUL-padded; an empty attenuation
+// plays with none), the place, the volume and the pitch, as the original call passed them.
+struct SoundAtPayload {
+    char  sound[96];         // 96
+    char  attenuation[64];   // 64
+    float loc[3];            // 12
+    float volume;            // 4
+    float pitch;             // 4
+};
+static_assert(sizeof(SoundAtPayload) == 180, "SoundAtPayload must be 180 bytes");
 
 // DingusFound. A dingus is named by its save key, which it keeps through the inventory.
 inline constexpr uint8_t kDingusFoundReport = 0;   // CLIENT->HOST: this peer's copy of it was found
