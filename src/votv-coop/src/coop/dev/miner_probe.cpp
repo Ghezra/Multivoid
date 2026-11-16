@@ -5,7 +5,9 @@
 // after it is connected: claims its copy's points through actionOptionIndex action 4, as the use key does; 10 s later it
 // uses scrap metal on it through the rig's own playerUsedOn, its player's holding_name set to scrap_metal for the call,
 // as a use with the item in hand reaches the body. BOTH, every 2 s: every rig's key, upgrades, points and power (`[MINER] rig`),
-// so the two peers' lines can be compared.
+// so the two peers' lines can be compared. VOTVCOOP_MINER_RUN=1 (Trello "Coolers disappear from Frames"): the host powers
+// its built rig (`powered` set, the rig's own `plugged`) and the client adds two coolers at 60 s instead of the slot; every
+// peer logs the rig, its heat with it, every 10 s to 6 min.
 
 #include "coop/dev/miner_probe.h"
 
@@ -39,6 +41,25 @@ uint64_t Now() { return ::GetTickCount64(); }
 bool On() {
     static const bool on = coop::config::ReadEnv("VOTVCOOP_MINER_PROBE") == "1";
     return on;
+}
+
+bool Run() {
+    static const bool on = coop::config::ReadEnv("VOTVCOOP_MINER_RUN") == "1";
+    return on;
+}
+
+float FloatField(void* obj, const wchar_t* name) {
+    const int32_t off = R::FindPropertyOffset(R::ClassOf(obj), name);
+    return off >= 0 ? *reinterpret_cast<const float*>(static_cast<const char*>(obj) + off) : -1.f;
+}
+
+bool PowerOn(void* rig) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!R::FindBoolProperty(R::ClassOf(rig), L"powered", off, mask)) return false;
+    static_cast<uint8_t*>(rig)[off] |= mask;
+    ue_wrap::ParamFrame f(R::FindFunction(R::ClassOf(rig), L"plugged"));
+    return f.valid() && ue_wrap::Call(rig, f);
 }
 
 void Rigs(std::vector<void*>& out) {
@@ -116,14 +137,14 @@ void* Spawn() {
     return ue_wrap::Call(refs.gsCdo, finish) ? rig : nullptr;
 }
 
-bool UseScrap(void* rig) {
+bool UseItem(void* rig, const wchar_t* item) {
     void* const me = coop::players::Registry::Get().Local();
     const int32_t off = me ? R::FindPropertyOffset(R::ClassOf(me), L"holding_name") : -1;
     ue_wrap::ParamFrame f(R::FindFunction(R::ClassOf(rig), L"playerUsedOn"));
     if (off < 0 || !f.valid()) return false;
     R::FName& held = *reinterpret_cast<R::FName*>(static_cast<char*>(me) + off);
     const R::FName was = held;
-    held = ue_wrap::fname_utils::StringToFName(L"scrap_metal");
+    held = ue_wrap::fname_utils::StringToFName(item);
     f.Set<void*>(L"player", me);
     const bool ran = ue_wrap::Call(rig, f);
     held = was;
@@ -146,9 +167,9 @@ void Report() {
     for (void* r : rigs) {
         ue_wrap::FVector p{};
         E::TryGetActorLocation(r, p);
-        UE_LOGI("[MINER] rig key=%ls gpu=%d slots=%d fans=%d points=%d powered=%d at=(%.0f,%.0f,%.0f)", KeyOf(r).c_str(),
-                IntField(r, L"upg_gpu"), IntField(r, L"upg_slots"), IntField(r, L"upg_fans"),
-                IntField(r, L"accumulatedPoints"), BoolField(r, L"powered"), p.X, p.Y, p.Z);
+        UE_LOGI("[MINER] rig key=%ls gpu=%d slots=%d fans=%d points=%d powered=%d heat=%.1f at=(%.0f,%.0f,%.0f)",
+                KeyOf(r).c_str(), IntField(r, L"upg_gpu"), IntField(r, L"upg_slots"), IntField(r, L"upg_fans"),
+                IntField(r, L"accumulatedPoints"), BoolField(r, L"powered"), FloatField(r, L"overheat"), p.X, p.Y, p.Z);
     }
 }
 
@@ -181,15 +202,23 @@ void Tick(coop::net::Session* session) {
         const bool ok = rig && Upgrade(rig, L"scrap_metal") && Upgrade(rig, L"scrap_metal") &&
                         Upgrade(rig, L"miner_gpu") && Upgrade(rig, L"miner_gpu") && Upgrade(rig, L"miner_fan");
         UE_LOGI("[MINER] host: built the rig up key=%ls (ok=%d)", rig ? KeyOf(rig).c_str() : L"-", ok ? 1 : 0);
+        if (rig && Run()) UE_LOGI("[MINER] host: powered the rig (ran=%d)", PowerOn(rig) ? 1 : 0);
     }
     if (!host && !g_clientAdd && t >= 60000u) {
         g_clientAdd = true;
         void* rig = Nearest();
-        UE_LOGI("[MINER] client: added a slot key=%ls (ran=%d)", rig ? KeyOf(rig).c_str() : L"-",
-                rig && UseScrap(rig) ? 1 : 0);
+        if (Run()) {
+            const bool a = rig && UseItem(rig, L"miner_fan");
+            const bool b = rig && UseItem(rig, L"miner_fan");
+            UE_LOGI("[MINER] client: added two coolers key=%ls (ran=%d,%d)", rig ? KeyOf(rig).c_str() : L"-", a ? 1 : 0,
+                    b ? 1 : 0);
+        } else {
+            UE_LOGI("[MINER] client: added a slot key=%ls (ran=%d)", rig ? KeyOf(rig).c_str() : L"-",
+                    rig && UseItem(rig, L"scrap_metal") ? 1 : 0);
+        }
     }
-    if (t < 20000 || Now() < g_reportAt) return;
-    g_reportAt = Now() + 2000;
+    if (t < 20000 || Now() < g_reportAt || (Run() && t > 360000u)) return;
+    g_reportAt = Now() + (Run() && t > 70000u ? 10000 : 2000);
     Report();
 }
 
