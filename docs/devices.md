@@ -429,7 +429,9 @@ The delivery drone is one host-simulated actor: its flight is a fragile per-tick
 streams its transform, stamped with its send time, while it moves and its state as it changes. The client
 stops the drone's tick and physics (a touched body spun between writes) and plays the poses back a little
 behind the host's times, as late as the link needs, so late or bunched poses do not lurch, and the
-cargo it drops rides the ordinary prop lanes (`coop/interactables/drone_sync`). The drone's sale
+cargo it drops rides the ordinary prop lanes (`coop/interactables/drone_sync`). The sack it draws follows the host's
+`hasSack`: the host's unhook hides it as the loose sack drops, which the client's stopped drone never runs, so the client
+shows or hides its copy's sack mesh on that bit `[V]` (`coop/dev/droneunhook_probe`). The drone's sale
 runs on the host only, which is what makes selling into it the one economy path that credits the
 group correctly.
 
