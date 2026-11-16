@@ -53,6 +53,15 @@ bool Enabled() {
     return s;
 }
 
+// VOTVCOOP_HOOKDRAG_RAGDOLL=1 (Trello "Radioactive capsule freezes in mid-air"): once the walk out arrives, the planter
+// faints where it stands for 6 s with its hook still tied (the game's ragdollMode, its faint pose), wakes, and only
+// then unhooks, with no walk back.
+bool RagdollArm() {
+    static const bool s = coop::config::ReadEnv("VOTVCOOP_HOOKDRAG_RAGDOLL") == "1";
+    return s;
+}
+uint64_t g_ragdollAt = 0;
+
 // Who plants: the host (the driven-prop channel alone), the client (the host ties the client's
 // hook on its mirror and the channel carries the result back), or both into the same prop (two
 // host constraints on one body). Read once; the same value is set on both peers.
@@ -260,9 +269,10 @@ void Sample(uint64_t since, bool isHost) {
     void* self = LocalPlayer();
     const bool meRead = self && E::TryGetActorLocation(self, me);
     UE_LOGI("hookdrag_selftest: POS t=%.2f wall=%llu key='%ls' (%.1f,%.1f,%.1f) moved=%.1f role=%s "
-            "me=(%.1f,%.1f,%.1f)%s",
+            "me=(%.1f,%.1f,%.1f)%s sim=%d frozen=%d",
             since / 1000.0, static_cast<unsigned long long>(WallMs()), g_targetKey.c_str(),
-            loc.X, loc.Y, loc.Z, moved, isHost ? "HOST" : "CLIENT", me.X, me.Y, me.Z, meRead ? "" : " (unread)");
+            loc.X, loc.Y, loc.Z, moved, isHost ? "HOST" : "CLIENT", me.X, me.Y, me.Z, meRead ? "" : " (unread)",
+            E::IsActorRootSimulatingPhysics(t) ? 1 : 0, PR::IsFrozen(t) ? 1 : 0);
 }
 
 
@@ -503,6 +513,14 @@ void Tick() {
                                 g_waitCm);
                 return Fail(isHost, "the director's walk out ended without arriving");
             }
+            if (RagdollArm()) {
+                g_walk.reset();
+                g_ragdollAt = now;
+                UE_LOGI("hookdrag_selftest: RAGDOLL -- the leg out arrived; the planter faints with its hook tied "
+                        "(ok=%d)", E::SetMainPlayerRagdollMode(LocalPlayer(), true, true, false) ? 1 : 0);
+                EnterPhase(Phase::WalkBack, now);
+                return;
+            }
             UE_LOGI("hookdrag_selftest: WALK BACK by the director to the start (%.1f,%.1f,%.1f) -- the leg "
                     "out arrived", g_walkBase.X, g_walkBase.Y, g_walkBase.Z);
             StartLeg(g_walkBase);
@@ -510,6 +528,15 @@ void Tick() {
         }
         return;
     case Phase::WalkBack:
+        if (g_ragdollAt) {
+            // The ragdoll arm: 6 s down, then up, then the unhook.
+            if (now - g_ragdollAt < 6000u) return;
+            g_ragdollAt = 0;
+            UE_LOGI("hookdrag_selftest: WAKE -- the planter gets up (ok=%d); the unhook follows",
+                    E::ForceMainPlayerWakeup(LocalPlayer()) ? 1 : 0);
+            EnterPhase(Phase::Unhook, now);
+            return;
+        }
         // Ends when the director's walk arrives back within kArriveCm of where the walker planted.
         g_waitWhy = "the director's walk back did not arrive";
         LegDistance(g_waitCm);
