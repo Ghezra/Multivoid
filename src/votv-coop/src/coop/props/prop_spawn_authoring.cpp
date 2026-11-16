@@ -30,6 +30,8 @@ void* g_menuSpawnFn     = nullptr;   // ui_spawnmenu_C::spawn -- the caller that
 void* g_toolUberFn      = nullptr;   // tool_spawn_C::ExecuteUbergraph_tool_spawn -- the toolgun
 void* g_sawUberFn       = nullptr;   // prop_hacksaw_C::ExecuteUbergraph_prop_hacksaw -- the hacksaw's cut
 void* g_pryEndFn        = nullptr;   // pryingCrowbar_C::End -- the crowbar a pry hands back
+void* g_unscrewFn       = nullptr;   // ATV_C::unscrewPanel -- the battery an unscrew hands back (atv_gate's watch)
+bool  g_unscrewBattery  = false;     // the unscrew now starting is the battery's branch
 bool  g_watchInstalled  = false;
 
 // The negative arm, and it is the half a run cannot otherwise see. Catching every menu spawn and
@@ -176,6 +178,9 @@ bool BirthIsPlayerAuthored() {
     // comes back as a new crowbar, freed from the board, dropped at it, or put back in the hand. The pry runs only on
     // the prying player's game, so without this the crowbar is gone for every other player.
     if (caller == g_pryEndFn) return true;
+    // An ATV's battery unscrewed: its unscrewPanel (a custom event, so the calling frame is the ATV's whole ubergraph)
+    // spawns the battery at the panel. Admitted while that body runs and only on its battery branch.
+    if (g_unscrewBattery && g_unscrewFn && sg::IsBodyActive(g_unscrewFn)) return true;
     if (!g_pryEndFn && FunctionIs(const_cast<void*>(caller), g_pryEndName, L"pryingCrowbar_C")) {
         g_pryEndFn = const_cast<void*>(caller);
         UE_LOGI("prop_spawn_authoring: a prying crowbar's End is the calling frame -- the crowbar a pry hands back is "
@@ -183,6 +188,11 @@ bool BirthIsPlayerAuthored() {
         return true;
     }
     return false;
+}
+
+void NoteAtvUnscrew(void* unscrewFn, bool batteryBranch) {
+    g_unscrewFn = unscrewFn;
+    g_unscrewBattery = batteryBranch;
 }
 
 void Reset() {
