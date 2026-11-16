@@ -266,6 +266,13 @@ the destroy binding are the game's (`coop/props/prop_stick_sync`). The unstick c
 a pryable sign with nobody holding it: the script gate watches the component's unstick on every route, the unsticking
 peer broadcasts the prop's pose and velocity, and a receiver runs the same unstick with the tool and lets its copy go.
 
+A glowstick sticks its own way, with no wall-attach component: held, it rays from its tip, and when the ray strikes,
+the holder drops it and its `stickTo` hangs it from a hook at the point by a physics constraint; a grab's prelude runs its
+`releaseGlowstick`. The stick is in the glowstick's save record, so the record lane carries it
+(`coop/props/glowstick_sync`): a player's own stick or release publishes the record (a client's through the host), and
+each peer's landing of it is followed by the constraint made or broken on its copy, the stick made static where the
+copy has no struck component. The author's copy keeps its constraint through the echo of its own record.
+
 ### A nametag
 
 A nametag item (`prop_nametag_C`) carries a tag. Its left click reads the player's interaction hit and, on a prop,
