@@ -99,14 +99,12 @@ back down the ordinary birth broadcast.
 - **Births the client cannot avoid.** A reel ejected from a caddy, a module or a drive taken from
 a rack, an item extracted from a container all materialise on the client first; they go through the same door,
 class-checked at the host, born asleep where the class needs it.
-- **Births a player asked for.** The spawn menu, the toolgun, the scrap a hacksaw cuts (the saw
-runs only where it is held), and the crowbar a pry hands back: the pry's begin destroys the crowbar in the hand, and its
-end spawns a new one, freed from the board, dropped at it, or put back in the hand, on the prying player's game only. One
-put back in the hand never crosses as a world prop; the hand item shows it. Not by class -- the menu is the whole catalog, and the world mints those same classes per
-peer, so a class test would double the world. They are admitted on AUTHORSHIP instead: the birth seam asks whether a
-player's own spawn verb is on the stack, which is a fact only that instant holds, since the VM still has the calling
-Blueprint frame there (`coop/props/prop_spawn_authoring`). Such a birth crosses as an ordinary drop intent and is NOT
-slept on the host -- it was dropped at the player's aim and must fall there as it falls here.
+- **Births a player asked for.** The spawn menu, the toolgun, the scrap a hacksaw cuts and the crowbar a pry's end hands
+back. Not by class -- the menu is the whole catalog, and the world mints those same classes per peer, so a class test
+would double the world. They are admitted on AUTHORSHIP instead: the birth seam asks whether a player's own spawn verb
+is on the stack, a fact only that instant holds, since the VM still has the calling Blueprint frame there
+(`coop/props/prop_spawn_authoring`). Such a birth crosses as an ordinary drop intent and is NOT slept on the host -- it
+was dropped at the player's aim and must fall there as it falls here.
 
 Any other keyed prop a client creates is dropped at that door and never reaches the host: that is the world's own churn,
 which every peer produces for itself.
@@ -257,21 +255,14 @@ dropped when a newer one reaches it); the drive's end edge converges static as w
 
 ### Sticking to a wall
 
-A prop sticks through its wall-attach component, which the wall-attachable props (the cameras, the signs) and the plasma
-TV carry. The component commits its stick inside the Blueprint; the one visible seam is the commit entry, reached
-through a latent delay that the engine resumes through the function dispatch. The sticking peer broadcasts the frozen or
-static state and the commit pose before its own hold breaks, on the same ordered lane as the release so the order is
-structural; the receiver re-poses the prop and dispatches the component's own force-stick, so the attach, the effect and
-the destroy binding are the game's (`coop/props/prop_stick_sync`). The unstick crosses too, since a crowbar's pry frees
-a pryable sign with nobody holding it: the script gate watches the component's unstick on every route, the unsticking
-peer broadcasts the prop's pose and velocity, and a receiver runs the same unstick with the tool and lets its copy go.
-
-A glowstick sticks its own way, with no wall-attach component: held, it rays from its tip, and when the ray strikes,
-the holder drops it and its `stickTo` hangs it from a hook at the point by a physics constraint; a grab's prelude runs its
-`releaseGlowstick`. The stick is in the glowstick's save record, so the record lane carries it
-(`coop/props/glowstick_sync`): a player's own stick or release publishes the record (a client's through the host), and
-each peer's landing of it is followed by the constraint made or broken on its copy, the stick made static where the
-copy has no struck component. The author's copy keeps its constraint through the echo of its own record.
+A prop sticks through its wall-attach component, which the cameras, the signs and the plasma TV carry. Its stick commits
+inside the Blueprint, at an entry a latent delay resumes through the function dispatch. The sticking peer broadcasts the
+frozen or static state and the commit pose before its hold breaks, on the release's ordered lane; the receiver re-poses
+the prop and dispatches the component's own force-stick, so the attach, the effect and the destroy binding are the
+game's (`coop/props/prop_stick_sync`). The unstick crosses too (a crowbar's pry frees a sign nobody holds): the script
+gate watches the component's unstick on every route, the unsticking peer broadcasts the prop's pose and velocity, and a
+receiver runs the same unstick and lets its copy go. A glowstick's stick, a constraint its record holds, crosses with
+the record, and each landing remakes or breaks it (`coop/props/glowstick_sync`).
 
 ### A nametag
 
@@ -563,7 +554,7 @@ prop resolves.
 |---|---|
 | Two players who grab one keyed prop inside one round trip both hold it until the host's refusal reaches the one it did not keep, so the refused player sees the prop in hand for that round trip before it is taken away. A swinger's drag has no such judge: two peers dragging one lid each move their own copy. A release delayed past another peer's whole later hold of the prop still puts it back where the first holder let go, and a join's snapshot row read before a live stick, unstick or release can reach the joiner after it and undo it there, until the window's late re-flush corrects the prop | `[V]` the grab race (`coop/dev/director/grab_race_probe`): both peers fired the grab within 20 ms of each other, three runs; the host refused the client's hold each time, the client let go with no release, and over a 4 s watch no sample on either peer had two holders and the client's copy followed the host's stream in 138 of 139; `[V]` `coop/props/remote_prop_drive` leaves a door the local player drags to that drag; `[RD]` the rows carry no version; the join gate holds a live stick or release behind the snapshot rows, so a joiner applies the rows first `[?]` |
 | A prop let go of without a throw (a drop, a place) flies by each peer's own physics from the same release transform and velocity, so the copies can take different paths before the releaser's rest corrects the others; a thrown prop is streamed by its thrower and the host (above). A fire extinguisher dropped from the hand ended between 0.2 and 152.6 cm apart on the two peers over fourteen drops before that correction existed, the widest where the client's copy stayed on a surface about a metre up that the host's copy landed on and rolled off. A copy that rests apart moves there in one step, a visible jump; one still moving ten seconds after its release is not corrected, and past sixteen released props at once the rest falls uncorrected. What the flying copy knocks on one peer stays knocked there alone | `[V]` the fire extinguisher drill (`coop/dev/fireext_drill`): the host's rest line against the client's last watch line; `[?]` `coop/props/prop_settle`, not yet measured in a two-peer run |
-| A prop whose own grab prelude adds to the base one gets only the base one on a receiver. The sprinkler's also detaches its hose; the grabber's own cut reaches the others through the garden hose lane ([deployables.md](deployables.md)), which a grab of the sprinkler has not been driven through on the rig. The glowstick's replaces the base one with its own release, and a receiver runs the base one | `[V]` the sprinkler and glowstick Blueprints: `prop_sprinkler_C`'s prelude calls `prop_C::playerGrabbed_pre` and `hose->detachSprinkler`, `prop_glowstick_C`'s calls `releaseGlowstick` alone; `coop/props/remote_prop` runs the base prelude; `[?]` the sprinkler grab through `coop/world/ground_hose_sync` |
+| A prop whose own grab prelude adds to the base one gets only the base one on a receiver. The sprinkler's also detaches its hose; the grabber's own cut reaches the others through the garden hose lane ([deployables.md](deployables.md)), which a grab of the sprinkler has not been driven through on the rig. The glowstick's replaces the base one with its own release, and a receiver runs the base one; its release reaches the others with its record (`coop/props/glowstick_sync`) | `[V]` the sprinkler and glowstick Blueprints: `prop_sprinkler_C`'s prelude calls `prop_C::playerGrabbed_pre` and `hose->detachSprinkler`, `prop_glowstick_C`'s calls `releaseGlowstick` alone; `coop/props/remote_prop` runs the base prelude; `[?]` the sprinkler grab through `coop/world/ground_hose_sync` |
 | Only the prop-properties tool's press crosses. The stacker sets flags on the props it stacks and on its parent, a grab that unfreezes a frozen prop and a wall-mount that writes static and frozen directly each change the peer that did it alone | `[?]` `coop/props/prop_tool_flags` catches `tool_propProps_C::init` only; not yet measured in a two-peer run |
 | Another peer's hold can carry away the chair this peer sits in at the laptop, which single player never allows: the laptop freezes the seat only on the machine whose player sits | `[V]` the laptop Blueprint: `stabilizeSeat` sets the seat frozen, and the exit's `setPropProps` clears it; `coop/props/remote_prop` unfreezes a held copy at the hold's first pose |
 | A nested container's contents travel in container slices only: the player inventory's records and a prop's own record never carry them, so a container a client carries in its inventory across a rejoin, or one whose own record a prop lane sends, still names its slot as before | `[V]` `ue_wrap/actors/inventory` and `coop/props/prop_save_data` strip them; `coop/props/container_contents_io` attaches them |
