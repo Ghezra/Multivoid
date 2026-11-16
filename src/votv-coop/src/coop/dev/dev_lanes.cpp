@@ -141,6 +141,8 @@
 #include "coop/dev/dial_probe.h"  // [dev] a client turning the desk's frequency dial, logged on both
 #include "coop/dev/deskaudio_probe.h"  // [dev] the signal desk's sound components: spatial or not
 #include "coop/dev/grime_census.h"  // [dev] the grime decals counted per class with their dirt
+#include "coop/dev/droneunhook_probe.h"   // [dev] the host unhooks the drone sack, logged on both
+#include "coop/dev/blackfog_probe.h"   // [dev] the host rolls a black fog, logged on both
 #include "coop/dev/glowstick_probe.h"   // [dev] a client sticks a glowstick, logged on both
 #include "coop/dev/crowbarpry_probe.h"   // [dev] a client pries a board, its crowbar logged on both
 #include "coop/dev/sleepall_probe.h"   // [dev] the host, then a client, asleep; the world's dilation logged
@@ -485,6 +487,8 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::dial_probe::Tick(&session);  // [dev] the desk's frequency dial (a latched read when off)
     coop::dev::deskaudio_probe::Tick(&session);  // [dev] the desk's sound components (a latched read when off)
     coop::dev::grime_census::Tick();  // [dev] the grime census (a latched read when off)
+    coop::dev::droneunhook_probe::Tick(&session);  // [dev] the drone unhook (a latched read when off)
+    coop::dev::blackfog_probe::Tick(&session);  // [dev] the black fog (a latched read when off)
     coop::dev::glowstick_probe::Tick(&session);  // [dev] the glowstick stick (a latched read when off)
     coop::dev::crowbarpry_probe::Tick(&session);  // [dev] the crowbar pry (a latched read when off)
     coop::dev::sleepall_probe::Tick(&session);   // [dev] sleeping with world.sleep_everyone (a latched read when off)
