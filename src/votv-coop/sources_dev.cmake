@@ -382,6 +382,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/pi3_arms.cpp
     src/coop/dev/pi3_drill.cpp
     src/coop/dev/native_spawn_probe.cpp
+    src/coop/dev/hit_probe.cpp
     src/coop/dev/flood_probe.cpp
     src/coop/dev/disceject_probe.cpp
     src/coop/dev/ufo_probe.cpp
