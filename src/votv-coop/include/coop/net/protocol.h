@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 327;
+inline constexpr uint16_t kProtocolVersion = 328;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1584,6 +1584,11 @@ enum class ReliableKind : uint16_t {
     // host, which judges it and runs it on its copy (GeneratorIntent). Not pre-world. GeneratorPayload.
     GeneratorState = 282,
     GeneratorIntent = 283,
+    // The basement flood (coop/world/flood_sync): a burst pipe's state and a flood volume's level, the host's, to every
+    // client when one changes and to a joiner (FloodState); a client's repair of a pipe, to the host, which judges it and
+    // mends its copy (FloodIntent). Not pre-world. FloodPayload.
+    FloodState = 284,
+    FloodIntent = 285,
 };
 
 #pragma pack(push, 1)
@@ -2496,6 +2501,19 @@ struct GeneratorPayload {
     uint8_t _pad[2];   // 2 -- zero
 };
 static_assert(sizeof(GeneratorPayload) == 40, "GeneratorPayload must be 40 bytes");
+
+// FloodState / FloodIntent. A burst pipe (burstWaterPipe_C) or a flood volume (waterVolume_basementFlooder_C), both placed in
+// the level, is named by its object name. op 0 a pipe's state (`damaged`), op 1 a volume's level (getLevel's units), op 2
+// a client's repair of a pipe.
+inline constexpr uint8_t kFloodOpPipe = 0, kFloodOpLevel = 1, kFloodOpFix = 2;
+struct FloodPayload {
+    WireKey name;      // 32 -- the actor's object name
+    float   level;     // 4 -- a volume's level
+    uint8_t damaged;   // 1 -- a pipe burst
+    uint8_t op;        // 1 -- kFloodOp*
+    uint8_t _pad[2];   // 2 -- zero
+};
+static_assert(sizeof(FloodPayload) == 40, "FloodPayload must be 40 bytes");
 
 // DingusFound. A dingus is named by its save key, which it keeps through the inventory.
 inline constexpr uint8_t kDingusFoundReport = 0;   // CLIENT->HOST: this peer's copy of it was found
