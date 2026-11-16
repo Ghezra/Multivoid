@@ -150,7 +150,7 @@ Seen Look(const std::string& step) {
         v.sittingOnAtv = sittingOn == g_atv;
         void* parent = nullptr;
         v.attached = E::GetAttachParentActor(Me(), parent) && parent == g_atv;
-        v.rider = A::RidingKerfur(g_atv) != nullptr;
+        v.rider = A::GetSittingKerfur(g_atv) != nullptr;
         E::TryGetActorLocation(g_atv, v.atvAt);
         v.eyeOverAtv = E::GetCameraLocation().Z - v.atvAt.Z;
         if (void* body = OtherBody()) {

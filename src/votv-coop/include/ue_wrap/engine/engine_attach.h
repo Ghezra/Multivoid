@@ -18,8 +18,9 @@ bool AttachActorToComponentSocket(void* actor, void* component, const wchar_t* s
 
 bool DetachActorFromParent(void* actor);
 
-// Attach `actor` to `parent`'s root where it stands (K2_AttachToActor, KeepWorld on all three rules), its simulated
-// bodies welded when `weld`: the attach an open container's own glue makes. DetachActorFromParent reverses it. Game thread.
+// Attach `actor`'s root to `parent`'s root through AActor::K2_AttachToActor, every rule KeepWorld (the actor stays
+// where it is and follows `parent` from there), no socket; `weld` is the call's bWeldSimulatedBodies. False for a dead
+// actor or parent, an unresolved function or a call that did not run. DetachActorFromParent reverses it. Game thread.
 bool AttachActorToActorKeepWorld(void* actor, void* parent, bool weld);
 
 // AActor::GetAttachParentActor: the actor `actor`'s root is attached to, or null in `parent` when it is attached to

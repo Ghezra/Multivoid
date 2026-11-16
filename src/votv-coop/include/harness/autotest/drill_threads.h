@@ -196,7 +196,6 @@ DWORD WINAPI RunEndDrillThread(LPVOID arg);
 
 // VOTVCOOP_RUN_SPILL, both peers -- harness/autotest/autotest_spill.cpp
 DWORD WINAPI SpillThread(LPVOID arg);
-
 // VOTVCOOP_RUN_AMBIENT_CREATURE -- the ambient creatures: one set of deer and walking trees, the host's
 DWORD WINAPI AmbientCreatureThread(LPVOID arg);
 
@@ -244,9 +243,6 @@ DWORD WINAPI MushroomThread(LPVOID arg);
 
 // VOTVCOOP_RUN_CROWBAR, both peers -- harness/autotest/autotest_crowbar.cpp
 DWORD WINAPI CrowbarThread(LPVOID arg);
-
-// VOTVCOOP_RUN_ATV_RIDERS, both peers -- harness/autotest/autotest_atv_riders.cpp
-DWORD WINAPI AtvRidersThread(LPVOID arg);
 
 // VOTVCOOP_RUN_ATV_PASSENGER, both peers -- harness/autotest/autotest_atv_passenger.cpp
 DWORD WINAPI AtvPassengerThread(LPVOID arg);
@@ -302,12 +298,6 @@ DWORD WINAPI TvStateThread(LPVOID arg);
 // VOTVCOOP_RUN_FARM_HARVEST, both peers -- harness/autotest/autotest_farm_harvest.cpp
 DWORD WINAPI FarmHarvestThread(LPVOID arg);
 
-// VOTVCOOP_RUN_HACKSAW, both peers -- harness/autotest/autotest_hacksaw.cpp
-DWORD WINAPI HacksawThread(LPVOID arg);
-
-// VOTVCOOP_RUN_CHIPPER_FEED, both peers -- harness/autotest/autotest_chipper_feed.cpp
-DWORD WINAPI ChipperFeedThread(LPVOID arg);
-
 // VOTVCOOP_RUN_BODY_PUSH, both peers -- harness/autotest/autotest_body_push.cpp
 DWORD WINAPI BodyPushThread(LPVOID arg);
 
@@ -328,4 +318,9 @@ DWORD WINAPI OrbDrillThread(LPVOID arg);
 DWORD WINAPI SkyTpDrillThread(LPVOID arg);
 // roomba_drill, both peers -- harness/autotest/autotest_roomba.cpp
 DWORD WINAPI RoombaDrillThread(LPVOID arg);
+// VOTVCOOP_RUN_CHIPPER_FEED, both peers -- harness/autotest/autotest_chipper_feed.cpp
+DWORD WINAPI ChipperFeedThread(LPVOID arg);
+
+// VOTVCOOP_RUN_HACKSAW, both peers -- harness/autotest/autotest_hacksaw.cpp
+DWORD WINAPI HacksawThread(LPVOID arg);
 }  // namespace harness::autotest

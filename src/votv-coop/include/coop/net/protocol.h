@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 329;
+inline constexpr uint16_t kProtocolVersion = 330;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1274,7 +1274,7 @@ enum class ReliableKind : uint16_t {
     // a ten-second bound cancels it. A client's copy is relayed to the other clients, on the lane of the release it
     // follows by at least the rest time; a settle that still passes its release is dropped as no released hold.
     // Not pre-world. Late join: none, the snapshot carries the host's pose. PropSettlePayload.
-    PropSettle = 262,
+    PropSettle = 264,
     // HOST->ALL: a world food's temperature, ripeness and use count, sent when they move, and its poison (the two floats a
     // bite adds as an effect), which every send carries. A client's food is refused its tick at the gate, so these are its
     // values. Not pre-world. Late join: every food again at the joiner's ready edge, on the poll's budget, poison included.
@@ -1293,12 +1293,12 @@ enum class ReliableKind : uint16_t {
     // ANY->ALL: this peer's player changed a microwave's or a mini oven's setting, started or stopped it, opened or
     // closed a microwave's door, or changed a grill's coals, fire
     // or lid; the host's burn of a grill's coals goes the same way. A client's copy is relayed. Not pre-world. Late join: every machine not at its defaults, at the ready edge. KitchenStatePayload.
-    KitchenState = 263,
+    KitchenState = 265,
     // HOST->ALL: a placed radio's or TV's track, time, play state and mode, and a TV's channel and picture, on a change and
     // every few seconds while it plays. A track is a hash a peer looks up in its own catalog. CLIENT->HOST: what this
     // client's player changed through its interface; never relayed, the host's next state answers. Not pre-world. Late join: every device again at
     // the ready edge. MediaDeviceStatePayload.
-    MediaDeviceState = 264,
+    MediaDeviceState = 266,
     // HOST->ALL: a plant's identity, place and values, at once on an edge a viewer sees and every few seconds while it changes,
     // or its end. Not relayed, not pre-world. Late join: every plant again at the ready edge. PlantStatePayload.
     PlantState = 224,
@@ -1310,35 +1310,26 @@ enum class ReliableKind : uint16_t {
     // HOST->ALL: a keyed prop of the host's burns, with its flame's fuel and speed, at the edge, on a refuel and every 2 s while
     // it burns, or it stopped. A client's copy shows that flame and burns nothing down. Not relayed, not pre-world. Late join:
     // every burning prop again at the ready edge. PropFirePayload.
-    PropFireState = 265,
+    PropFireState = 267,
     // CLIENT->HOST: this client's player lit a keyed prop with a lighter or a torch, with the fuel the light gives. Never relayed;
     // the host lights its own copy and its next PropFireState answers. PropFirePayload.
-    PropFireRequest = 266,
+    PropFireRequest = 268,
     // HOST->ALL: a finished garden hose of the host's, as its own save record, when it is new or changed, or its key once
     // when it went. A client lays it on its copy, tied to its faucet and sprinkler. Not relayed, not pre-world. Late
     // join: every hose again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
-    GroundHoseState = 267,
+    GroundHoseState = 269,
     // CLIENT->HOST: a hose this client's player finished laying or changed (op 1, its record), or took up (op 2). Never
     // relayed; the host lays or takes up its own and its next GroundHoseState answers. BlobChunkPayload, as above.
-    GroundHoseIntent = 268,
+    GroundHoseIntent = 270,
     // HOST->ALL: a piece of the host's a player built -- a nail, or a custom wall unfinished, wet or finished -- as its own
     // save record, when it is new or changed, or its key once when it went. A client makes it on its copy, or applies the
     // record to its piece of that key, a nail tied to the actors its keys name there. Not relayed, not pre-world. Late join:
     // every piece again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
-    BuildState = 269,
+    BuildState = 271,
     // CLIENT->HOST: a piece this client's player made (op 1, its record), took away (op 2), a wall it hit or repaired
     // (op 3, [f32] the health it lost, negative, or gained), or a nail its pull snapped (op 4). Never relayed; the host
     // makes, destroys, hits, repairs or snaps its own and its BuildState answers. BlobChunkPayload, as above.
-    BuildIntent = 270,
-    // HOST->ALL: a garbage container's contents (the keys of the props its itemsInside lists, the first
-    // kGarbageBinKeys of them) and whether it can be held and collected, when any changes, and every container again
-    // at the ready edge. A client's copy writes the flags and glues the props as the container's own glue does. Not
-    // relayed, not pre-world. GarbageBinPayload.
-    GarbageBinState = 271,
-    // CLIENT->HOST: a container this client authors (it holds it, threw it or syncs it) took a lethal impact or fire
-    // here, which the client cancelled, or its hacksaw cut it (sawn). The host breaks its own copy by the same lethal
-    // call, or as the saw does, so the spill is the host's. Never relayed. ContainerBreakPayload.
-    ContainerBreakRequest = 272,
+    BuildIntent = 272,
     // CLIENT->HOST: this client's player pressed the toolgun's prop-properties tool on a keyed prop, with the tool's
     // own static, frozen, active and sleep, seen from this camera point at this hit point. The host judges the sender's
     // right, a toolgun in its hand, who holds the prop and the sight, applies the tool's values through the game's
@@ -1371,11 +1362,10 @@ enum class ReliableKind : uint16_t {
     // record lane carries the fuel). A client's copy takes it without running the chipper. Reliable, not relayed, not
     // pre-world. WoodchipperPayload.
     WoodchipperState = 232,
-    // CLIENT->HOST: this client's player poured a gas can into a woodchipper (op 1, the fuel its own copy gained),
-    // pressed its button (op 2, the state it wanted) or fed it a prop it holds or syncs (op 4, the payload then a
-    // WoodchipperFeedTail). Never relayed; the host judges it (reach, rate, the can in the sender's hand, the room in the
-    // tank; for a feed, its own chipper running and its own copy of the prop near the box), does it on its chipper, and
-    // its WoodchipperState answers, to the sender alone when it refused. WoodchipperPayload.
+    // CLIENT->HOST: this client's player poured a gas can into a woodchipper (op 1, the fuel its own copy gained) or
+    // pressed its button (op 2, the state it wanted). Never relayed; the host judges it (reach, rate, the can in the
+    // sender's hand, the room in the tank), does it on its chipper, and its WoodchipperState answers, to the sender alone
+    // when it refused. WoodchipperPayload.
     WoodchipperIntent = 233,
     // HOST->ALL: an ATV of the host's beyond its rig -- its fuel and health, its modules, whether it is empty or broken
     // and its state sequence (op 16) -- when one of them changed, and every ATV again at a joiner's ready edge, to that
@@ -1535,6 +1525,20 @@ enum class ReliableKind : uint16_t {
     // The host judges the sender's reach and presses its own cleaner, whose RoombaState answers. Never relayed.
     // RoombaPayload.
     RoombaIntent = 246,
+    // HOST->ALL: a garbage container's contents (the keys of the props its itemsInside lists) and whether it can be held
+    // and collected, when any changes, and every container again to a joiner at its ready edge. A client's copy writes the
+    // flags and the list and glues the props as the container's own glue does, once every listed prop is here. A chunked
+    // blob on the Default lane (a body past the blob ceiling is logged on the host and not sent). Host-authored: refused
+    // at a client from any slot but 0 and dropped on the host; never relayed; not pre-world. See kGarbageBinVersion.
+    GarbageBinState = 262,
+    // CLIENT->HOST: a container this client authors (it holds it, threw it or syncs it) took a lethal impact or fire
+    // here, which the client cancelled: op 1, the request; the host breaks its own copy by the same lethal call, so
+    // the spill is the host's. Or the client's hacksaw is about to complete a cut (sawn): op 1 asks the host to
+    // GRANT it. HOST->the requester alone: op 2, the host's refusal with its reason; op 3, a granted cut: the host records
+    // it and breaks its copy when that client's destroy of the prop arrives, and the client's saw runs the rest. CLIENT->HOST,
+    // op 4: the granted cut ended without its destroy, and the host ends its record. Never relayed. Late join: none, a break
+    // is an act. ContainerBreakPayload.
+    ContainerBreakRequest = 263,
     // HOST->ALL: a GPU mining rig's (prop_miner_C) GPUs, slots, coolers, points and heat (coop/props/miner_sync), when one
     // changes (the points at most once a second) and to a joiner at its ready edge; a client's copy writes them and
     // repaints through the rig's own `upd`. Op 1, HOST->that client: its ask was granted or refused. Never relayed; not
@@ -2550,28 +2554,6 @@ struct PropFirePayload {
 };
 static_assert(sizeof(PropFirePayload) == 44, "PropFirePayload must be 44 bytes");
 
-// A garbage container's state (GarbageBinState).
-inline constexpr size_t kGarbageBinKeys = 5;
-inline constexpr uint8_t kGarbageBinCanHold = 0x01, kGarbageBinCanCollect = 0x02;
-struct GarbageBinPayload {
-    WireKey key;                     // 32 -- the container's Key
-    uint8_t flags;                   // 1 -- kGarbageBin*: propData's canHold and canCollect
-    uint8_t count;                   // 1 -- how many props its itemsInside lists (more than `keys` past the cap)
-    uint8_t keys;                    // 1 -- how many of `items` are filled
-    uint8_t _pad;                    // 1 -- zero
-    WireKey items[kGarbageBinKeys];  // 160 -- the listed props' Keys, in the list's order
-};
-static_assert(sizeof(GarbageBinPayload) == 196, "GarbageBinPayload must be 196 bytes");
-
-// A client's break of a container it authors (ContainerBreakRequest).
-struct ContainerBreakPayload {
-    WireKey key;       // 32 -- the container's Key
-    uint8_t fire;      // 1 -- a fireDamage (1) or an impactDamage (0)
-    uint8_t sawn;      // 1 -- 1: the hacksaw's cut, which the host makes as the saw does (broken, then destroyed)
-    uint8_t _pad[2];   // 2 -- zero
-};
-static_assert(sizeof(ContainerBreakPayload) == 36, "ContainerBreakPayload must be 36 bytes");
-
 // A spilled liquid's decal (SpillState), or a client's (SpillIntent).
 struct SpillPayload {
     WireKey cls;           // 32 -- the decal's grime class name
@@ -2681,6 +2663,37 @@ struct DeskShortPayload {
     uint8_t _pad[3];   // 3 -- zero
 };
 static_assert(sizeof(DeskShortPayload) == 4, "DeskShortPayload must be 4 bytes");
+
+// A garbage container's state (GarbageBinState), a chunked blob (blob_chunks) on the Default lane, little-endian:
+// [u8 version][u8 key length][key][u8 flags][u16 count][count x ([u8 length][key])]. The container's key and each listed
+// prop's key are ASCII, 1 to 31 chars; the list is every keyed prop its itemsInside holds, in its order. A receiver reads
+// every length from the body and refuses what does not add up to it exactly, a version it does not know, a flag outside
+// the two, a listed key equal to the container's own, and a key listed twice.
+inline constexpr uint8_t kGarbageBinVersion = 1;
+inline constexpr uint8_t kGarbageBinCanHold = 0x01, kGarbageBinCanCollect = 0x02;
+
+// A client's break of a container it authors, or its saw's cut of a prop (ContainerBreakRequest, op 1), the host's refusal
+// of it (op 2) or its grant of a cut (op 3), and the client's withdrawal of a grant its cut did not use (op 4).
+inline constexpr uint8_t kContainerBreakAsk      = 1;   // CLIENT->HOST: break this container, or grant this cut
+inline constexpr uint8_t kContainerBreakRefused  = 2;   // HOST->the requester: not broken or not granted, with a reason
+inline constexpr uint8_t kContainerBreakGranted  = 3;   // HOST->the requester: the cut may run (sawn 1, reason 0)
+inline constexpr uint8_t kContainerBreakWithdrawn = 4;   // CLIENT->HOST: the granted cut ended without its destroy (sawn 1, fire 0, reason 0)
+// The reason of an op 2. Zero on an op 1, an op 3 and an op 4.
+inline constexpr uint8_t kContainerBreakNotFound = 1;      // the host holds no live prop of that key (gone, or already granted)
+inline constexpr uint8_t kContainerBreakNotAuthor   = 2;   // the sender neither syncs nor holds it
+inline constexpr uint8_t kContainerBreakNoSaw       = 3;   // a cut, with no hacksaw in the sender's applied hand
+inline constexpr uint8_t kContainerBreakOutOfReach  = 4;   // the container is not within the sender's reach
+inline constexpr uint8_t kContainerBreakTooFast     = 5;   // the sender is past its budget, or its queue of requests is full
+inline constexpr uint8_t kContainerBreakNotReady    = 6;   // the sender's world was not ready
+inline constexpr uint8_t kContainerBreakNotTaken    = 7;   // the host's call did not run
+struct ContainerBreakPayload {
+    WireKey key;       // 32 -- the container's Key, or for a cut the sawn prop's
+    uint8_t op;        // 1 -- kContainerBreakAsk, kContainerBreakRefused, kContainerBreakGranted or kContainerBreakWithdrawn
+    uint8_t fire;      // 1 -- a fireDamage (1) or an impactDamage (0); the request's, echoed by a refusal
+    uint8_t sawn;      // 1 -- 1: the hacksaw's cut, which the host grants and the client's own saw then runs; always 1 on an op 3 and an op 4
+    uint8_t reason;    // 1 -- kContainerBreak* on an op 2; 0 on an op 1, an op 3 and an op 4
+};
+static_assert(sizeof(ContainerBreakPayload) == 36, "ContainerBreakPayload must be 36 bytes");
 
 // One message of the drill filler (DevLoadFiller): its place in the run and the run's length; the rest is fill.
 struct DevLoadFillerPayload {
@@ -3700,8 +3713,13 @@ struct AtvStatePayload {
     uint8_t  stateBits;    // 1  -- bit0=isDriven, bit1=kAtvBrake, bit2=grabbed (the sender's grav hand holds it),
                            //      bit3=kAtvFromSyncer, bit4=kAtvTrap, bit5=kAtvLights, bit6=kAtvTurbo, bit7=kAtvHorn
     uint8_t  adopt;        // 1  -- 1 = host connect-snapshot (warp as is), 0 = live stream
-    uint8_t  passengerSlot; // 1 -- the host's stamp: the peer slot in the passenger spot (0xFF = free), the seat
-                           //      behind the driver a riding kerfur takes
+    // The riding kerfur's element id, 0 = none; the host's, on every block it sends (a client's carry 0 and the host never
+    // reads them). MTA carries an occupant's vehicle on the ped's add
+    // (reference/mtasa-blue/Server/mods/deathmatch/logic/packets/CEntityAddPacket.cpp:874-884); ours rides the ATV's
+    // stamp, since an ATV has one rider and the stamp already reaches the driver and every joiner.
+    uint32_t riderEid;     // 4
+    uint8_t  passengerSlot; // 1 -- the host's stamp: the peer slot in the passenger spot behind the driver (0xFF = free),
+                           //      the spot a riding kerfur otherwise takes
     uint8_t  pad[3];       // 3  -- zero
     // The condition block: the tires' and dirt's accumulators travel from the syncer (fuel and health are the host
     // copy's absolute, a client syncer's burn taken only under its ack, see ackSeq); a mirror's own accrual is held at
@@ -3729,7 +3747,8 @@ struct AtvStatePayload {
                                   //      of a syncer's block and on every block of its own copy. The host takes a client
                                   //      syncer's fuel and health only from a block whose ackSeq is its current stateSeq.
 };
-static_assert(sizeof(AtvStatePayload) == 156, "AtvStatePayload must be 156 bytes");
+static_assert(offsetof(AtvStatePayload, riderEid) == 84, "riderEid must follow adopt at offset 84");
+static_assert(sizeof(AtvStatePayload) == 160, "AtvStatePayload must be 160 bytes");
 
 // stateBits bit 3: the block is the syncer's, re-sent by the host (a client syncer's pose and condition), not the
 // host's own copy. A receiver applies the pose and condition of such a block to an ATV it does not sync; the host's
@@ -4348,10 +4367,10 @@ struct TurbineStatePayload {
 };
 static_assert(sizeof(TurbineStatePayload) == 56, "TurbineStatePayload must be 56 bytes");
 
-// A woodchipper's state (WoodchipperState: op 0 fuel and active, op 3 active alone), or a client's pour (op 1),
-// press (op 2) or feed (op 4) (WoodchipperIntent). A feed is this payload, then WoodchipperFeedTail.
+// A woodchipper's state (WoodchipperState: op 0 fuel and active, op 3 active alone), or a client's pour (op 1) or
+// press (op 2) (WoodchipperIntent).
 inline constexpr uint8_t kWoodchipperOpState = 0, kWoodchipperOpPour = 1, kWoodchipperOpSetActive = 2,
-                         kWoodchipperOpActiveOnly = 3, kWoodchipperOpFeed = 4;
+                         kWoodchipperOpActiveOnly = 3;
 struct WoodchipperPayload {
     WireKey key;       // 32 -- the chipper's key
     float   fuel;      // 4 -- its fuel (0..100); a pour's gain; unread by op 3
@@ -4361,12 +4380,6 @@ struct WoodchipperPayload {
 };
 static_assert(sizeof(WoodchipperPayload) == 40, "WoodchipperPayload must be 40 bytes");
 
-// What follows a feed's WoodchipperPayload: the prop the client's copy of the chipper took in its eat box, a prop
-// this client holds or syncs.
-struct WoodchipperFeedTail {
-    WireKey prop;      // 32 -- the fed prop's key
-};
-static_assert(sizeof(WoodchipperFeedTail) == 32, "WoodchipperFeedTail must be 32 bytes");
 // An ATV's host state (AtvHostState), or a client's request (AtvRequest). One payload, told apart by `op`: a request's
 // is 1..7, a state's 16 or 17. The syncer's horn is neither: it is a bit of AtvState's stateBits (kAtvHorn).
 namespace atv_host_op {

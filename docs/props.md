@@ -97,14 +97,16 @@ not broadcast. Instead a client's actions become intents the host performs (`coo
 intent naming the parked key, the class and the transform; the host spawns it as the sole author and the mirror comes
 back down the ordinary birth broadcast.
 - **Births the client cannot avoid.** A reel ejected from a caddy, a module or a drive taken from
-a rack, an item extracted from a container all materialise on the client first; they go through the same door,
-class-checked at the host, born asleep where the class needs it.
-- **Births a player asked for.** The spawn menu, the toolgun, the scrap a hacksaw cuts, the crowbar a pry's end hands
-back and the battery an ATV's unscrew hands back. Not by class -- the menu is the whole catalog, and the world mints those same classes per peer, so a class test
-would double the world. They are admitted on AUTHORSHIP instead: the birth seam asks whether a player's own spawn verb
-is on the stack, a fact only that instant holds, since the VM still has the calling Blueprint frame there
-(`coop/props/prop_spawn_authoring`). Such a birth crosses as an ordinary drop intent and is NOT slept on the host -- it
-was dropped at the player's aim and must fall there as it falls here.
+  a rack, an item extracted from a container all materialise on the client first; they go
+  through the same door, class-checked at the host, born asleep where the class needs it.
+- **Births a player asked for.** The spawn menu, the toolgun, the scrap a hacksaw cuts (the saw
+  runs only where it is held), the crowbar a pry's end hands back and the battery an ATV's unscrew
+  hands back. Not by class -- the menu is the whole catalog, and the world mints
+  those same classes per peer, so a class test would double the world. They are admitted on
+  AUTHORSHIP instead: the birth seam asks whether a player's own spawn verb is on the stack, which
+  is a fact only that instant holds, since the VM still has the calling Blueprint frame there
+  (`coop/props/prop_spawn_authoring`). Such a birth crosses as an ordinary drop intent and is NOT
+  slept on the host -- it was dropped at the player's aim and must fall there as it falls here.
 
 Any other keyed prop a client creates is dropped at that door and never reaches the host: that is the world's own churn,
 which every peer produces for itself.
@@ -269,30 +271,29 @@ the record, and each landing remakes or breaks it (`coop/props/glowstick_sync`).
 A nametag item (`prop_nametag_C`) carries a tag. Its left click reads the player's interaction hit and, on a prop,
 writes the tag into the prop's `nametag`, runs the prop's `setNametag` -- which takes down the floating label it had
 and builds one for a tag that is not None -- and destroys the item. A prop's nametag is base save state: a world's
-save carries it, but a prop's spawn row carries identity only and its record's base half is the receiver's own, so
-before this lane a tag reached another peer only through a save: a client's tag stayed on its own copy, and the
-host's reached no client. The nametag is the host's
-(`coop/props/prop_nametag`). The host player's click runs the game's own, and the watch on its exit tells every
-client. A client's click is refused there and asked of the host with the prop's key and the tag; the host applies it
-when the prop is within the sender's reach and a nametag is in the sender's hand as the hand lane has applied it (the
-request waits while that hand state is still owed), within the sender's budget (two at once, one a second, per
-occupant of the slot), and tells every client, the sender included, whose held item then goes as the game's use takes
-it; the item is the client's own, so it is spent there. A request the host refuses is answered to its sender alone with
-the reason, and the item stays. The messages are the `PropNametag` kind: op 1 the client's request, op 2 the host's
-tag, op 3 its refusal, a chunked blob on the Default lane, so it is ordered with the hand state and the spawns. A tag is the
-first line of a notebook page, which the game does not bound in length, so a tag crosses at the length an FName holds,
-1023 UTF-16 units; the host reads every length from the message and refuses what does not add up or is not valid UTF-16, with the reason. A tag the host cannot publish is logged once. `[V]` the rig proved this lane's final bytes (`coop/dev/nametag_drill`, run, host and window green, both reds red): a client's tag lands on
-the host's cup once and its item is spent; the host player's tag reaches the client's copy; a tag the host puts on between a joiner's save being
-cut and its world being ready is on its copy at the join's end (window mode). The reds: `nametag_client_runs` (the click asks
-the host nothing: the client says fail at once) and `nametag_no_join_replay` (window mode: the copy stays untagged).
+save carries it, but a prop's spawn row carries identity only and its record's base half is the receiver's own, so a
+tag reaches another peer only through a save, unless the host sends it (`coop/props/prop_nametag`). The host player's
+click runs the game's own, and the watch on its exit tells every client. A client's click is refused there and asked of
+the host with the prop's key and the tag; the host applies it when the prop is within the sender's reach and a nametag
+is in the sender's hand as the hand lane has applied it (the request waits while that hand state is still owed), within
+the sender's budget (two at once, one a second, per occupant of the slot), and tells every client, the sender included,
+whose held item then goes as the game's use takes it; the item is the client's own, so it is spent there. A request the
+host refuses is answered to its sender alone with the reason, and the item stays. The messages are the `PropNametag`
+kind: op 1 the client's request, op 2 the host's tag, op 3 its refusal, a chunked blob on the Default lane, so it
+is ordered with the hand state and the spawns. A tag is the first line of a notebook page, which the game does not
+bound in length, so a tag crosses at the length an FName holds, 1023 UTF-16 units; the host reads every length from
+the message and refuses what does not add up or is not valid UTF-16, with the reason. `[V]` the rig proved this lane's
+final bytes (`coop/dev/nametag_drill`: run, host and window green, both reds, `nametag_client_runs` and
+`nametag_no_join_replay`, red): a client's tag lands on the host's cup once and its item is spent, the host player's tag
+reaches the client's copy, and a tag put on in the join window is on its copy at the join's end.
 
 ### Containers
 
-A container's contents are not on the container: every container reads them from one global per-peer array in the save
-object, addressed by an index the container holds, and every mutating verb runs inside the Blueprint, below the two
-dispatch seams a hook can intercept. The script-body gate does see it -- that is how this lane learns a container
-changed -- but it runs on the presser's own machine, and no local body can wait for an answer from across the network.
-So the host publishes the contents (`coop/props/container_contents_sync`): one slice of its array per live container is
+A container's contents are not on the container: every container reads them from one global per-peer array in the
+save object, addressed by an index the container holds, and every mutating verb runs inside the Blueprint, below the
+two dispatch seams a hook can intercept. The script-body gate does see it -- that is how this lane learns a container
+changed -- but it runs on the presser's own machine, and no local body can wait for an answer from across the network. So
+the host publishes the contents (`coop/props/container_contents_sync`): one slice of its array per live container is
 sent at a joiner's ready edge and on change, and a client's mirror is display only. A client's only slice is a thrown
 container's birth, bounded by its arrival rate; the host refuses every other client slice and answers the author with
 its own truth (`coop/props/container_truth`). A change a client makes to a shared container is an act the host judges,
@@ -315,15 +316,10 @@ runs on it, since it fires no second overlap, and the game's own body may still 
 same drive does, until the container changes. A client's own copy of the call on a shared mirror is cancelled whoever
 calls it (the container's own overlap graph, a drone sack's trigger, a cleaner's own graph, which a client never runs), since the mirror is display only. A joiner needs no replay: the put is one host step, so a joiner seeded
 before it receives the prop's destroy and the container's publication, and one seeded after receives the container with
-the record `[?]`. The open and closed state is a keyed-device channel like a door's ([devices.md](devices.md)). The single-slot verbs are reverse-engineered and designed and not built.
+the record `[?]`. The open and closed state is a keyed-device channel like a
+door's ([devices.md](devices.md)). The single-slot verbs are reverse-engineered and designed and not built.
 
-A container that breaks spills its records (its own `broken`), then is destroyed. A client's lethal hit on a container it
-authors is cancelled and sent to the host (`ContainerBreakRequest`), which breaks its own copy by the same call, and a
-container its hacksaw cuts goes the same way, its local spill dissolved (`coop/props/hacksaw_cut`); before,
-the client's spill reached the host as its births, a nested container in it empty. `[V]` (`autotest_container_gaps`: a
-basket of two discs broken on the host and by a client grabbing it; both peers end with the same discs.)
-
-A nested container's contents and a signal's photo travel with their records ([devices.md](devices.md), containers).
+A container that breaks spills its records, then is destroyed. A client's lethal hit on a container it authors is cancelled and sent to the host (`ContainerBreakRequest`), which breaks its own copy when the sender authors it and it is in reach. A client's hacksaw cut (`coop/props/hacksaw_cut`, any keyed prop) is asked before it completes: the saw's ReceiveTick is cancelled on the tick that would finish it, the host grants it (a saw in the sender's applied hand, the prop live and not granted to another slot, its surface within 200 cm + 100 cm of the puppet's eye), and the client's saw runs the scrap, the destroy and its end, the host's copy breaking first when that destroy arrives; a refusal gives the game's own hint and ends the cut `[?]`. `[V]` `autotest_container_gaps`, `autotest_hacksaw`.
 
 ### A record that changes in place
 
@@ -491,6 +487,7 @@ cm of it each second and resting 1 cm from it; the client's press switched the h
 | container contents | the host | slices of its object array; an extraction is an intent |
 | a container's break | the host | a client's lethal hit on one it authors is a request; the host's copy breaks and spills |
 | a prop's nametag | the host | a client's tag is a request by the prop's key; the host applies it and tells every client |
+| a container's break | the host | a client's lethal hit on one it authors is a request; the host's copy breaks and spills |
 | a stuck prop, and its unstick | the peer that sticks or frees it; every peer runs the component's own verb | one reliable message |
 | a self-changing prop's progression | the host | park, corrector or anchor, per prop |
 | notebook editor occupancy | the host arbitrates | a claim keyed by the owning prop |
@@ -520,8 +517,7 @@ cm of it each second and resting 1 cm from it; the client's press switched the h
 | `PropNametag` | a client to the host (op 1); the host to all (op 2), or to the requester alone (op 3) | a prop's nametag: the prop's key and the tag; the slot whose item it was; a refusal |
 | `PropStickState` | the peer that sticks or frees it, to all | frozen or static, the commit pose and the hold the stick ended; or an unstick, with the pose and velocity |
 | `PropSnapPos` | the host to one joiner | a position correction for a save-authoritative prop moved in the join window, with a keyed prop's frozen and sleep; it carries the host's drive context for the prop (claim generation and open), the client drops one older than a drive END still on its copy, and a prop a hand held after its correction went out gets a follow-up after the release `[?]` |
-| `ContainerState`, `ContainerContents` | the presser; the host | open or closed; one slice of the host's object array, its nested containers' contents in its tail |
-| `ContainerBreakRequest` | a client to the host | a container this client authors took a lethal hit; the host breaks its copy |
+| `ContainerState`, `ContainerContents`, `ContainerBreakRequest` | the presser; the host; a client to the host (op 1) and the host to the requester (op 2 refusal, op 3 grant of a cut) | open or closed; one slice of the host's object array, its nested containers' contents in its tail; a break the host makes for a client, its refusal with a reason, or the grant of a saw's cut |
 | `InventoryPickup` | each peer, relayed | the pocket blip, so others hear a pickup |
 | `RoombaState`, `RoombaIntent` | the host to all; a client to the host | a robot cleaner's id and whether it runs; a client's press with the state it wants |
 
@@ -557,8 +553,7 @@ prop resolves.
 | A prop whose own grab prelude adds to the base one gets only the base one on a receiver. The sprinkler's also detaches its hose; the grabber's own cut reaches the others through the garden hose lane ([deployables.md](deployables.md)), which a grab of the sprinkler has not been driven through on the rig. The glowstick's replaces the base one with its own release, and a receiver runs the base one; its release reaches the others with its record (`coop/props/glowstick_sync`) | `[V]` the sprinkler and glowstick Blueprints: `prop_sprinkler_C`'s prelude calls `prop_C::playerGrabbed_pre` and `hose->detachSprinkler`, `prop_glowstick_C`'s calls `releaseGlowstick` alone; `coop/props/remote_prop` runs the base prelude; `[?]` the sprinkler grab through `coop/world/ground_hose_sync` |
 | Only the prop-properties tool's press crosses. The stacker sets flags on the props it stacks and on its parent, a grab that unfreezes a frozen prop and a wall-mount that writes static and frozen directly each change the peer that did it alone | `[?]` `coop/props/prop_tool_flags` catches `tool_propProps_C::init` only; not yet measured in a two-peer run |
 | Another peer's hold can carry away the chair this peer sits in at the laptop, which single player never allows: the laptop freezes the seat only on the machine whose player sits | `[V]` the laptop Blueprint: `stabilizeSeat` sets the seat frozen, and the exit's `setPropProps` clears it; `coop/props/remote_prop` unfreezes a held copy at the hold's first pose |
-| A nested container's contents travel in container slices only: the player inventory's records and a prop's own record never carry them, so a container a client carries in its inventory across a rejoin, or one whose own record a prop lane sends, still names its slot as before | `[V]` `ue_wrap/actors/inventory` and `coop/props/prop_save_data` strip them; `coop/props/container_contents_io` attaches them |
-| A record past the transport ceiling drops signal photos, the biggest first; a receiver keeps its own photo of such a row, one that never had it gets none | `[V]` `coop/props/prop_save_data`, `coop/props/container_contents_publish`, `coop/items/player_inventory_sync` |
+| A nested container's contents travel in container slices only: the player inventory's records and a prop's own record never carry them, so a container a client carries in its inventory across a rejoin, or one whose own record a prop lane sends, still names its slot as before; and several signal photos in one record, slice or inventory can pass that path's bound (a photo is 8.7 to 23.3 KB, a bound 32 to 56 KB), which refuses that carrier whole with a log | `[V]` `ue_wrap/actors/inventory` and `coop/props/prop_save_data` strip the nested contents, `coop/props/container_contents_io` attaches them; `coop/props/container_contents_publish`, `coop/items/player_inventory_sync` refuse | 
 | A keyed prop a client creates outside the intent door (a place after a pickup, the whitelisted births, a container extract, a player's own spawn verb) never reaches the host. It is logged now: the drain names its exit, and `[dev] prop_birth_key_probe` tallies every exit by name | `[V]` `coop/props/prop_drop_intent` drops it at the drain; `coop/dev/prop_birth_key_probe` |
 | Two peers changing one canned food inside one round trip each publish a whole record, and the last to reach the host stands, so a bite can be lost; a can's `health` travels only with those records, so impact damage short of opening it stays on each peer | `[RD]` `coop/props/prop_can_state` publishes the record and takes no claim |
 | Concrete and every other local-accumulator prop drift between peers; only the tape reel and the world food have one author | `[V]` `coop/interactables/tape_caddy_sync`, `coop/props/prop_food_sync` |

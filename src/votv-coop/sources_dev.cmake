@@ -307,7 +307,6 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/puppet_head_probe.cpp
     src/coop/dev/puppet_reg_probe.cpp
     src/coop/dev/pi0_selftest.cpp
-    src/coop/dev/wire_census.cpp
     src/coop/dev/perf_probe.cpp
     src/coop/dev/input_focus_probe.cpp
     src/coop/dev/leak_probe.cpp
@@ -327,8 +326,15 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/atv_gate_drill.cpp
     src/coop/dev/atv_gate_drill_forged.cpp
     src/coop/dev/atv_gate_drill_joiner.cpp
+    src/coop/dev/atv_drive.cpp
     src/coop/dev/atv_gate_drill_acts.cpp
     src/coop/dev/atv_gate_drill_steps.cpp
+    src/coop/dev/atv_riders_drill.cpp
+    src/coop/dev/atv_riders_drill_steps.cpp
+    src/coop/dev/atv_riders_drill_late.cpp
+    src/coop/dev/atv_riders_drill_drive.cpp
+    src/coop/dev/atv_riders_drill_seat_offset.cpp
+    src/coop/dev/atv_riders_join_hold.cpp
     src/coop/dev/atv_probe.cpp
     src/coop/dev/atv_seat.cpp
     src/coop/dev/atv_tire_probe.cpp

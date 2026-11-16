@@ -98,17 +98,6 @@ void ReadEquipRecord(const void* base, EquipRecord& rec) {
     rec.tag      = SR::ReadFNameAt(base, kEquip_tag);
 }
 
-// A record as the player inventory writes it: without carried container contents, whatever its sender put there.
-// They are only ever a container slice's, and this apply writes into a save object before the world stands, where
-// placing them (container_inventory::PlaceNested) would address the wrong save object and move the array under it.
-SR::SaveRecord Flat(const SR::SaveRecord& r) {
-    if (!r.nestedCarried && r.nested.empty()) return r;
-    SR::SaveRecord c = r;
-    c.nested.clear();
-    c.nestedCarried = false;
-    return c;
-}
-
 // An empty equipment slot: no item named and no class in its record. The game finds a free slot by comparing whole
 // structs against the struct's default (AddEquipment: Array_Find), so a blank has to be that default, not the zeroed
 // transform a blank C++ record holds: a blank written with zeros is never free, and a player whose slots were padded
@@ -129,6 +118,17 @@ bool ReadGameBlank(void* save, int32_t& offSlot, const wchar_t* name, EquipRecor
     if (!def.data || def.num < 1) return false;
     ReadEquipRecord(def.data, out);
     return true;
+}
+
+// A record as the player inventory writes it: without carried container contents, whatever its sender put there.
+// They are only ever a container slice's, and this apply writes into a save object before the world stands, where
+// placing them (container_inventory::PlaceNested) would address the wrong save object and move the array under it.
+SR::SaveRecord Flat(const SR::SaveRecord& r) {
+    if (!r.nestedCarried && r.nested.empty()) return r;
+    SR::SaveRecord c = r;
+    c.nested.clear();
+    c.nestedCarried = false;
+    return c;
 }
 
 void WriteEquipRecord(uint8_t* base, const EquipRecord& r, const EquipRecord& gameBlank) {

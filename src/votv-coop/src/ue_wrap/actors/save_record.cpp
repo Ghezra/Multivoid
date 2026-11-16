@@ -2,8 +2,8 @@
 
 #include "ue_wrap/actors/save_record.h"
 
-#include "ue_wrap/actors/container_inventory.h"   // PlaceNested: a carried container's contents get a slot here
 #include "ue_wrap/actors/prop.h"
+#include "ue_wrap/actors/container_inventory.h"   // PlaceNested: a carried container's contents get a slot here
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/core/fname_utils.h"
 #include "ue_wrap/core/fstring_utils.h"
@@ -13,9 +13,7 @@
 #include "ue_wrap/desk/signal_dynamic.h"
 
 #include <chrono>
-#include <algorithm>
 #include <cstring>
-#include <cwchar>
 #include <unordered_map>
 
 namespace ue_wrap::save_record {
@@ -135,8 +133,8 @@ void* AllocZeroed(size_t count, size_t elemSize) {
     return buf;
 }
 
-bool ReplaceByteArray(void* base, int32_t off, const uint8_t* data, int32_t count) {
-    if (!base || count < 0 || count > kMaxArr || (count > 0 && !data)) return false;
+bool ReplaceArray(void* base, int32_t off, const void* data, int32_t count, int32_t elemSize) {
+    if (!base || elemSize <= 0 || count < 0 || count > kMaxArr || (count > 0 && !data)) return false;
     uint8_t* hdr = reinterpret_cast<uint8_t*>(base) + off;
     void* old = nullptr;
     int32_t oldNum = 0, oldMax = 0;
@@ -145,13 +143,13 @@ bool ReplaceByteArray(void* base, int32_t off, const uint8_t* data, int32_t coun
     std::memcpy(&oldMax, hdr + 12, 4);
     const bool own = old && PlausibleObjPtr(old) && oldNum >= 0 && oldNum <= oldMax && oldMax <= kMaxArr;
     if (own && oldMax >= count) {   // the array's own slack holds it: the buffer stays, only Num moves
-        if (count > 0) std::memcpy(old, data, static_cast<size_t>(count));
+        if (count > 0) std::memcpy(old, data, static_cast<size_t>(count) * static_cast<size_t>(elemSize));
         std::memcpy(hdr + 8, &count, 4);
         return true;
     }
-    void* buf = AllocZeroed(static_cast<size_t>(count), 1);
+    void* buf = AllocZeroed(static_cast<size_t>(count), static_cast<size_t>(elemSize));
     if (count > 0 && !buf) return false;
-    if (buf) std::memcpy(buf, data, static_cast<size_t>(count));
+    if (buf) std::memcpy(buf, data, static_cast<size_t>(count) * static_cast<size_t>(elemSize));
     WriteArrHeader(base, off, buf, count);
     if (own) R::EngineFree(old);
     return true;
@@ -172,7 +170,7 @@ void WriteFNameField(void* dst, const std::wstring& leaf) {
     std::memcpy(dst, &n, sizeof(n));
 }
 
-void ReadSaveRecord(const void* base, SaveRecord& rec) {
+void ReadSaveRecord(const void* base, SaveRecord& rec, bool withImage) {
     rec.className = ReadClassNameAt(base, kSave_class);
     rec.xform     = ReadXformAt(base, kSave_transform);
     rec.key       = ReadFNameAt(base, kSave_key);
@@ -202,7 +200,7 @@ void ReadSaveRecord(const void* base, SaveRecord& rec) {
     for (int32_t i = 0; i < sig.num; ++i) {
         ue_wrap::signal_dynamic::Row row;
         if (ue_wrap::signal_dynamic::ReadStruct(sig.data + static_cast<size_t>(i) * kSignalStride, row,
-                                                /*withImage=*/true))
+                                                withImage))
             rec.signals.push_back(std::move(row));
     }
 }
@@ -216,10 +214,9 @@ bool ClassesReady(const SaveRecord& r, ClassLoad load) {
     for (const auto& group : r.classes)
         for (const auto& leaf : group)
             if (pending(leaf, CR::AnyFamily())) return false;
-    // A carried container's contents are written with it, so their classes are waited for too.
-    if (r.nestedCarried)
-        for (const SaveRecord& child : r.nested)
-            if (!ClassesReady(child, load)) return false;
+    // A carried container's contents are written under the same load (WriteSaveRecord), so their classes are ready too.
+    for (const SaveRecord& n : r.nested)
+        if (!ClassesReady(n, load)) return false;
     return true;
 }
 
@@ -310,25 +307,6 @@ void WriteFlat(uint8_t* base, const SaveRecord& r, ClassLoad load) {
 }
 
 }  // namespace
-
-size_t LargestPhoto(const SaveRecord& r, size_t* row) {
-    size_t best = 0;
-    for (size_t i = 0; i < r.signals.size(); ++i) {
-        if (r.signals[i].image.size() <= best) continue;
-        best = r.signals[i].image.size();
-        if (row) *row = i;
-    }
-    return best;
-}
-
-bool DropLargestPhoto(SaveRecord& r) {
-    size_t row = 0;
-    if (LargestPhoto(r, &row) == 0) return false;
-    r.signals[row].image.clear();
-    r.signals[row].image.shrink_to_fit();
-    return true;
-}
-
 
 // ---- The GAME's own codec, on a LIVE actor --------------------------------------------------
 
@@ -563,22 +541,6 @@ bool ApplyRecord(void* actor, const SaveRecord& r, ClassLoad load) {
     SpliceGroups(merged.bytes,      base.bytes);
     SpliceGroups(merged.names,      base.names);
     SpliceElements(merged.signals,  base.signals);   // a flat array, so the rule applies one level up
-    // A row that arrives without its photo keeps the one this copy holds for the same signal: its sender left it out to
-    // fit a ceiling (DropLargestPhoto), and taking the row as sent would wipe it here.
-    const bool bare = std::any_of(merged.signals.begin(), merged.signals.end(),
-                                  [](const ue_wrap::signal_dynamic::Row& s) { return s.image.empty(); });
-    SaveRecord own;
-    if (bare && CaptureRecord(actor, own)) {
-        for (auto& s : merged.signals) {
-            if (!s.image.empty()) continue;
-            for (const auto& o : own.signals)
-                if (!o.image.empty() && o.id == s.id && o.name == s.name && o.signal == s.signal) {
-                    s.image = o.image;
-                    break;
-                }
-        }
-    }
-
     ParamFrame f(v->loadData);
     const int32_t off = f.ParamOffset(L"data");
     if (!f.valid() || off < 0 || off + kSaveRecordBytes > f.FrameSize()) return false;
@@ -600,18 +562,7 @@ bool ApplyRecordVia(void* actor, void* loadFn, const SaveRecord& r, ClassLoad lo
     // The slot must be zeroed before WriteSaveRecord: it constructs engine-owned TArrays in place
     // and reads nothing, so a dirty slot would leave the engine dereferencing whatever was there.
     std::memset(static_cast<uint8_t*>(f.data()) + off, 0, static_cast<size_t>(kSaveRecordBytes));
-    uint8_t* const data = static_cast<uint8_t*>(f.data()) + off;
-    // A record naming the actor's own class takes that class from the actor: it is loaded and is what the record says,
-    // and the actors written this way (a wall, a nail, a hose, a hook) are not all of the prop family the write checks.
-    void* const own = R::ClassOf(actor);
-    if (!r.className.empty() && own && _wcsicmp(R::ToString(R::NameOf(own)).c_str(), r.className.c_str()) == 0) {
-        SaveRecord rest = r;
-        rest.className.clear();
-        WriteSaveRecord(data, rest, load);
-        std::memcpy(data + kSave_class, &own, sizeof(void*));
-    } else {
-        WriteSaveRecord(data, r, load);
-    }
+    WriteSaveRecord(static_cast<uint8_t*>(f.data()) + off, r, load);
     return Call(actor, f);
 }
 

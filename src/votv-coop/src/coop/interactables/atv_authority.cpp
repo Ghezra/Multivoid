@@ -9,6 +9,7 @@
 #include "coop/config/config_registry.h"
 #include "coop/element/intent_authority.h"
 #include "coop/interactables/atv_index_internal.h"
+#include "coop/interactables/atv_seat_table.h"
 #include "coop/interactables/atv_sync_internal.h"
 #include "coop/net/intent_bucket.h"
 #include "coop/net/protocol.h"
@@ -102,9 +103,9 @@ void Answer(coop::net::Session& s, uint8_t slot, const coop::net::WireKey& key, 
     a.key = key;
     a.seq = seq;
     a.admitted = why == AtvRefusal::Admitted ? 1 : 0;
-    a.occupantSlot = e ? e->occupantSlot : kNoSeat;
-    a.syncerSlot = e ? e->syncerSlot : uint8_t{0};
-    a.passengerSlot = e ? e->passengerSlot : kNoSeat;
+    a.occupantSlot = e ? e->seatOccupant : kNoSeat;
+    a.syncerSlot = e ? e->seatSyncer : uint8_t{0};
+    a.passengerSlot = e ? e->seatPassenger : kNoSeat;
     a.reason = static_cast<uint8_t>(why);
     if (why == AtvRefusal::Admitted) ++g_counters.admitted; else Count(slot, why);
     s.SendReliableToSlot(slot, coop::net::ReliableKind::AtvAnswer, &a, sizeof(a));
@@ -143,7 +144,7 @@ AtvRefusal ReachTest(coop::net::Session& s, uint8_t slot, void* actor) {
 // Whether `slot` sits in any ATV of the index, at the handlebars or behind them.
 bool SeatedAnywhere(uint8_t slot) {
     for (const auto& kv : g_atvs)
-        if ((kv.second.occupantSlot == slot || kv.second.passengerSlot == slot) &&
+        if ((kv.second.seatOccupant == slot || kv.second.seatPassenger == slot) &&
             R::IsLiveByIndex(kv.second.actor, kv.second.idx))
             return true;
     return false;
@@ -153,8 +154,8 @@ bool SeatedAnywhere(uint8_t slot) {
 // handlebars. The spot is the riding kerfur's; a kerfur there gets off for the player (atv_riders.cpp).
 AtvRefusal PassengerTests(const AtvEntry& e, uint8_t who) {
     if (SeatedAnywhere(who)) return AtvRefusal::AlreadySeated;
-    if (e.passengerSlot != kNoSeat) return AtvRefusal::Occupied;
-    if (e.occupantSlot == kNoSeat || e.occupantSlot == who) return AtvRefusal::NoDriver;
+    if (e.seatPassenger != kNoSeat) return AtvRefusal::Occupied;
+    if (e.seatOccupant == kNoSeat || e.seatOccupant == who) return AtvRefusal::NoDriver;
     return AtvRefusal::Admitted;
 }
 
@@ -168,7 +169,7 @@ AtvRefusal SitTests(const AtvEntry& e, uint8_t who) {
     static const bool s_redOccupied =
         coop::config::ResolveEnum(coop::config_registry::rows::atv_health_red) == "occupied";
     if (SeatedAnywhere(who)) return AtvRefusal::AlreadySeated;
-    if (!s_redOccupied && e.occupantSlot != kNoSeat) return AtvRefusal::Occupied;
+    if (!s_redOccupied && e.seatOccupant != kNoSeat) return AtvRefusal::Occupied;
     return AtvRefusal::Admitted;
 }
 
@@ -186,8 +187,8 @@ AtvRefusal TakeoverTests(const AtvEntry& e, uint8_t who) {
     // second client's takeover of a carried ATV is granted and the drill's `judge` phase must fail. Resolved once.
     static const bool s_redPeerCarry =
         coop::config::ResolveEnum(coop::config_registry::rows::atv_health_red) == "peer_carry";
-    if (e.occupantSlot != kNoSeat) return AtvRefusal::Seated;
-    if (!s_redPeerCarry && e.syncerSlot != 0 && e.syncerSlot != who && e.lastGrabbed) return AtvRefusal::Synced;
+    if (e.seatOccupant != kNoSeat) return AtvRefusal::Seated;
+    if (!s_redPeerCarry && e.seatSyncer != 0 && e.seatSyncer != who && e.lastGrabbed) return AtvRefusal::Synced;
     if (!s_redTakeover && who != 0 &&
         coop::atv_sync::IsLocalGrabber(e.actor, coop::players::Registry::Get().Local()))
         return AtvRefusal::Synced;
@@ -197,15 +198,13 @@ AtvRefusal TakeoverTests(const AtvEntry& e, uint8_t who) {
 // A grant: the syncer becomes `who` (and the occupant too for a sit), with the clocks of a fresh syncer, so neither
 // the silence sweep nor the hand-back can undo it before its first block.
 void Grant(AtvEntry& e, uint8_t who, bool seat, bool carried, uint64_t nowMs) {
-    if (seat) e.occupantSlot = who;
-    e.syncerSlot = who;
     e.lastBlockMs = nowMs;
     e.restSinceMs = 0;
     e.haveRestPos = false;
     e.lastGrabbed = carried;
     e.streamBucket.Reset();
     e.haveSyncerHealth = false;
-    coop::atv_sync::ForgetHorn(e);   // the last horn level replayed was the previous syncer's
+    coop::atv_seat_table::SetSeat(e, seat ? who : e.seatOccupant, who, "grant", /*forgetHorn*/true);
     e.stampDue = true;
 }
 
@@ -213,11 +212,9 @@ void Grant(AtvEntry& e, uint8_t who, bool seat, bool carried, uint64_t nowMs) {
 void HandToHost(AtvEntry& e, uint8_t prev, uint64_t nowMs) {
     e.prevSyncerSlot = prev;
     e.handBackMs = nowMs;
-    e.syncerSlot = 0;
     e.streamBucket.Reset();
     e.haveSyncerHealth = false;
-    coop::atv_sync::ForgetHorn(e);   // the last horn level replayed was the previous syncer's
-    e.stampDue = true;
+    coop::atv_seat_table::SetSeat(e, e.seatOccupant, 0, "hand back", /*forgetHorn*/true);
 }
 
 }  // namespace
@@ -228,19 +225,17 @@ void OnSeat(const coop::net::AtvSeatPayload& p, uint8_t slot) {
     AtvEntry* e = Common(*s, slot, p.key, p.seq, p.action > 1);
     if (!e) return;
     if (p.seat > 1) return Answer(*s, slot, p.key, p.seq, AtvRefusal::NoSeat, e);
-    const uint64_t nowMs = coop::atv_sync::NowMs();
     if (p.seat == 1 && p.action == 0) {
         // A passenger's leave, as the driver's: no token, and nothing else moves.
-        if (e->passengerSlot != slot) return Answer(*s, slot, p.key, p.seq, AtvRefusal::NotOccupant, e);
-        e->passengerSlot = kNoSeat;
-        e->stampDue = true;
+        if (e->seatPassenger != slot) return Answer(*s, slot, p.key, p.seq, AtvRefusal::NotOccupant, e);
+        coop::atv_seat_table::SetPassenger(*e, kNoSeat, "passenger leave");
         return Answer(*s, slot, p.key, p.seq, AtvRefusal::Admitted, e);
     }
+    const uint64_t nowMs = coop::atv_sync::NowMs();
     if (p.action == 0) {
         // A leave from the occupant clears the seat and takes no token; the syncer keeps its place.
-        if (e->occupantSlot != slot) return Answer(*s, slot, p.key, p.seq, AtvRefusal::NotOccupant, e);
-        e->occupantSlot = kNoSeat;
-        e->stampDue = true;
+        if (e->seatOccupant != slot) return Answer(*s, slot, p.key, p.seq, AtvRefusal::NotOccupant, e);
+        coop::atv_seat_table::SetSeat(*e, kNoSeat, e->seatSyncer, "leave", /*forgetHorn*/false);
         return Answer(*s, slot, p.key, p.seq, AtvRefusal::Admitted, e);
     }
     // MTA refuses an entry request from a player that is not spawned
@@ -254,7 +249,7 @@ void OnSeat(const coop::net::AtvSeatPayload& p, uint8_t slot) {
         // A passenger takes the spot alone: the driver keeps the seat and the syncer.
         AtvRefusal why = PassengerTests(*e, slot);
         if (why == AtvRefusal::Admitted) why = ReachTest(*s, slot, e->actor);
-        if (why == AtvRefusal::Admitted) { e->passengerSlot = slot; e->stampDue = true; }
+        if (why == AtvRefusal::Admitted) coop::atv_seat_table::SetPassenger(*e, slot, "passenger sit");
         return Answer(*s, slot, p.key, p.seq, why, e);
     }
     AtvRefusal why = SitTests(*e, slot);
@@ -271,7 +266,7 @@ void OnTakeover(const coop::net::AtvTakeoverPayload& p, uint8_t slot) {
     const uint64_t nowMs = coop::atv_sync::NowMs();
     AtvRefusal why = TakeoverTests(*e, slot);
     if (why == AtvRefusal::Admitted) {
-        if (e->syncerSlot == slot) {
+        if (e->seatSyncer == slot) {
             // The syncer's own grab: admitted with no token, the rest clock restarted and the ATV marked carried,
             // so a grab racing a hand-back is never lost.
             e->restSinceMs = 0;
@@ -290,9 +285,8 @@ bool JudgeLocal(AtvEntry& e, AtvRequest req) {
     const uint64_t nowMs = coop::atv_sync::NowMs();
     switch (req) {
     case AtvRequest::Leave:
-        if (e.occupantSlot != 0) return false;
-        e.occupantSlot = kNoSeat;
-        e.stampDue = true;
+        if (e.seatOccupant != 0) return false;
+        coop::atv_seat_table::SetSeat(e, kNoSeat, e.seatSyncer, "host leave", /*forgetHorn*/false);
         return true;
     case AtvRequest::Sit:
         if (SitTests(e, 0) != AtvRefusal::Admitted) return false;
@@ -300,7 +294,7 @@ bool JudgeLocal(AtvEntry& e, AtvRequest req) {
         return true;
     case AtvRequest::Takeover:
         if (TakeoverTests(e, 0) != AtvRefusal::Admitted) return false;
-        if (e.syncerSlot == 0) {
+        if (e.seatSyncer == 0) {
             e.restSinceMs = 0;
             e.lastGrabbed = true;
         } else {
@@ -313,14 +307,12 @@ bool JudgeLocal(AtvEntry& e, AtvRequest req) {
 
 bool JudgeLocalPassenger(AtvEntry& e, bool sit) {
     if (!sit) {
-        if (e.passengerSlot != 0) return false;
-        e.passengerSlot = kNoSeat;
-        e.stampDue = true;
+        if (e.seatPassenger != 0) return false;
+        coop::atv_seat_table::SetPassenger(e, kNoSeat, "host passenger leave");
         return true;
     }
     if (PassengerTests(e, 0) != AtvRefusal::Admitted) return false;
-    e.passengerSlot = 0;
-    e.stampDue = true;
+    coop::atv_seat_table::SetPassenger(e, 0, "host passenger sit");
     return true;
 }
 
@@ -338,7 +330,7 @@ bool AdmitBlock(AtvEntry& e, const coop::net::AtvStatePayload& p, uint8_t sender
     // not counted `not_syncer` and applies, and the drill's table must fail. Resolved once.
     static const bool s_redNotSyncer =
         coop::config::ResolveEnum(coop::config_registry::rows::atv_health_red) == "not_syncer";
-    if (!s_redNotSyncer && (senderSlot == 0 || senderSlot != e.syncerSlot)) {
+    if (!s_redNotSyncer && (senderSlot == 0 || senderSlot != e.seatSyncer)) {
         // The honest race: the block of the syncer a hand-back just replaced, sent before the stamp reached it.
         if (IsLateSyncer(e, senderSlot, nowMs))
             ++g_counters.lateSyncer;
@@ -376,7 +368,7 @@ bool AdmitBlock(AtvEntry& e, const coop::net::AtvStatePayload& p, uint8_t sender
     e.lastRestPos = pos;
     e.haveRestPos = true;
     e.lastGrabbed = grabbed;
-    if (e.occupantSlot == kNoSeat && !e.lastGrabbed) ++g_counters.idleStreamBlocks;
+    if (e.seatOccupant == kNoSeat && !e.lastGrabbed) ++g_counters.idleStreamBlocks;
     return true;
 }
 
@@ -390,14 +382,15 @@ void RunPass(uint64_t nowMs) {
         coop::config::ResolveEnum(coop::config_registry::rows::atv_health_red) == "silence";
     for (auto& kv : g_atvs) {
         AtvEntry& e = kv.second;
-        if (e.syncerSlot == 0 || !R::IsLiveByIndex(e.actor, e.idx)) continue;
-        const uint8_t syncer = e.syncerSlot;
+        if (e.seatSyncer == 0 || !R::IsLiveByIndex(e.actor, e.idx)) continue;
+        const uint8_t syncer = e.seatSyncer;
         // 1. silent: the host takes the ATV, and the seat with it when that client held it. MTA's syncer sends only
         // on change (CUnoccupiedVehicleSync.cpp:459), so silence is normal there; here a syncer streams.
         const bool silent = nowMs - e.lastBlockMs >= kSyncerSilenceMs;
         if (silent) ++g_counters.silentSeen;
         if (!s_redSilence && silent) {
-            if (e.occupantSlot == syncer) e.occupantSlot = kNoSeat;
+            if (e.seatOccupant == syncer)
+                coop::atv_seat_table::SetSeat(e, kNoSeat, e.seatSyncer, "silent syncer", /*forgetHorn*/false);
             HandToHost(e, syncer, nowMs);
             ++g_counters.silenced;
             UE_LOGI("atv_authority: slot %u sent no block for %llu ms -- '%ls' is the host's",
@@ -406,7 +399,7 @@ void RunPass(uint64_t nowMs) {
             continue;
         }
         // 2. seated: the syncer is the occupant.
-        if (e.occupantSlot != kNoSeat) continue;
+        if (e.seatOccupant != kNoSeat) continue;
         // 3. out of range, or at rest and uncarried: the host takes the ATV. MTA keeps an in-range syncer and hands an
         // out-of-range vehicle to the nearest player (CUnoccupiedVehicleSync.cpp:127-146, :171-192); here the host's
         // world is always loaded, and an ATV at rest returns to it, which MTA has no rule for.
@@ -430,9 +423,6 @@ void RunPass(uint64_t nowMs) {
 }
 
 void ClearTable(AtvEntry& e) {
-    e.occupantSlot = kNoSeat;
-    e.passengerSlot = kNoSeat;
-    e.syncerSlot = 0;
     e.lastBlockMs = 0;
     e.restSinceMs = 0;
     e.handBackMs = 0;
@@ -446,7 +436,8 @@ void ClearTable(AtvEntry& e) {
     e.blown = false;
     e.blownBy = 0xFF;
     e.haveSyncerHealth = false;
-    coop::atv_sync::ForgetHorn(e);   // the last horn level replayed was the previous syncer's
+    coop::atv_seat_table::SetSeat(e, kNoSeat, 0, "table cleared", /*forgetHorn*/true);
+    coop::atv_seat_table::SetPassenger(e, kNoSeat, "table cleared");
     e.stampDue = true;
 }
 

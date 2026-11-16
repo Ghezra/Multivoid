@@ -60,6 +60,7 @@
 #include "coop/player/nightmare_roll.h"
 #include "coop/player/level_visit.h"
 #include "coop/player/puppet_hide.h"
+#include "coop/player/puppet_seat.h"
 #include "coop/player/sleep_sync.h"
 #include "coop/creatures/wisp_attack_sync.h"  // Killer Wisp coop: host detect + neutralize + relay
 #include "coop/creatures/wisp_grab_hold.h"  // Killer Wisp: grab-window body placement (per-slot/full teardown)
@@ -198,6 +199,7 @@
 #include "coop/creatures/npc_adoption.h"
 #include "coop/creatures/kerfur_prop_adoption.h"
 #include "coop/creatures/npc_mirror.h"
+#include "coop/creatures/npc_ride.h"  // the ATV rides it holds end with the session
 #include "coop/creatures/npc_sync.h"
 #include "coop/world/world_actor_sync.h"  // non-Character event-actor transform mirror (sibling of npc_sync)
 #include "coop/creatures/piramid_sync.h"  // piramid event choreography lane (mirror brain suppression + PyramidGather)
@@ -354,15 +356,15 @@ void Install(coop::net::Session& session) {
     coop::sound_relay::Install(&session);       // a player's own sounds at a place (a melee hit)
     coop::media_device_sync::Install(&session);  // a placed radio's track and play state
     coop::desk_short_sync::Install(&session);  // the base computer's short circuit is the host's
+    coop::atv_riders::Install(&session);  // a remote driver's body in the seat, the kerfurs a client's seat calls
+    coop::garbage_bin_sync::Install(&session);  // what a garbage container holds, and its pickup, are the host's
+    coop::props::container_break::Install(&session);  // a container a client breaks breaks on the host
+    coop::props::hacksaw_cut::Install();  // a client's saw asks the host before its cut completes
     coop::props::prop_food_sync::Install(&session);  // a world food's one author, the host
     coop::plant_sync::Install(&session);  // the host runs every plant
     coop::prop_fire_sync::Install(&session);  // the host burns every keyed prop
     coop::ground_hose_sync::Install(&session);  // the host's garden hoses
-    coop::atv_riders::Install(&session);  // a remote driver's body in the seat, the kerfurs a client's seat calls
     coop::atv_passenger::Install(&session);  // this player in an ATV's passenger spot
-    coop::garbage_bin_sync::Install(&session);  // what a garbage container holds, and its pickup, are the host's
-    coop::props::container_break::Install(&session);  // a container a client breaks breaks on the host
-    coop::props::hacksaw_cut::Install(&session);  // a container a client saws breaks on the host
     coop::build_sync::Install(&session);  // the host's nails and walls
     coop::spill_sync::Install(&session);  // the host's spilled liquids
     coop::kitchen_sync::Install(&session);  // a microwave's and a mini oven's controls
@@ -455,6 +457,7 @@ void DisconnectSlot(coop::net::Session& session, int slot) {
     coop::props::container_act_host::OnPeerGone(static_cast<uint8_t>(slot));  // a record it held in escrow goes back
     coop::kerfur_command_wire::OnPeerGone(static_cast<uint8_t>(slot));  // a kerfur command it had half sent
     coop::prop_nametag::OnPeerGone(static_cast<uint8_t>(slot));  // a nametag it had half sent
+    coop::garbage_bin_sync::OnPeerGone(static_cast<uint8_t>(slot));  // a replay it was still owed
     coop::kerfur_command_answer::OnPeerGone(static_cast<uint8_t>(slot));  // a consumed-held answer it was owed
     coop::prop_act_host::OnPeerGone(static_cast<uint8_t>(slot));  // a take or use it had reserved
     coop::signal_sync::OnDisconnectSlot(slot);
@@ -494,6 +497,7 @@ void DisconnectSlot(coop::net::Session& session, int slot) {
     coop::fuse_tower_ops::OnPeerLeft(static_cast<uint8_t>(slot));  // and its tower ops
     coop::voice_chat::OnDisconnectSlot(slot);  // drop the leaver's voice channel + icon state
     coop::puppet_hide::Forget(static_cast<uint8_t>(slot));  // the reasons its copy was hidden for end with it
+    coop::puppet_seat::Forget(static_cast<uint8_t>(slot));  // and the seat its body was held on
     coop::level_visit::OnPeerLeft(static_cast<uint8_t>(slot));  // and what its poses said of a visited map
     coop::sleep_sync::OnDisconnectForSlot(slot);  // the leaver's rest state back to awake, told to every client
     coop::owner_entity_sync::OnPeerLeftSlot(slot);  // destroy the leaver's owner-entity mirrors (its eyer dies with it)
@@ -504,6 +508,8 @@ void DisconnectSlot(coop::net::Session& session, int slot) {
 }
 
 DisconnectStats DisconnectAll() {
+    // First: the teardown's reveals (mirror_defer::Reset, below) then find no row to apply.
+    coop::npc_ride::OnDisconnect();
     // The trash mirrors first, before ForceRelease, which can consume a carried one without
     // releasing its GC pin -- and a rooted pending-kill actor anchors its world's whole Outer
     // chain. Retiring them here un-roots, destroys and evicts each drive, so ForceRelease sees no
@@ -560,12 +566,8 @@ DisconnectStats DisconnectAll() {
     coop::prop_fire_sync::OnDisconnect();
     coop::ground_hose_sync::OnDisconnect();
     coop::atv_host_sync::OnDisconnect();
-    coop::atv_riders::OnDisconnect();
     coop::atv_passenger::OnDisconnect();
-    coop::garbage_bin_sync::OnDisconnect();
     coop::desk_short_sync::OnDisconnect();
-    coop::props::container_break::OnDisconnect();
-    coop::props::hacksaw_cut::OnDisconnect();
     coop::build_sync::OnDisconnect();
     coop::spill_sync::OnDisconnect();
     coop::kitchen_sync::OnDisconnect();
@@ -574,6 +576,9 @@ DisconnectStats DisconnectAll() {
     coop::plant_gate::OnDisconnect();  // say the refused counts, start the next session from zero
     coop::woodchipper_gate::OnDisconnect();  // say the refused ticks and the asks, start the next session from zero
     coop::prop_tool_flags::OnDisconnect();  // drop the pending press and the counters
+    coop::garbage_bin_sync::OnDisconnect();
+    coop::props::container_break::OnDisconnect();
+    coop::props::hacksaw_cut::OnDisconnect();
     coop::prop_stick_sync::OnDisconnect();  // drop commit-pending stick records
     coop::sleepingbag_sync::OnDisconnect();
     coop::item_activate::OnDisconnect();
@@ -589,6 +594,7 @@ DisconnectStats DisconnectAll() {
     coop::fuse_tower_ops::OnDisconnect();
     coop::fuse_tower_rows::OnDisconnect();
     coop::atv_sync::OnDisconnect();
+    coop::atv_riders::OnDisconnect();  // after the lane's end, so the seat table's exits reached the riders' subscribers
     coop::drone_sync::OnDisconnect();
     coop::order_sync::OnDisconnect();
     coop::coingun_sync::OnDisconnect();  // dump the lane summary + drop the sold-set, the barrier queue and the cached gun
@@ -749,17 +755,16 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:prop_settle"}; coop::prop_settle::Tick(session); }  // the props this peer let go of: where each comes to rest goes out (an empty list costs one size check)
     coop::media_device_sync::Tick();  // the radios' poll
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:desk_short"}; coop::desk_short_sync::Tick(); }  // the desk short watch resolves its names, and the host serves the requests (an empty inbox costs one size check)
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:garbage_bin"}; coop::garbage_bin_sync::Tick(); }  // the garbage containers: the host flushes the marks its watch made and replays to a joiner, a client applies the host's lists
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:container_break"}; coop::props::container_break::Tick(); }  // a client's break and cut requests, and the host's judgments
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:hacksaw_cut"}; coop::props::hacksaw_cut::Tick(); }  // a saw's cut is forgotten at a world change
     coop::vent_crawler_sync::Tick();  // a client's crawl sounds as their times come
     coop::props::prop_can_state::Tick();  // the init watch's names resolve until it is live
     coop::props::prop_food_sync::Tick();  // the host's poll, the client's wait list
     coop::plant_sync::Tick();  // the plants' poll
     coop::prop_fire_sync::Tick();  // the burning props' poll
     coop::ground_hose_sync::Tick();  // the hoses' poll
-    coop::atv_riders::Tick();  // the ATVs' riders: the remote drivers' bodies, a client seat's kerfurs
     coop::atv_passenger::Tick();  // this player's passenger ask, its seat and the seat's end
-    coop::garbage_bin_sync::Tick();  // the garbage containers' poll and apply
-    coop::props::container_break::Tick();  // a client's container breaks, and the host's
-    coop::props::hacksaw_cut::Tick();  // a saw's cut never spans two ticks
     coop::build_sync::Tick();  // the nails' and walls' poll
     coop::spill_sync::Tick();  // the spills the hook saw
     coop::kitchen_sync::Tick();  // the machines' poll

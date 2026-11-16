@@ -10,6 +10,8 @@
 #include "coop/net/eid_pose_lane.h"        // the trash-carry and driven-prop pose lanes
 #include "coop/net/end_reason.h"           // the code a close carries to the peer
 #include "coop/net/link_kind.h"            // how a player's traffic reaches the session
+#include "coop/net/link_state.h"           // ConnState, LinkStage, HostClose
+#include "coop/net/net_hooks.h"            // the game-side calls the host program sets
 #include "coop/net/net_stats.h"            // session traffic accounting (the one counter owner)
 #include "coop/net/origin_context.h"       // which occupancy a relayed stream packet belongs to
 #include "coop/net/outbound_streams.h"     // what this peer sends on its streams
@@ -22,7 +24,7 @@
 #include "coop/net/send_rate_control.h"    // what each peer's link measures out at
 #include "coop/net/session_config.h"      // Role, Topology, Config: what a session starts with
 #include "coop/net/stream_refusals.h"      // refused pose packets, said once per streak
-#include "coop/player/players_registry.h"  // kMaxPeers (host + 3 clients = 4)
+#include "coop/player/slot_mask.h"   // kMaxPeers, SlotMask
 
 #include <array>
 #include <atomic>
@@ -40,20 +42,6 @@ namespace coop::net {
 // kMaxPeers (the host + 3 clients) is coop::players::kMaxPeers; the alias sizes this header's
 // arrays.
 inline constexpr uint8_t kMaxPeers = coop::players::kMaxPeers;
-
-enum class ConnState : uint8_t { Disconnected, Handshaking, Connected };
-
-// Where a client's host link stands, published by the net thread at its own callback edges so the
-// join screen can name the stage a joiner is waiting in; the pump reads it each tick. Idle until
-// the dial, Admitted once the host's slot assignment finished the link.
-enum class LinkStage : uint8_t { Idle, Dialing, FindingRoute, SocketUp, Admitted };
-
-// What the host, or the transport, said when a client's link ended: the code decoded from the
-// transport's end reason, and the text that came with it. None until a close is captured.
-struct HostClose {
-    EndReason   code = EndReason::None;
-    std::string text;
-};
 
 // SignalingClient (coop/net/signaling_client.h) pulls in the GNS API, so it stays a forward
 // declaration here; shared_ptr because per-connection signaling objects co-own it.
@@ -77,7 +65,9 @@ public:
 
     // False when the session did not start; `why` then holds the reason a player can read, which
     // is CouldNotStart with no detail when the failing site names nothing of its own.
-    bool Start(const Config& cfg, Refusal* why = nullptr);
+    // `hooks` are the game-side calls (coop/net/net_hooks.h), stored with the config before the net
+    // thread exists: a null member is a call that does nothing, and none of them is the load peer's.
+    bool Start(const Config& cfg, const NetHooks& hooks, Refusal* why = nullptr);
     // Returns once the session is stopped: a second caller, on any thread, waits for the first stop
     // to finish rather than returning while it still lingers. Start and Stop share one lock, which no
     // holder keeps while it waits on another thread that would need it.
@@ -186,8 +176,8 @@ public:
     bool TakeRemoteTrashCarryBatch(std::vector<TrashClumpPoseSnapshot>& out);
     bool TakeRemotePropDriveBatch(std::vector<PropDriveRow>& out);
 
-    // Host: each client slot's driven-prop rows since the last take, into out[slot]; the bits of the slots with rows.
-    uint32_t TakeRemotePropDriveBatches(std::vector<PropDriveRow> (&out)[kMaxPeers]);
+    // Host: each client slot's driven-prop rows since the last take, into out[slot]; the slots with rows.
+    coop::players::SlotMask TakeRemotePropDriveBatches(std::vector<PropDriveRow> (&out)[kMaxPeers]);
 
     // Game thread: queue a reliable message to every connected client (host) or to the host
     // (client). False on an oversize payload or no peer. `skipSlot` skips one slot (-1: none): MTA pSkip.
@@ -343,14 +333,6 @@ public:
 
     // --- Moderation (host-only admin actions) ---
 
-    // The host's ban predicate over a joiner's PROVED player id and its connection's own address
-    // (empty when the path is relayed or GNS knows none), asked right after the identity proof and
-    // before a seat is given; true refuses the connection as banned, and whatever it wrote into
-    // `whyOut` rides the close. Set once before Start spawns the net thread. MTA: the serial and IP
-    // checks in CGame::Packet_PlayerJoinData (CGame.cpp:1956, :1973).
-    using BanCheckFn = bool (*)(const char* playerId, const char* address, char* whyOut, int whyLen);
-    void SetBanCheck(BanCheckFn fn) { banCheck_ = fn; }
-
     // Host: disconnect the client at peerSlot with no linger; `code` and `reason` reach the peer's
     // status callback, the code as the transport's application end reason. Runs the slot's
     // teardown itself (GNS gives no callback for a connection we close): on the net thread all of
@@ -484,10 +466,10 @@ private:
         return (host_.*stream).Take(out);
     }
     template <class S, class T>
-    uint32_t TakeOrigins(S OriginStreams::*stream, T (&out)[kMaxPeers]) {   // slots 1.., one lock; the slots with data
-        uint32_t got = 0; std::lock_guard<std::mutex> lk(remoteMutex_);
+    coop::players::SlotMask TakeOrigins(S OriginStreams::*stream, T (&out)[kMaxPeers]) {   // slots 1.., one lock; the slots with data
+        coop::players::SlotMask got; std::lock_guard<std::mutex> lk(remoteMutex_);
         for (int slot = 1; connected() && slot < kMaxPeers; ++slot)
-            if ((origin_[slot].*stream).Take(out[slot])) got |= 1u << slot;
+            if ((origin_[slot].*stream).Take(out[slot])) got.Set(slot);
         return got;
     }
 
@@ -779,9 +761,8 @@ private:
     // connection. event_feed fans it to each puppet.
     std::array<std::atomic<int>, kMaxPeers> rttMsBySlot_{};
 
-    // The host's ban predicate (SetBanCheck); nullptr = nobody is banned. Set before Start spawns
-    // the net thread.
-    BanCheckFn banCheck_ = nullptr;
+    // The game-side calls (Start's argument), stored beside cfg_ before the net thread exists.
+    NetHooks hooks_{};
 
     // Client: what the host or the transport said when the link ended (the end reason decoded, and
     // its text); written on the net thread, taken on the game thread by TakeHostCloseReason. Its

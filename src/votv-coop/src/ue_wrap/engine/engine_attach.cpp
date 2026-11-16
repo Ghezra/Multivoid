@@ -40,7 +40,7 @@ void* g_getMatFn  = nullptr;  // PrimitiveComponent::GetMaterial
 void* g_getMassFn = nullptr;  // PrimitiveComponent::GetMass
 void* g_getPhysMatFn = nullptr;  // MaterialInterface::GetPhysicalMaterial
 void* g_attachCompFn = nullptr;  // Actor::K2_AttachToComponent
-void* g_attachActorFn = nullptr;  // Actor::K2_AttachToActor
+void* g_attachActorFn = nullptr; // Actor::K2_AttachToActor
 void* g_detachFn     = nullptr;  // Actor::K2_DetachFromActor
 void* g_getParentFn  = nullptr;  // Actor::GetAttachParentActor
 
@@ -272,14 +272,14 @@ bool AttachActorToComponentSocket(void* actor, void* component, const wchar_t* s
 }
 
 bool AttachActorToActorKeepWorld(void* actor, void* parent, bool weld) {
-    if (!actor || !parent || !R::IsLive(actor) || !R::IsLive(parent)) return false;
+    if (!actor || !R::IsLive(actor) || !parent || !R::IsLive(parent)) return false;
     void* fn = ActorFn(&g_attachActorFn, L"K2_AttachToActor");
-    if (!fn) { UE_LOGW("engine: K2_AttachToActor unresolved -- cannot attach"); return false; }
+    if (!fn) { UE_LOGW("engine: K2_AttachToActor unresolved -- cannot attach to an actor"); return false; }
     ParamFrame f(fn);
-    f.Set<void*>(L"ParentActor", parent);
-    f.Set<uint8_t>(L"LocationRule", uint8_t{1});       // EAttachmentRule::KeepWorld
-    f.Set<uint8_t>(L"RotationRule", uint8_t{1});       // KeepWorld
-    f.Set<uint8_t>(L"ScaleRule",    uint8_t{1});       // KeepWorld
+    f.Set<void*>(L"ParentActor", parent);       // SocketName stays NAME_None: ParamFrame zero-inits it
+    f.Set<uint8_t>(L"LocationRule", uint8_t{1});  // EAttachmentRule::KeepWorld
+    f.Set<uint8_t>(L"RotationRule", uint8_t{1});
+    f.Set<uint8_t>(L"ScaleRule",    uint8_t{1});
     f.Set<bool>(L"bWeldSimulatedBodies", weld);
     return Call(actor, f);
 }

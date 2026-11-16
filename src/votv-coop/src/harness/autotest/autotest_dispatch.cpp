@@ -11,6 +11,7 @@
 #include "coop/session/join_seed.h"  // the inline seed selftest
 #include "coop/config/config.h"
 #include "coop/dev/atv_gate_drill.h"
+#include "coop/dev/atv_riders_drill.h"
 #include "coop/dev/cremator_drill.h"
 #include "coop/dev/director/director.h"
 #include "coop/dev/mannequin_walker_drill.h"
@@ -234,8 +235,6 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // The data case: a client fills a drive box; its record's size and the host's copy of it.
     SpawnIf("VOTVCOOP_RUN_DATA_CASE", "data case drill", &DataCaseThread, role);
     // The ATV: what of it the host owns, from a client's refuel to its horn.
-    // The ATV's riders: the driver's body and the kerfur, on both peers.
-    SpawnIf("VOTVCOOP_RUN_ATV_RIDERS", "ATV riders drill", &AtvRidersThread, role);
     // The ATV's passenger: a player in the kerfur's spot.
     SpawnIf("VOTVCOOP_RUN_ATV_PASSENGER", "ATV passenger drill", &AtvPassengerThread, role);
     SpawnIf("VOTVCOOP_RUN_KERFUS_WHEELS", "kerfus wheels probe", &KerfusWheelsThread, role);
@@ -244,8 +243,6 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // Containers: photos in a record, a nested container, a garbage container, a container that breaks.
     SpawnIf("VOTVCOOP_RUN_CONTAINER_GAPS", "container gaps drill", &ContainerGapsThread, role);
     SpawnIf("VOTVCOOP_RUN_FARM_HARVEST", "farm harvest drill", &FarmHarvestThread, role);
-    SpawnIf("VOTVCOOP_RUN_HACKSAW", "hacksaw drill", &HacksawThread, role);
-    SpawnIf("VOTVCOOP_RUN_CHIPPER_FEED", "chipper feed drill", &ChipperFeedThread, role);
     SpawnIf("VOTVCOOP_RUN_BODY_PUSH", "body push drill", &BodyPushThread, role);
     SpawnIf("VOTVCOOP_RUN_SV_REQUEST", "sv.request drill", &SvRequestThread, role);
     SpawnIf("VOTVCOOP_RUN_MODULE_BUY", "module row drill", &ModuleBuyThread, role);
@@ -255,6 +252,8 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     SpawnIf("VOTVCOOP_RUN_DRONE_HOVER", "drone hover drill", &DroneHoverThread, role);
     // The base computer's short circuit on both peers.
     SpawnIfEnum(coop::config_registry::rows::desk_short_drill, "desk short drill", &DeskShortThread, role);
+    SpawnIf("VOTVCOOP_RUN_CHIPPER_FEED", "chipper feed drill", &ChipperFeedThread, role);
+    SpawnIf("VOTVCOOP_RUN_HACKSAW", "hacksaw drill", &HacksawThread, role);
     // The bot-director halt probe, solo: measures the path query over the baked NavMesh and a
     // reflected AddMovementInput moving the possessed body.
     SpawnIf("VOTVCOOP_RUN_NAV_PROBE", "nav HALT probe (director Phase-0)", &NavHaltProbeThread, role);
@@ -334,6 +333,8 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     }
     // The ATV drill: each act a player does at an ATV, decided on the events of the host path, green and eleven reds.
     SpawnIfEnum(coop::config_registry::rows::atv_gate_drill, "ATV drill", &coop::dev::atv_gate_drill::Thread, role);
+    // The ATV's riders: the driver's body and the host's kerfur on every peer, green and fifteen reds, three peers and a rejoin.
+    SpawnIfEnum(coop::config_registry::rows::atv_riders_drill, "ATV riders drill", &coop::dev::atv_riders_drill::Thread, role);
 }
 
 }  // namespace harness::autotest

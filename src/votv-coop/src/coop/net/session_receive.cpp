@@ -5,6 +5,7 @@
 
 #include "coop/net/session.h"
 
+#include "coop/dev/traffic_census.h"
 #include "coop/dev/wire_census.h"
 #include "coop/net/connect_history.h"  // Floods -- the source a flood ended stays refused
 #include "coop/net/net_clock.h"        // NowMs -- the probe's echo is timed on the net layer's clock
@@ -103,7 +104,7 @@ void Session::HandlePendingMessage(int pendIdx, uint32_t hConn, const void* data
     // every transport holds an id and a route: the proved id, and the connection's own address
     // (empty on a relayed path or when GNS has none). Before the supersession kick and the seat:
     // a banned joiner costs no seat and kicks nobody.
-    if (banCheck_) {
+    if (hooks_.banCheck) {
         char addr[SteamNetworkingIPAddr::k_cchMaxString] = {};
         SteamNetConnectionInfo_t ci{};
         auto* sockets = SteamNetworkingSockets();
@@ -113,7 +114,7 @@ void Session::HandlePendingMessage(int pendIdx, uint32_t hConn, const void* data
             ci.m_addrRemote.ToString(addr, sizeof(addr), /*bWithPort*/false);
         }
         char why[96] = {};
-        if (banCheck_(guid.c_str(), addr, why, sizeof(why))) {
+        if (hooks_.banCheck(guid.c_str(), addr, why, sizeof(why))) {
             UE_LOGI("net: PENDING %d refused -- identity %.8s... or its address is banned (%s) [%s]",
                     pendIdx, guid.c_str(), why[0] ? why : "no reason recorded",
                     Describe(EndReason::Banned).id);
@@ -246,6 +247,8 @@ void Session::HandleMessage(int peerSlot, uint32_t hConn, const void* data, int 
     // origin; reliables are counted once the kind is parsed.
     if (type != MsgType::Reliable && dev::wire_census::Enabled())
         dev::wire_census::NoteStream(routeSlot, static_cast<unsigned>(type));
+    if (type != MsgType::Reliable && dev::traffic_census::Enabled())
+        dev::traffic_census::NoteStream(static_cast<unsigned>(type), static_cast<uint32_t>(len));
 
     switch (type) {
     case MsgType::PoseSnapshot:
@@ -291,6 +294,8 @@ void Session::HandleMessage(int peerSlot, uint32_t hConn, const void* data, int 
             rateControl_.NoteReliableReceived(peerSlot, len);
         if (dev::wire_census::Enabled())
             dev::wire_census::NoteReliable(routeSlot, static_cast<unsigned>(rh.kind));
+        if (dev::traffic_census::Enabled())
+            dev::traffic_census::NoteReliable(static_cast<unsigned>(rh.kind), static_cast<uint32_t>(len));
         // Default deny at the edge (client_authorship.h): a kind no client may author, or a value that names no
         // kind, is dropped here, counted by the budget ahead of the epoch latch and acted on by nothing below --
         // not diverted, echoed, inboxed or relayed. The first of each value in a session is said with its number,

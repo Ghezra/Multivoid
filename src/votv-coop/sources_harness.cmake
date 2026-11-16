@@ -85,6 +85,7 @@ set(VOTVCOOP_SOURCES_HARNESS
     src/harness/autotest/autotest_drone_hover.cpp
     src/harness/autotest/autotest_hacksaw.cpp
     src/harness/autotest/autotest_chipper_feed.cpp
+    src/harness/autotest/autotest_chipper_carry.cpp
     src/harness/autotest/autotest_body_push.cpp
     src/harness/autotest/autotest_saveui.cpp
     src/harness/autotest/autotest_spill.cpp
@@ -103,13 +104,13 @@ set(VOTVCOOP_SOURCES_HARNESS
     src/harness/autotest/autotest_mushroom.cpp
     src/harness/autotest/autotest_crowbar.cpp
     src/harness/autotest/autotest_data_case.cpp
-    src/harness/autotest/autotest_atv_riders.cpp
     src/harness/autotest/autotest_atv_passenger.cpp
     src/harness/autotest/autotest_cargo_lift.cpp
     src/harness/autotest/autotest_kerfus_wheels.cpp
     src/harness/autotest/autotest_vidcam_drop.cpp
     src/harness/autotest/autotest_backrooms_probe.cpp
     src/harness/autotest/autotest_container_gaps.cpp
+    src/harness/autotest/autotest_container_gaps_bin.cpp
     src/harness/autotest/autotest_plant_gate.cpp
     src/harness/autotest/autotest_woodchipper.cpp
     src/harness/autotest/autotest_class_resolve.cpp
