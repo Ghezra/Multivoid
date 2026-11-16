@@ -127,6 +127,7 @@
 #include "coop/dev/creature_hit_drill.h"  // [dev] a parked creature's hit delivered to a client, a client's hit on it judged by the host
 #include "coop/dev/hostile_drill.h"  // [dev] the receive boundary: a client forges malformed packets, the host judges
 #include "coop/dev/native_pile_inert_probe.h"
+#include "coop/dev/flood_probe.h"   // [dev] the host bursts a basement pipe, a client mends it, logged on both
 #include "coop/dev/disceject_probe.h"   // [dev] a disc ejected twice from a server box, counted on both
 #include "coop/dev/ufo_probe.h"  // [dev] the ambient UFOs fired on the host, refused on the client, placed on both
 #include "coop/dev/roomba_probe.h"  // [dev] a robot cleaner run by the host, pressed by a client, placed on both
@@ -474,6 +475,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::pi1_selftest::Tick(&session);  // [dev] the substrate primitives' selftest, once (latched read when off)
     coop::dev::pi2_selftest::Tick(&session);  // [dev] the puppet-identity substrate's selftest, once (latched read when off)
     coop::dev::pi3_drill::Tick(&session);  // [dev] the puppet-identity verb drill (a latched read when off)
+    coop::dev::flood_probe::Tick(&session);  // [dev] the basement flood (a latched read when off)
     coop::dev::disceject_probe::Tick(&session);  // [dev] the disc eject (a latched read when off)
     coop::dev::ufo_probe::Tick(&session);  // [dev] the ambient UFOs fired and placed on both peers (a latched read when off)
     coop::dev::roomba_probe::Tick(&session);  // [dev] a robot cleaner on both peers (a latched read when off)
