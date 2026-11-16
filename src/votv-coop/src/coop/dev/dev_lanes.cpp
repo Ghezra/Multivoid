@@ -127,6 +127,7 @@
 #include "coop/dev/creature_hit_drill.h"  // [dev] a parked creature's hit delivered to a client, a client's hit on it judged by the host
 #include "coop/dev/hostile_drill.h"  // [dev] the receive boundary: a client forges malformed packets, the host judges
 #include "coop/dev/native_pile_inert_probe.h"
+#include "coop/dev/kdress_probe.h"   // [dev] an Omega's outfit and its pat, logged on both
 #include "coop/dev/hit_probe.h"   // [dev] a player's melee hit on the floor, its sound logged on both
 #include "coop/dev/flood_probe.h"   // [dev] the host bursts a basement pipe, a client mends it, logged on both
 #include "coop/dev/disceject_probe.h"   // [dev] a disc ejected twice from a server box, counted on both
@@ -476,6 +477,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::pi1_selftest::Tick(&session);  // [dev] the substrate primitives' selftest, once (latched read when off)
     coop::dev::pi2_selftest::Tick(&session);  // [dev] the puppet-identity substrate's selftest, once (latched read when off)
     coop::dev::pi3_drill::Tick(&session);  // [dev] the puppet-identity verb drill (a latched read when off)
+    coop::dev::kdress_probe::Tick(&session);  // [dev] the Omega outfit probe (a latched read when off)
     coop::dev::hit_probe::Tick(&session);  // [dev] the melee hit sound (a latched read when off)
     coop::dev::flood_probe::Tick(&session);  // [dev] the basement flood (a latched read when off)
     coop::dev::disceject_probe::Tick(&session);  // [dev] the disc eject (a latched read when off)
