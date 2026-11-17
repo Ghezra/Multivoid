@@ -127,6 +127,8 @@
 #include "coop/dev/creature_hit_drill.h"  // [dev] a parked creature's hit delivered to a client, a client's hit on it judged by the host
 #include "coop/dev/hostile_drill.h"  // [dev] the receive boundary: a client forges malformed packets, the host judges
 #include "coop/dev/native_pile_inert_probe.h"
+#include "coop/dev/kdisc_watch.h"   // [dev] every floppy disc's place, parent and physics
+#include "coop/dev/kfollow_probe.h"   // [dev] an Omega following a player, each leap logged
 #include "coop/dev/blood_probe.h"   // [dev] a player's blood drops, counted on both
 #include "coop/dev/lift_probe.h"   // [dev] a client on the cargo lift while it moves
 #include "coop/dev/event_probe.h"   // [dev] what an event leaves on each peer
@@ -481,6 +483,8 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::pi1_selftest::Tick(&session);  // [dev] the substrate primitives' selftest, once (latched read when off)
     coop::dev::pi2_selftest::Tick(&session);  // [dev] the puppet-identity substrate's selftest, once (latched read when off)
     coop::dev::pi3_drill::Tick(&session);  // [dev] the puppet-identity verb drill (a latched read when off)
+    coop::dev::kdisc_watch::Tick(&session);  // [dev] VOTVCOOP_KDISC_WATCH
+    coop::dev::kfollow_probe::Tick(&session);  // [dev] VOTVCOOP_KFOLLOW_PROBE
     coop::dev::blood_probe::Tick(&session);  // [dev] the blood probe (a latched read when off)
     coop::dev::lift_probe::Tick(&session);  // [dev] the cargo lift probe (a latched read when off)
     coop::dev::event_probe::Tick(&session);  // [dev] the event census probe (a latched read when off)
