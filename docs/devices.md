@@ -310,7 +310,12 @@ interpolates (`coop/interactables/turbine_sync`). The base window's dirt and the
 monotone: a wipe only lowers them, so each peer broadcasts a decrease and the receiver keeps the
 minimum, and two peers wiping at once converge with no oscillation; the grime decals are keyed by
 their quantised world position, since both peers place them from the same save
-(`coop/interactables/window_sync`, `coop/interactables/grime_sync`).
+(`coop/interactables/window_sync`, `coop/interactables/grime_sync`). The save replay (the gamemode's
+`loadObjects`) deletes the map's own decals and spawns the save's at the same keys; those deletes are no
+wipe, so the index forgets everything as the replay begins. A rehost in one game process had read them
+as wipes to zero and lowered 889 of the save's decals with them (Ghezra/Multivoid#36) `[V]` (the
+reload-churn autotest's host arm, `VOTVCOOP_RUN_RELOAD_CHURN=1 VOTVCOOP_RELOAD_HOST=1`: two rehosts
+lowered none).
 
 A spilled liquid is the host's (`coop/world/spill_sync`). A coffee cup tipped or flung fast, beer, wine and a gas
 bottle spill through a `grimeProjectile_C` that flies and leaves its grime decal (`grime_coffee_C` and the rest)
