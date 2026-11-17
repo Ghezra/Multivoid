@@ -431,7 +431,12 @@ shows or hides its copy's sack mesh on that bit `[V]` (`coop/dev/droneunhook_pro
 drone's own putSackOn, which a sack's overlap with the drone's sack box runs on each copy, and reaches the other peers
 only as the loose sack's destroy, which on a copy the drone did not take scolds the player and spawns a new sack at the
 drone. So the host's drone takes a client's hooked sack when its copy lies within 3 m of the sack box, and a client's
-copy destroyed by the host goes as taken, the respawn the host's `[V]` (the probe's `VOTVCOOP_DRONEUNHOOK_REHOOK`). The drone's sale
+copy destroyed by the host goes as taken, the respawn the host's `[V]` (the probe's `VOTVCOOP_DRONEUNHOOK_REHOOK`). A
+client's take-off, the drone's own menu (its actionOptionIndex 7, dropSack), is refused on its copy and asked of the
+host (`DroneFlyIntent`'s sack verb, `coop/interactables/drone_call_intent`), whose drone drops the one sack when the
+sender is within 5 m and the drone is parked with its sack on `[V]` (`VOTVCOOP_DRONEUNHOOK_BY=client` with
+`VOTVCOOP_DRONEUNHOOK_REHOOK=floor`: the client took it off, grabbed it, let it fall, grabbed it again and hooked it,
+each step the same on both peers). The drone's sale
 runs on the host only, which is what makes selling into it the one economy path that credits the
 group correctly.
 
