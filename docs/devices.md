@@ -320,7 +320,11 @@ transform, so the grime lane's position key names it on both and a partial wipe 
 removes a decal its own projectile leaves; when the liquid was in its player's hand it sends the decal first
 (`SpillIntent`), and the host checks its class and that it lies within 15 m of the sender, makes it and sends it back.
 A spill wiped away is said by whoever wiped it, the host's to everyone and a client's to the host, which wipes its own
-within reach. A spill that just landed carries its splash: every peer whose own flight did not land it plays the
+within reach. Blood rides the same lane (Ghezra/Multivoid#38): the marks the falling drops leave (`bloodDecalMaster_C`'s
+`grime_blood` decals, a bleeding body's) and the blood event's (`blooder_C`, the host's) were each machine's alone. The
+host sends its own as its spills; a client's own drops go to the host as a spill of its hand would, and its own mark
+stays where it fell, the host's copy finding it there. Blood plays no splash `[V]` (`coop/dev/blood_probe`: five drops of
+a client's and five of the host's left the same five marks on both peers in the same second, none twice). A spill that just landed carries its splash: every peer whose own flight did not land it plays the
 game's `water_splash_Cue` there, as the projectile does at its hit, and a replay plays none. A copy lies at the host's
 own floats, so a peer keeps one spill per message and checks only a replay against a decal already there; a bottle's
 pours land a millimetre apart and stack. A world cup or bottle does not spill on a client, whose copy of a food is
