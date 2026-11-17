@@ -476,7 +476,7 @@ void RunProbe() {
                     mode.reach = coop::session::Reachability::Direct;
                     mode.listed = false;
                     *ok = coop::session_manager::HostWithSave(choice, "Rig Host", /*locked=*/false, /*password=*/"",
-                                                              /*playersMax=*/4, /*masterUrl=*/"", mode) ? 1 : 0;
+                                                              /*masterUrl=*/"", mode) ? 1 : 0;
                     done->store(1);
                 });
                 WaitDone(done, 30000);

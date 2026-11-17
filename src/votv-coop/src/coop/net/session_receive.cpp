@@ -11,6 +11,7 @@
 #include "coop/net/net_clock.h"        // NowMs -- the probe's echo is timed on the net layer's clock
 #include "coop/net/peer_admission.h"   // the identity challenge every peer passes
 #include "coop/net/peer_identity.h"    // GuidForPublicKey -- the proved storage name
+#include "coop/net/player_limit.h"     // Max -- the number the refusal names
 #include "client_authorship.h"  // co-located private header: which kinds a client may author
 #include "session_lanes.h"      // co-located private header: the admission and relayable kind lists
 #include "ue_wrap/core/log.h"
@@ -128,20 +129,30 @@ void Session::HandlePendingMessage(int pendIdx, uint32_t hConn, const void* data
     // asked for. The trigger is a dropped link, not an attack: GNS takes seconds to time out a dead
     // connection, a player rejoining inside that window would otherwise take a second seat, and the
     // stored inventory is keyed by guid, so both seats would persist it (last writer wins).
+    bool rejoin = false;  // this identity held a seat, and loses it to this connection
     for (int s = 1; s < kMaxPeers; ++s) {
         if (peerConns_[s].load() == 0) continue;
         if (ProvedGuidForSlot(s) != guid) continue;
         UE_LOGW("net: slot %d already holds identity %s -- superseding it with the "
                 "new connection (the holder proved the same key)", s, guid.c_str());
         Kick(s, EndReason::Superseded, "superseded by a new connection from your own identity");
+        rejoin = true;  // its seat was admitted before: the host's limit does not apply to it again
         break;  // one seat per identity is the invariant; there cannot be a second
     }
 
-    const int slot = AdmitPending(pendIdx, hConn);
+    const int slot = AdmitPending(pendIdx, hConn, rejoin);
     if (slot < 0) {
-        UE_LOGW("net: lobby full of admitted players -- refusing PENDING %d [%s]", pendIdx,
-                Describe(EndReason::HostFull).id);
-        RetirePending(pendIdx, hConn, EndReason::HostFull, "host full");
+        // The close's detail says the cause the host found. When the limit is the cause it is the
+        // machine token max_players=<N>, which the joiner's dialog renders as a sentence in its own
+        // language (end_reason.h); a seat still clearing at the ceiling says that instead.
+        const bool limitReached = SeatedPlayers() >= player_limit::Max();
+        const std::string why = limitReached ? MaxPlayersDetail(player_limit::Max())
+                                             : std::string("no seat is free yet, try again in a moment");
+        UE_LOGW("net: %s -- refusing PENDING %d [%s]: %s",
+                limitReached ? "the seated players reached the host's limit (net.max_players)"
+                             : "every seat is taken or still being cleared",
+                pendIdx, Describe(EndReason::HostFull).id, why.c_str());
+        RetirePending(pendIdx, hConn, EndReason::HostFull, why.c_str());
         return;
     }
     // The peer's storage guid is derived from the key it proved and published here, on the net

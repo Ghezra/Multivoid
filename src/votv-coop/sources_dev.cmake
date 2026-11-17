@@ -321,6 +321,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/container_parity.cpp
     src/coop/dev/pile_defer_drill.cpp
     src/coop/dev/pile_defer_drill_host.cpp
+    src/coop/dev/pile_orphan_drill.cpp
     src/coop/dev/client_model_probe.cpp
     src/coop/dev/atv_eject_drill.cpp
     src/coop/dev/atv_gate_drill.cpp
@@ -417,15 +418,17 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/reelspam_probe.cpp
     src/coop/dev/genp_probe.cpp
     src/coop/dev/deathhand_probe.cpp
-    src/coop/dev/sleepall_probe.cpp
     src/coop/dev/crowbarpry_probe.cpp
-    src/coop/dev/glowstick_probe.cpp
     src/coop/dev/blackfog_probe.cpp
     src/coop/dev/droneunhook_probe.cpp
     src/coop/dev/wall_fill_probe.cpp
     src/coop/dev/wall_preview_probe.cpp
     src/coop/dev/tower_poof_probe.cpp
     src/coop/dev/puppet_blast_probe.cpp
+    src/coop/dev/hand_record_drill.cpp
+    src/coop/dev/hand_record_drill_can.cpp
+    src/coop/dev/hand_record_drill_wire.cpp
+    src/coop/dev/sleep_speedup_drill.cpp
 )
 # Per-developer local sources: a gitignored file on this box may append its own entries to
 # VOTVCOOP_DEV_SOURCES and add its own include root. Absent from the public tree; a no-op without it.

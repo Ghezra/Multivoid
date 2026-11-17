@@ -101,30 +101,24 @@ A carried trash clump is driven to the puppet's hand on
 the host each tick (`coop/player/puppet_carry_drive`); a held physics prop is on the props lane.
 
 The mirror is spawned from the class alone, so it showed the class's defaults: a held can opened and eaten
-from was full and shut to the others, an extinguisher's charge full. The hand's owner reads its hand item's
-record through the item's own `getData` when the item or its state changes (the hold transform left out), at
-most four times a second, and sends it chunked (`HandRecord`): a client's to the host, which checks the
-sender's hand holds that class and sends it on, the host's to everyone, every hand's to a joiner. Each peer
-writes it into its mirror through the item's own `loadData`, the leaf state only, and again when the mirror is
-made anew (`coop/player/hand_record_sync`) `[V]` (`coop/dev/item_trip_probe`: a can held opened with 3 of 4
-left read the same on the other peer's mirror, either player holding it, with one record sent; an
-extinguisher's mirror followed its charge from 1.000 to 0.900 through a spray).
-
-### A nametag on a prop
-
-A nametag item (`prop_nametag_C`) carries a tag. Its left click reads the player's interaction hit and, on a prop,
-writes the tag into the prop's `nametag`, runs the prop's `setNametag` -- which takes down the floating label it had
-and builds one for a tag that is not None -- and destroys the item. A prop's nametag is base save state, carried by
-its save record and its spawn row, so before this lane a tag reached another peer only when the prop was born again: a
-client's tag stayed on its own copy, and the host's reached no client. The nametag is the host's
-(`coop/props/prop_nametag`). The host player's click runs the game's own, and the watch on its exit tells every
-client. A client's click is refused there and asked of the host with the prop's key and the tag; the host applies it
-when the prop is within the sender's reach and a nametag was in the sender's hand within the hand lane's 3 s, at most
-one a second a client, and tells every client, the sender included, whose held item then goes as the game's use takes
-it. A refused request has no answer, and the item stays. The message is a second body shape on the record lane's
-kinds, so no kind is added. `[V]` on the rig (`coop/dev/nametag_drill`): a client's tag lands on the host's cup once
-and its item is spent; the host player's tag reaches the client's copy; with `nametag_client_runs` the tag stays on
-the client's copy and the host FAILs.
+from was full and shut to the others. The hand's owner reads its hand item's record through the item's own
+`getData` when its hold changes (the game's `updateHold`, watched at the script gate) or a held can's `init`
+runs, and sends it chunked (`HandRecord`) once its hand lane has announced the item, the hold transform left
+out: a client's to the host, which parks it as bytes (the newest per sender, within a 4 KB lane ceiling, a record
+that arrives while the hand state it follows is owed waits for it), decodes it once the sender's pacing token is
+taken, and refuses it, counted per reason and never stored or relayed, when it is keyless, not finite, past the
+lane's field bounds, or of a class the sender's applied hand does not hold (a class the sender held a moment ago
+is an honest race and dropped silently). Every class its `classes[]` names must resolve to a class in the host's
+class index: one the index has not drained yet waits under the index's window, one that resolves to none is
+refused (an order box's record names its items' classes, so no blanket refusal of `classes[]` stands: the five
+drill arms hold a can, whose record names none) `[?]`. The host stores its own copy and sends that on to every
+other world-ready peer, the host's to everyone, every hand's to a joiner (a send the joiner's link refused is owed
+to it); the host clears a
+record when the hand empties or changes class and sends an empty one, so the next item is not shown it. Each peer
+writes it into its mirror through the item's own `loadData`, the leaf state only (a client waits for a class the
+record names to load, inside the per-tick budget), and again when the mirror is made anew (`coop/player/hand_record_sync`) `[?]` (a state changed in the hand of another class, an
+extinguisher's charge, is not announced and shows the record of the hold). The two-peer drill is
+`coop/dev/hand_record_drill` (`hand_record_drill=can|hand|joiner|forge|hostile|keyless|oversize|bounds|nonfinite|box`, the host's one verdict, three red arms).
 
 ### Name, colour and nameplate
 
@@ -247,17 +241,18 @@ host, which relays it to every other client; the host's own sleeping flag goes t
 one chat line naming the host when it rises. A joiner is sent the host's flag and every peer's
 state that is not awake, and a leaver is told to every client as awake.
 
-The host may choose the speed-up's trigger with the world rule `world.sleep_everyone` ("Time speeds
-up only when everyone sleeps", off by default, shown in the host's world rules and sent to every
-client). Off, the host's sleep speeds the world up as in single player. On, a host that sleeps while a
-connected player is awake rests as a client does: its world held at 1, its body and the world's
-effects at the game's factor, its food and coffee settled (`coop/player/sleep_rest`). Once every
-connected player rests or dreams, the world takes the game's factor; when one wakes, or a player
-joins, it goes back to 1 and the host rests on. The clients' line says the speed-up waits for
-everyone. `[V]` `coop/dev/sleepall_probe` (`VOTVCOOP_SLEEPALL_PROBE=1`): with the rule on, the host's
-world read 1 while the client was awake, 20 within a second of the client's sleep, and 1 again within a
-second of its wake; with it off, 20 for the host's whole sleep. The host's own nightmare roll is the game's, 500 s of world
-time, so while the host rests alone it comes 500 real seconds into the sleep.
+The host chooses whose sleep speeds the world up with the world setting `world.sleep_speedup` ("Time
+speeds up while sleeping", shown in the host's world settings and sent to every client), three modes.
+`host`: only the host's sleep does, as in single player. `everyone` (the default): the world speeds up
+only while every connected player is asleep; a host that sleeps while a player is awake rests as a
+client does, its world held at 1, its body and the world's effects at the game's factor, its food and
+coffee settled (`coop/player/sleep_rest`), the world takes the game's factor once every connected
+player rests or dreams, and goes back to 1 when one wakes. A player who joins is awake, so the world
+drops to 1 at its join. `never`: no one's sleep speeds the world up, and the host's sleep rests at 1
+like a client's. The clients' line names the mode, and is said again if the host changes the mode mid-sleep. The host's sleep follows a change of the mode, and the last client leaving, at once. `[?]` Not yet run on the rig for the three modes
+(`coop/dev/sleep_speedup_drill` has one arm for each, one for the mode changing mid-sleep, one for a client leaving, and a red that makes the host ignore the setting).
+The host's own nightmare roll is the game's, 500 s of world time, so while the host rests at 1 it
+comes 500 real seconds into the sleep.
 
 A nightmare is one player's. The game rolls once per sleep, 500 s of world time after the sleeper
 falls asleep, and the host's sleep runs the world at 20, so a host rolls 25 real seconds into a
@@ -297,7 +292,7 @@ player is refused, as is a second loadLevel while a visit is under way.
 
 A player who joins while another is in one of the maps needs no snapshot of it: the first pose
 the joiner applies for that player is below the floor, so its copy is hidden from that pose, and a
-copy born or respawned below, or a lost pose, is corrected by the next one. MTA keeps a player's
+copy born or respawned below, or a lost pose, is set right by the next one. MTA keeps a player's
 interior and dimension as a reliable state with a join snapshot; here the map is a place in the
 same world, so the position the pose already carries is the state `[?]`. What the host's save
 capture holds while the host itself is in a map (its player below the world, its game instance
@@ -385,6 +380,11 @@ account that made it (`coop/net/peer_identity`; [install.md](install.md) says wh
 what a second account on the same PC gets). The world-side effect of a pickup or a drop is
 on the props lane.
 
+With the host's rule `net.hunger_shared` (Slower hunger in larger groups; off by default) each player's hunger runs at
+players^-0.44 of the game's rate, 74% for two and 54% for four, written on each peer's own player through the game's own
+hunger multiplier, `mainPlayer_C::foodDraining` (`coop/player/hunger_share`); stamina and sleep are untouched `[V]` on
+0.9.0n (a rig run): with the rule on, host and client each logged 74% for two players; with it off, 100%.
+
 ### Roster and moderation
 
 Slots are recycled, so who is in a slot is a token, never a boolean (`coop/player/roster_ledger`).
@@ -402,7 +402,7 @@ keeps a seen-players file for the administration panel. A nickname is never a ba
 key: anyone can type any name.
 The kicked or banned player lands at the menu with a modal saying which, under a stable code
 ([join.md](join.md) lists them). Beside the ban check, the accept edge caps how many
-connections one address may open in a window (four per thirty seconds by default, a host
+connections one address may open in a window (sixteen per thirty seconds by default, a host
 setting), the shape of MTA's join-flood protection (`coop/net/connect_history`).
 
 The host's moderation is a set of commands -- `/kick`, `/ban`, `/banid`, `/unban`, `/tphere`, `/cremate` --

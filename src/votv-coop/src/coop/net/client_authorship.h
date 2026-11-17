@@ -44,11 +44,11 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::MediaDeviceState:
     case ReliableKind::PlantEdit:
     case ReliableKind::PropFireRequest:
+    case ReliableKind::HandRecord:
     case ReliableKind::RoombaIntent:
     case ReliableKind::MinerIntent:
     case ReliableKind::FireExtIntent:
     case ReliableKind::CoverIntent:
-    case ReliableKind::HandRecord:
     case ReliableKind::WallPreview:
     case ReliableKind::DingusFound:       // op 0 a client's report; op 1 is the host's, its handler checks the slot
     case ReliableKind::GroundHoseIntent:

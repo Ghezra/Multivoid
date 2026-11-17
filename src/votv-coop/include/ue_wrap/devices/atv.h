@@ -94,6 +94,16 @@ bool  BatteryResolved();
 float GetBattery(void* atv);
 bool  SetBattery(void* atv, float v);
 bool  CallUpdBattery(void* atv);
+// A charge brought into the field's range 0..100: the game's own solar charge leaves `battery` a fraction above 100, so a value
+// just past full is a charge, and one well past it is the field's top. NaN reads as 0. Callers keep kNoBattery (-1) apart.
+float ClampCharge(float v);
+
+// A battery prop (`prop_atvcarbattery_C`) of charge `charge` (ClampCharge), spawned the way the ATV's own unscrewPanel
+// spawns it: BeginDeferredSpawn at the transform, `battery` written on the begun actor, FinishDeferredSpawn at the same
+// transform, so its BeginPlay already reads the charge. `collision` is the game's ESpawnActorCollisionHandlingMethod byte.
+// The actor, or nullptr when the class or its `battery` field does not resolve or the spawn failed (a begun actor whose
+// finish failed is destroyed). Game thread.
+void* SpawnBattery(const FVector& loc, const FRotator& rot, const FVector& scale, uint8_t collision, float charge);
 
 // The fitted modules: the live `Modules` array, one byte per module VALUE (the game's enum_physicalModules; each is the
 // value `physModToActor` maps to the module's prop class). ReadModules copies at most `cap` into `out` and returns how
@@ -189,6 +199,16 @@ bool GetSitArrowLocation(void* atv, FVector& loc);
 // The world location of the ATV's `Camera`, the driver's eye. False on null, an unresolved ATV_C or an unreadable component.
 // Game thread.
 bool GetCameraLocation(void* atv, FVector& loc);
+
+// Where the ATV's own unscrew of its battery spawns the battery prop: the world transform of its `Billboard4` component
+// (what `getUnscrewSpawn` returns with no tire looked at). False on null, an unresolved ATV_C or component, or an
+// unreadable transform. Game thread.
+bool GetUnscrewSpawnTransform(void* atv, FVector& loc, FRotator& rot, FVector& scale);
+
+// Whether the ATV's player looks at a tire: its `lookAtTire` or `lookAtTireSocket` index is set (the panel's unscrew then
+// takes the tire's branch; with neither set it takes the battery's). False, with `atTire` unwritten, on null, a dead ATV or a
+// field that does not resolve. Game thread.
+bool ReadTireLook(void* atv, bool& atTire);
 
 // The ATV's rider: the kerfur its own `sittingKerfuro` names, or null when the field is empty, names a dead object, or does
 // not resolve. Game thread.

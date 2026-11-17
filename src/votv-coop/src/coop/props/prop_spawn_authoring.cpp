@@ -2,10 +2,14 @@
 
 #include "coop/props/prop_spawn_authoring.h"
 
+#include "coop/props/prop_lifecycle.h"      // DestroyLocalProp -- a ghost the unscrew left, destroyed with no broadcast
+
+#include "ue_wrap/core/cached_obj_ref.h"
 #include "ue_wrap/core/fname_utils.h"     // StringToFName -- the two verb names, once
 #include "ue_wrap/core/game_thread.h"
 #include "ue_wrap/core/hot_path_guard.h"   // UE_ASSERT_GAME_THREAD
 #include "ue_wrap/core/log.h"
+#include "ue_wrap/core/object_index.h"      // ClassByName -- the battery prop class
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/script_gate.h"
 #include "ue_wrap/core/ufunction_hook.h"   // CurrentCallerFrame -- the calling Blueprint frame
@@ -32,6 +36,8 @@ void* g_sawUberFn       = nullptr;   // prop_hacksaw_C::ExecuteUbergraph_prop_ha
 void* g_pryEndFn        = nullptr;   // pryingCrowbar_C::End -- the crowbar a pry hands back
 void* g_unscrewFn       = nullptr;   // ATV_C::unscrewPanel -- the battery an unscrew hands back (atv_gate's watch)
 bool  g_unscrewBattery  = false;     // the unscrew now starting is the battery's branch
+ue_wrap::CachedObjRef g_unscrewBorn;  // the battery prop that branch's body spawned on this client, until its POST takes it
+ue_wrap::CachedObjRef g_batteryCls;   // prop_atvcarbattery_C, found again when a world reload has re-created it
 bool  g_watchInstalled  = false;
 
 // The negative arm, and it is the half a run cannot otherwise see. Catching every menu spawn and
@@ -145,7 +151,7 @@ void Install(bool isClient) {
     g_watchInstalled = true;
 }
 
-bool BirthIsPlayerAuthored() {
+bool BirthIsPlayerAuthored(void* born) {
     // The menu: is the gamemode's spawn verb running on this thread, entered from the menu's own
     // spawn()? The gate answers from the RAII scope it pushes around the body, so the window
     // cannot outlive the body on any exit path, and an inner watched body belonging to some other
@@ -155,7 +161,15 @@ bool BirthIsPlayerAuthored() {
     // actor itself. The pointer is cached on first sight -- the class is loaded by definition,
     // since its bytecode is what is running.
     const void* caller = ue_wrap::ufunction_hook::CurrentCallerFrame().function;
-    if (!caller) return false;
+    if (!caller) {
+        static bool s_said = false;
+        if (g_unscrewBattery && !s_said) {
+            s_said = true;
+            UE_LOGW("prop_spawn_authoring: a birth inside an ATV's battery unscrew has no calling frame -- the unscrew's own "
+                    "battery prop is not recorded here (said once)");
+        }
+        return false;
+    }
     if (caller == g_toolUberFn) return true;
     if (!g_toolUberFn &&
         FunctionIs(const_cast<void*>(caller), g_toolUberName, L"tool_spawn_C")) {
@@ -183,21 +197,47 @@ bool BirthIsPlayerAuthored() {
     // comes back as a new crowbar, freed from the board, dropped at it, or put back in the hand. The pry runs only on
     // the prying player's game, so without this the crowbar is gone for every other player.
     if (caller == g_pryEndFn) return true;
-    // An ATV's battery unscrewed: its unscrewPanel (a custom event, so the calling frame is the ATV's whole ubergraph)
-    // spawns the battery at the panel. Admitted while that body runs and only on its battery branch.
-    if (g_unscrewBattery && g_unscrewFn && sg::IsBodyActive(g_unscrewFn)) return true;
     if (!g_pryEndFn && FunctionIs(const_cast<void*>(caller), g_pryEndName, L"pryingCrowbar_C")) {
         g_pryEndFn = const_cast<void*>(caller);
         UE_LOGI("prop_spawn_authoring: a prying crowbar's End is the calling frame -- the crowbar a pry hands back is "
                 "a player's");
         return true;
     }
+    // An ATV's battery unscrewed: its unscrewPanel (a custom event, so the calling frame is the ATV's whole ubergraph)
+    // spawns the battery at the panel. That birth is no player's: the host spawns the battery every peer shares, so this
+    // client's own prop is only recorded here, for the POST of that body to destroy. The birth stays an unauthored
+    // place in the drop-intent queue, and its drain sends nothing for it: the destroyed actor is dead at the drain, and
+    // a live one is no whitelisted birth.
+    if (g_unscrewBattery && g_unscrewFn && born && R::IsLive(born) && sg::IsBodyActive(g_unscrewFn)) {
+        if (!g_batteryCls.Alive()) g_batteryCls.Set(ue_wrap::object_index::ClassByName(L"prop_atvcarbattery_C"));
+        if (g_batteryCls.Raw() && R::ClassOf(born) == g_batteryCls.Raw()) g_unscrewBorn.Set(born);
+    }
     return false;
 }
 
-void NoteAtvUnscrew(void* unscrewFn, bool batteryBranch) {
+// The record an unscrew's POST never took (a fault or a cancel skips one): its battery prop is this client's ghost, so it is
+// destroyed here as the POST would, with no destroy sent, and never just forgotten.
+static void DestroyHeldRecord(const char* when) {
+    void* const ghost = g_unscrewBorn.Get();
+    g_unscrewBorn.Reset();
+    if (!ghost) return;
+    coop::prop_lifecycle::DestroyLocalProp(ghost, false);
+    UE_LOGW("prop_spawn_authoring: the battery prop of an unscrew whose end never came is destroyed at %s", when);
+}
+
+void NoteAtvUnscrewBranch(void* unscrewFn, bool batteryBranch) {
+    UE_ASSERT_GAME_THREAD("prop_spawn_authoring::NoteAtvUnscrewBranch");
+    DestroyHeldRecord("the next unscrew");
     g_unscrewFn = unscrewFn;
     g_unscrewBattery = batteryBranch;
+}
+
+void* TakeAtvUnscrewBattery() {
+    UE_ASSERT_GAME_THREAD("prop_spawn_authoring::TakeAtvUnscrewBattery");
+    void* const born = g_unscrewBorn.Get();
+    g_unscrewBorn.Reset();
+    g_unscrewBattery = false;
+    return born;
 }
 
 void Reset() {
@@ -209,6 +249,8 @@ void Reset() {
                 g_verbFromOther == 0 ? " -- this run never exercised the rejection" : "");
     g_verbFromMenu = 0;
     g_verbFromOther = 0;
+    g_unscrewBattery = false;
+    DestroyHeldRecord("the session's end");
     // The tally is per session; the watch and the resolved UFunctions are NOT. They name the
     // game's own classes, which outlive any session in this process, and the gate is already
     // session-gated, so a watch costs nothing while nobody is connected. Retiring and re-adding it

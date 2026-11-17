@@ -4,6 +4,7 @@
 #include "coop/dev/dev_lanes.h"
 #include "coop/dev/director/director.h"  // EndWalks: a drill's walks end with their session
 
+#include "coop/dev/sleep_speedup_drill.h"  // [dev] whose sleep speeds the world up, one arm per value of the host's row
 #include "coop/dev/atv_probe.h"
 #include "coop/dev/blackout_drill.h"  // [dev] a blackout on both peers, for the lanes' dev probe
 #include "coop/dev/client_model_probe.h"  // kel-vs-scientist side-by-side visual check (ini client_model_probe=1)
@@ -153,9 +154,7 @@
 #include "coop/dev/grime_census.h"  // [dev] the grime decals counted per class with their dirt
 #include "coop/dev/droneunhook_probe.h"   // [dev] the host unhooks the drone sack, logged on both
 #include "coop/dev/blackfog_probe.h"   // [dev] the host rolls a black fog, logged on both
-#include "coop/dev/glowstick_probe.h"   // [dev] a client sticks a glowstick, logged on both
 #include "coop/dev/crowbarpry_probe.h"   // [dev] a client pries a board, its crowbar logged on both
-#include "coop/dev/sleepall_probe.h"   // [dev] the host, then a client, asleep; the world's dilation logged
 #include "coop/dev/deathhand_probe.h"   // [dev] a player dies with an item in its hand, its hand logged
 #include "coop/dev/genp_probe.h"   // [dev] a portable generator fuelled and started, logged on every peer
 #include "coop/dev/reelspam_probe.h"   // [dev] the tape recorder's eject spammed, reels counted on every peer
@@ -166,10 +165,12 @@
 #include "coop/dev/tower_poof_probe.h"  // [dev] the stolen radio tower fired on the host, its tower read on both
 #include "coop/dev/puppet_blast_probe.h"  // [dev] a blast at a peer's puppet, each peer's own health read
 #include "coop/dev/native_spawn_probe.h"  // [dev] every allowlisted creature a Blueprint graph spawns here
+#include "coop/dev/hand_record_drill.h"  // [dev] a held item's record on the other players' mirrors of that hand, judged by the host
 #include "coop/dev/order_probe.h"  // who writes the order queue, and what the drone delivers, per peer
 #include "coop/dev/bind_wait_selftest.h"  // [dev] the bind wait's rules on stated inputs
 #include "coop/dev/pile_late_load.h"   // [dev] the late-load seam: one save-loaded clump kept aside until its row defers
 #include "coop/dev/pile_defer_drill.h"  // [dev] a joiner's real pile deferrals counted and their outcome checked, the host comparing poses
+#include "coop/dev/pile_orphan_drill.h"  // [dev] a pile and a clump the host loses after the capture must be gone from the joiner after its sweep
 #include "coop/dev/order_selftest.h"  // exercise host-side order pricing end to end
 #include "coop/dev/physmods_drill.h"  // [dev] a module plug and unplug are sent at their verbs, and a rejoin's load sends none
 #include "coop/dev/pinecone_probe.h"
@@ -248,6 +249,7 @@ void EndSession() {
     coop::dev::rollover_watch::OnDisconnect();  // [dev] the per-world arm and the session's watch totals
     coop::dev::midnight_drill::OnDisconnect();  // [dev] back to the first phase
     coop::dev::sleep_drill::OnDisconnect();  // [dev] back to the first phase, the host's nightmare chance restored
+    coop::dev::sleep_speedup_drill::OnDisconnect();  // [dev] back to the first phase, the host's nightmare chance restored
     coop::dev::badsun_drill::OnDisconnect();  // [dev] back to the first phase
     coop::dev::event_relay_drill::OnDisconnect();  // [dev] the client's steps back to the first; the host keeps its krampus
     coop::dev::creature_hit_drill::OnDisconnect();  // [dev] the client's steps back to the first; the host keeps its creature
@@ -288,6 +290,7 @@ void EndSession() {
     coop::dev::hook_retrieve_drill::OnDisconnect();  // [dev] the cups and the hook belong to one session
     coop::dev::nametag_drill::OnDisconnect();  // [dev] the cup and the item belong to one session
     coop::dev::equip_drill::OnDisconnect();  // [dev] the drill's run belongs to one session
+    coop::dev::hand_record_drill::OnDisconnect();  // [dev] the steps and the marks belong to one session
     coop::dev::drone_call_drill::OnDisconnect();  // [dev] the console, the legs and the host's watch belong to one world
     coop::dev::dronesack_drill::OnDisconnect();  // [dev] the sack, the crate and the records belong to one session
     coop::dev::container_writer_probe::OnDisconnect();  // [dev] the readings belong to one world
@@ -335,6 +338,7 @@ void EndSession() {
     coop::dev::bind_wait_selftest::OnDisconnect();  // [dev] a rejoin's client runs the checks again
     coop::dev::pile_late_load::OnDisconnect();  // [dev] a clump still aside goes back to its saved pose
     coop::dev::pile_defer_drill::OnDisconnect();  // [dev] a rejoin's client counts and reports again
+    coop::dev::pile_orphan_drill::OnDisconnect();  // [dev] a rejoin's client reads and judges again
     coop::dev::meadow_selftest::OnDisconnect();  // [dev] a rejoin's peers run their legs again
     coop::dev::lid_drill::OnDisconnect();  // [dev] the PC and the legs belong to one world
     coop::dev::subject_drill::OnDisconnect();  // [dev] the drives and the legs belong to one world
@@ -509,9 +513,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::grime_census::Tick();  // [dev] the grime census (a latched read when off)
     coop::dev::droneunhook_probe::Tick(&session);  // [dev] the drone unhook (a latched read when off)
     coop::dev::blackfog_probe::Tick(&session);  // [dev] the black fog (a latched read when off)
-    coop::dev::glowstick_probe::Tick(&session);  // [dev] the glowstick stick (a latched read when off)
     coop::dev::crowbarpry_probe::Tick(&session);  // [dev] the crowbar pry (a latched read when off)
-    coop::dev::sleepall_probe::Tick(&session);   // [dev] sleeping with world.sleep_everyone (a latched read when off)
     coop::dev::deathhand_probe::Tick(&session);  // [dev] the hand across a death (a latched read when off)
     coop::dev::genp_probe::Tick(&session);     // [dev] the portable generator (a latched read when off)
     coop::dev::reelspam_probe::Tick(&session);  // [dev] the reel eject spam (a latched read when off)
@@ -521,8 +523,10 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::wall_preview_probe::Tick(&session);  // [dev] a wall builder's preview on both peers (a latched read when off)
     coop::dev::tower_poof_probe::Tick(&session);  // [dev] the radio tower on both peers (a latched read when off)
     coop::dev::puppet_blast_probe::Tick(&session);  // [dev] a blast at a peer's puppet (a latched read when off)
+    coop::dev::sleep_speedup_drill::Tick(&session);  // [dev] whose sleep speeds the world up (a latched read when off)
     coop::dev::death_seam_census::Tick();  // [dev] every element end the death seam announces (latched read when off)
     coop::dev::damage_probe::Tick();  // [dev] every player damage verb call: whose body, source, caller (latched read when off)
+    coop::dev::hand_record_drill::Tick(&session);  // [dev] the held item's record drill (a latched read when off)
     coop::dev::grime_drill::Tick(&session);  // [dev] the grime drill's legs (a latched read when off)
     coop::dev::vitals_keepalive::Tick();  // [dev] long-exposure keepalive: the host's broadcast refill and each peer's own food and sleep (latched reads when off)
 }

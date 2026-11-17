@@ -48,12 +48,14 @@
 #include "coop/props/prop_food_sync.h"     // a world food's condition and a client's bite
 #include "coop/props/prop_hold_claim.h"    // the client's receiver of a refused hold
 #include "coop/props/prop_settle.h"        // where a released prop rests
+#include "coop/player/hand_record_sync.h"  // a held item's own record on its hand mirrors
 #include "coop/props/prop_syncer.h"        // the client's answer receiver
 #include "coop/props/prop_syncer_host.h"   // the host's claim judge and a client's End
 
 #include "coop/world/spill_sync.h"
 #include "coop/world/sus_hole_intent.h"
 #include "ue_wrap/core/log.h"
+#include "ue_wrap/devices/atv.h"   // ClampCharge: a host state's battery
 
 #include <cmath>
 #include <cstring>
@@ -329,6 +331,18 @@ bool HandlePropDriveEvent(net::Session& session,
         ::coop::media_device_sync::OnState(msg.senderPeerSlot, p);
         break;
     }
+    case net::ReliableKind::HandRecord: {
+        // Any peer to the host, the host to all (coop/player/hand_record_sync); chunked.
+        if (msg.senderPeerSlot < 0 || msg.senderPeerSlot >= net::kMaxPeers) {
+            UE_LOGW("event_feed: HandRecord from invalid senderPeerSlot=%d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::BlobChunkPayload)) break;
+        net::BlobChunkPayload c{};
+        std::memcpy(&c, msg.payload, sizeof(c));
+        ::coop::hand_record_sync::OnChunk(c, static_cast<uint8_t>(msg.senderPeerSlot));
+        break;
+    }
     case net::ReliableKind::PlantState:
     case net::ReliableKind::PlantEdit: {
         // PlantState HOST->ALL, PlantEdit CLIENT->HOST.
@@ -418,14 +432,6 @@ bool HandlePropDriveEvent(net::Session& session,
         net::WallPreviewPayload p{};
         std::memcpy(&p, msg.payload, sizeof(p));
         ::coop::wall_preview_sync::OnPreview(msg.senderPeerSlot, p);
-        break;
-    }
-    case net::ReliableKind::HandRecord: {
-        // Any peer to the host, the host to all (coop/player/hand_record_sync); chunked.
-        if (msg.payloadLen < sizeof(net::BlobChunkPayload)) break;
-        net::BlobChunkPayload c{};
-        std::memcpy(&c, msg.payload, sizeof(c));
-        ::coop::hand_record_sync::OnChunk(c, static_cast<uint8_t>(msg.senderPeerSlot));
         break;
     }
     case net::ReliableKind::CoverState:
@@ -619,6 +625,16 @@ bool HandlePropDriveEvent(net::Session& session,
         if (!std::isfinite(p.fuel) || !std::isfinite(p.health) || p.moduleCount > sizeof(p.modules)) {
             UE_LOGW("event_feed: ATV host state malformed -- dropping");
             break;
+        }
+        // The battery is -1 (none fitted) or a finite charge of 0 or more, brought into the field's range (the game's solar
+        // charge leaves it a fraction past 100); any other value is not read, the state's other fields are.
+        if (p.flags & net::kAtvHostBattery) {
+            if (std::isfinite(p.battery) && (p.battery == -1.f || p.battery >= 0.f)) {
+                if (p.battery >= 0.f) p.battery = ue_wrap::atv::ClampCharge(p.battery);
+            } else {
+                UE_LOGW("event_feed: ATV host state carries a battery that is neither -1 nor a charge -- its battery is not read");
+                p.flags = static_cast<uint8_t>(p.flags & ~net::kAtvHostBattery);
+            }
         }
         ::coop::atv_host_sync::OnState(p);
         break;

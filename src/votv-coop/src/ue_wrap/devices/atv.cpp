@@ -8,6 +8,7 @@
 
 #include "ue_wrap/actors/kerfur.h"   // the kerfur's own ATV functions (InviteKerfurs, ReleaseKerfurs)
 #include "ue_wrap/actors/save_record.h"  // ReadArr / ReplaceArray -- the Modules and allKerfuros arrays
+#include "ue_wrap/core/cached_obj_ref.h"  // the battery prop class, found again after a world reload
 #include "ue_wrap/core/call.h"      // ParamFrame / Call -- the GameplayStatics spawn (SpawnMirror)
 #include "ue_wrap/core/class_resolve.h"
 #include "ue_wrap/core/component_calls.h"  // CallParamlessNamed -- the ATV's own parameterless functions
@@ -298,6 +299,36 @@ bool SetBattery(void* atv, float v) {
 
 bool CallUpdBattery(void* atv) { return atv && component_calls::CallParamlessNamed(atv, L"updBattery"); }
 
+float ClampCharge(float v) { return std::fmin(std::fmax(v, 0.f), 100.f); }
+
+void* SpawnBattery(const FVector& loc, const FRotator& rot, const FVector& scale, uint8_t collision, float charge) {
+    // The prop's class and its `battery` offset, resolved once and again when a world reload has re-created the class.
+    static CachedObjRef s_batteryCls;
+    static int32_t s_batteryPropOff = -1;
+    if (!s_batteryCls.Alive()) {
+        void* const found = object_index::ClassByName(L"prop_atvcarbattery_C");
+        s_batteryCls.Set(found);
+        s_batteryPropOff = found ? R::FindPropertyOffset(found, L"battery") : -1;
+    }
+    void* const cls = s_batteryCls.Get();
+    const int32_t off = s_batteryPropOff;
+    if (!cls || off < 0) {
+        UE_LOGW("atv: prop_atvcarbattery_C or its battery field does not resolve -- no battery prop is spawned");
+        return nullptr;
+    }
+    void* const actor = engine::BeginDeferredSpawn(cls, loc, rot, collision, &scale);
+    if (!actor) return nullptr;
+    const int32_t idx = R::InternalIndexOf(actor);
+    const float clamped = ClampCharge(charge);
+    std::memcpy(static_cast<uint8_t*>(actor) + off, &clamped, sizeof(clamped));
+    if (!engine::FinishDeferredSpawn(actor, loc, rot, &scale)) {
+        // No caller holds the begun actor (the result is null) and the engine would keep it.
+        if (R::IsLiveByIndex(actor, idx)) engine::DestroyActor(actor);
+        return nullptr;
+    }
+    return actor;
+}
+
 int ReadModules(void* atv, uint8_t* out, int cap) {
     if (!atv || g_modulesOff < 0) return -1;
     const save_record::Arr arr = save_record::ReadArr(atv, g_modulesOff);
@@ -541,7 +572,8 @@ struct Field {
     }
 };
 Field g_camera{L"Camera"}, g_sitarrow{L"sitarrow"}, g_playerHit{L"playerHit"}, g_sittingKerfuro{L"sittingKerfuro"},
-    g_allKerfuros{L"allKerfuros"};
+    g_allKerfuros{L"allKerfuros"}, g_billboard4{L"Billboard4"}, g_lookAtTire{L"lookAtTire"},
+    g_lookAtTireSocket{L"lookAtTireSocket"};
 
 void* ReadObj(void* atv, int32_t off) {
     if (!atv || off < 0) return nullptr;
@@ -576,6 +608,24 @@ bool GetCameraLocation(void* atv, FVector& loc) {
     if (!atv || !R::IsLive(atv)) return false;
     void* camera = ReadObj(atv, g_camera.Get());
     return camera && engine::TryGetComponentLocation(camera, loc);
+}
+
+bool GetUnscrewSpawnTransform(void* atv, FVector& loc, FRotator& rot, FVector& scale) {
+    if (!atv || !R::IsLive(atv)) return false;
+    // getUnscrewSpawn returns `Billboard4` when no tire is looked at, and unscrewPanel's battery arm spawns at that
+    // component's world transform. It is read here directly: calling the game's function would answer with a wheel
+    // whenever this copy's own player looks at a tire.
+    void* const panel = ReadObj(atv, g_billboard4.Get());
+    return panel && engine::TryGetComponentLocation(panel, loc) && engine::TryGetComponentWorldRotation(panel, rot) &&
+           engine::TryGetComponentWorldScale(panel, scale);
+}
+
+bool ReadTireLook(void* atv, bool& atTire) {
+    const int32_t tireOff = g_lookAtTire.Get(), socketOff = g_lookAtTireSocket.Get();
+    if (!atv || !R::IsLive(atv) || tireOff < 0 || socketOff < 0) return false;
+    const auto* const o = static_cast<const uint8_t*>(atv);
+    atTire = *reinterpret_cast<const int32_t*>(o + tireOff) >= 0 || *reinterpret_cast<const int32_t*>(o + socketOff) >= 0;
+    return true;
 }
 
 void* GetSittingKerfur(void* atv) {

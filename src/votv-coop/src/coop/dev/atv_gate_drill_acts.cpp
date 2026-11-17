@@ -39,6 +39,7 @@
 #include "ue_wrap/engine/engine_mainplayer.h"
 #include "ue_wrap/engine/engine_pawn.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cmath>
 #include <cstdio>
@@ -74,13 +75,6 @@ constexpr const wchar_t* kUpgradesClass = L"ui_objectUpgrades_C";
 // The fire action's press and release, the pair a left click makes.
 DR::InputStub g_firePress{L"InpActEvt_fire_K2Node_InputActionEvent_58"};
 DR::InputStub g_fireRelease{L"InpActEvt_fire_K2Node_InputActionEvent_59"};
-
-bool ReadFloat(void* o, const wchar_t* name, float& v) {
-    const int32_t off = o ? R::FindPropertyOffset(R::ClassOf(o), name) : -1;
-    if (off < 0) return false;
-    std::memcpy(&v, static_cast<const uint8_t*>(o) + off, sizeof(v));
-    return true;
-}
 
 bool WriteFloat(void* o, const wchar_t* name, float v) {
     const int32_t off = o ? R::FindPropertyOffset(R::ClassOf(o), name) : -1;
@@ -323,6 +317,50 @@ bool FitBattery(const std::wstring& key, float charge, std::string& why) {
     return HoldFire(AG::kUsedOn, kAnswerS, why);
 }
 
+namespace {
+
+// The live battery props of this world other than the hand's and the hand mirrors'. Game thread.
+std::vector<void*> ScanBatteries() {
+    std::vector<void*> out;
+    for (void* o : R::FindObjectsByClass(kBatteryClass)) {
+        if (!o || !R::IsLive(o) || R::NameStartsWith(R::NameOf(o), L"Default__") || coop::hand_item::IsHandAxisActor(o)) continue;
+        out.push_back(o);
+    }
+    return out;
+}
+
+// How many live battery props `before` did not hold, and the first one's charge (-1 when none). A prop is held by `before`
+// when the weak reference still names it. Game thread.
+int CountNew(const BatterySet& before, float* firstCharge) {
+    int n = 0;
+    if (firstCharge) *firstCharge = -1.f;
+    for (void* o : ScanBatteries()) {
+        if (std::any_of(before.begin(), before.end(), [&](const ue_wrap::CachedObjRef& b) { return b.Is(o); })) continue;
+        if (!n && firstCharge) ReadFloat(o, L"battery", *firstCharge);
+        ++n;
+    }
+    return n;
+}
+
+}  // namespace
+
+BatterySet BatteryProps() {
+    BatterySet out;
+    OnGt([&] {
+        for (void* o : ScanBatteries()) {
+            out.emplace_back();
+            out.back().Set(o);
+        }
+    });
+    return out;
+}
+
+int NewBatteryProps(const BatterySet& before, float* firstCharge) {
+    int n = 0;
+    OnGt([&] { n = CountNew(before, firstCharge); });
+    return n;
+}
+
 bool UnscrewBattery(const std::wstring& key, std::string& why) {
     bool ran = false;
     OnGt([&] {
@@ -342,27 +380,19 @@ bool UnscrewBattery(const std::wstring& key, std::string& why) {
     return ran;
 }
 
-int LooseBatteries(const std::wstring& key, float charge, int& withCharge) {
-    int n = 0;
-    withCharge = 0;
+// The host's own copy's battery set and published through the host's one publish point, as any change of the host copy.
+bool SeedHostBattery(const std::wstring& key, float charge, std::string& why) {
+    bool ok = false;
     OnGt([&] {
+        namespace H = coop::atv_host_sync;
         void* atv = Atv(key);
-        ue_wrap::FVector at{};
-        if (!atv || !ue_wrap::engine::TryGetActorLocation(atv, at)) return;
-        for (void* o : R::FindObjectsByClass(kBatteryClass)) {
-            if (!o || !R::IsLive(o) || R::NameStartsWith(R::NameOf(o), L"Default__") ||
-                coop::hand_item::IsHandAxisActor(o))
-                continue;
-            ue_wrap::FVector p{};
-            if (!ue_wrap::engine::TryGetActorLocation(o, p)) continue;
-            const float dx = p.X - at.X, dy = p.Y - at.Y, dz = p.Z - at.Z;
-            if (dx * dx + dy * dy + dz * dz > 400.f * 400.f) continue;
-            ++n;
-            float v = 0.f;
-            if (ReadFloat(o, L"battery", v) && std::fabs(v - charge) < 0.5f) ++withCharge;
-        }
+        H::Vitals before;
+        if (!atv || !H::ReadVitals(atv, before)) return;
+        ok = WriteFloat(atv, L"battery", charge) && CallByName(atv, L"updBattery");
+        H::PublishIfChanged(key, atv, before);
     });
-    return n;
+    if (!ok) why = "the host's ATV battery could not be set";
+    return ok;
 }
 
 bool SeedHost(const std::wstring& key, float fuel, float health, std::string& why) {

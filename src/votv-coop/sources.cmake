@@ -146,6 +146,7 @@ set(VOTVCOOP_SOURCES
     src/coop/world/power_decay.cpp
     src/coop/world/power_grid.cpp
     src/coop/world/power_grid_install.cpp
+    src/coop/world/power_grid_rows.cpp
     src/coop/world/power_panel.cpp
     src/coop/world/power_puzzle.cpp
     src/coop/world/power_upgrade.cpp
@@ -325,6 +326,10 @@ set(VOTVCOOP_SOURCES
     src/coop/props/prop_nametag.cpp
     src/coop/props/disc_record_ceiling.cpp
     src/coop/props/prop_record_gates.cpp
+    src/coop/props/glowstick_stick_record.cpp
+    src/coop/props/glowstick_stick_judge.cpp
+    src/coop/props/glowstick_struck.cpp
+    src/coop/props/glowstick_sync.cpp
     src/coop/props/prop_stick_sync.cpp
     src/coop/props/prop_synth_key.cpp
     src/coop/props/prop_fresh_spawn.cpp
@@ -405,6 +410,7 @@ set(VOTVCOOP_SOURCES
     src/coop/props/registry_reaper.cpp
     src/coop/session/pause_guard.cpp
     src/coop/session/connect_replay.cpp
+    src/coop/session/session_gate_hold.cpp
     src/coop/session/subsystems.cpp
     src/coop/session/desk_subsystems.cpp
     src/coop/session/world_ready_answer.cpp
@@ -576,6 +582,7 @@ set(VOTVCOOP_SOURCES
     resources/thanks.rc
     src/coop/player/roster.cpp
     src/coop/player/roster_ledger.cpp
+    src/coop/player/hunger_share.cpp
     src/coop/moderation/ban_list.cpp
     src/coop/moderation/ban_list_selftest.cpp
     src/coop/moderation/cremate.cpp
@@ -670,6 +677,7 @@ set(VOTVCOOP_NET_SOURCES
     src/coop/net/fake_link_steps.cpp
     src/coop/net/ice_config.cpp
     src/coop/net/ice_policy.cpp
+    src/coop/net/player_limit.cpp
     src/coop/net/signaling_client.cpp
     src/coop/net/signaling_proof.cpp
     src/coop/net/lobby_proof.cpp

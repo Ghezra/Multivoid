@@ -84,6 +84,9 @@ set(VOTVCOOP_SOURCES_HARNESS
     src/harness/autotest/autotest_desk_short.cpp
     src/harness/autotest/autotest_drone_hover.cpp
     src/harness/autotest/autotest_hacksaw.cpp
+    src/harness/autotest/autotest_glowstick.cpp
+    src/harness/autotest/glowstick_drill_common.cpp
+    src/harness/autotest/glowstick_drill_client.cpp
     src/harness/autotest/autotest_chipper_feed.cpp
     src/harness/autotest/autotest_chipper_carry.cpp
     src/harness/autotest/autotest_body_push.cpp

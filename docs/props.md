@@ -51,7 +51,7 @@ and `foods` in its record, and the can opener, enough impact damage and eating c
 `Init`. `Init` also runs for changes that touch neither, so every class's `init` is watched at the script gate, and a
 can publishes only when the two differ from what this peer last knew, a can it has not seen comparing with its class's
 defaults (`coop/props/prop_can_state`). A record landing here updates what is known and does not go back; a new actor
-under a known Key, as a hand's drop makes, is adopted, never published (Ghezra/Multivoid issue 33). `[V]`
+under a known Key, as a hand's drop makes, is adopted and never published as a change; the host publishes nothing for the host's copy of a client's drop until that client's record lands. `[V]`
 `harness/autotest/autotest_can_state.cpp`: two cans, each opened on one peer and eaten from on the other, read the
 same `opened`, `foods` and mesh on both peers after every step, with one record per change; the client walks to the
 host first, every step waits on the can's state, and the host judges the client's rows (`can-drill: VERDICT`). The
@@ -257,14 +257,16 @@ dropped when a newer one reaches it); the drive's end edge converges static as w
 
 ### Sticking to a wall
 
-A prop sticks through its wall-attach component, which the cameras, the signs and the plasma TV carry. Its stick commits
-inside the Blueprint, at an entry a latent delay resumes through the function dispatch. The sticking peer broadcasts the
-frozen or static state and the commit pose before its hold breaks, on the release's ordered lane; the receiver re-poses
-the prop and dispatches the component's own force-stick, so the attach, the effect and the destroy binding are the
-game's (`coop/props/prop_stick_sync`). The unstick crosses too (a crowbar's pry frees a sign nobody holds): the script
-gate watches the component's unstick on every route, the unsticking peer broadcasts the prop's pose and velocity, and a
-receiver runs the same unstick and lets its copy go. A glowstick's stick, a constraint its record holds, crosses with
-the record, and each landing remakes or breaks it (`coop/props/glowstick_sync`).
+A prop sticks through its wall-attach component, which the wall-attachable props (the cameras, the
+signs) and the plasma TV carry. The component commits its stick inside the Blueprint; the one
+visible seam is the commit entry, reached through a latent delay that the engine resumes through the
+function dispatch. The sticking peer broadcasts the frozen or static state and the commit pose
+before its own hold breaks, on the same ordered lane as the release so the order is structural; the
+receiver re-poses the prop and dispatches the component's own force-stick, so the attach, the effect
+and the destroy binding are the game's (`coop/props/prop_stick_sync`). The unstick crosses too,
+since a crowbar's pry frees a pryable sign with nobody holding it: the script gate watches the
+component's unstick on every route, the unsticking peer broadcasts the prop's pose and velocity, and
+a receiver runs the same unstick with the tool and lets its copy go. A glowstick's stick, a physics constraint its own save record holds, crosses with that record: the player's stick is published once its constraint is complete, a landing remakes it through the game's own restore (`processKeys`), and a grab frees every peer's copy at the hold's begin (`coop/props/glowstick_sync`).
 
 ### A nametag
 
@@ -531,7 +533,7 @@ prop's frozen and sleep converge with its snapshot row and its correction (stati
 a move gets a correction too, so an extinguisher taken off its mount during the window is loose on
 the joiner; a wall-attach component's owner converges its stuck state there through the component's
 own unstick or force-stick, so a sign pried in the window is off its wall. A stuck prop otherwise
-reaches a joiner through the save, which carries the frozen and static state. A prop's nametag comes with the save, and a tag put on after the save's cut with the host's connect replay: each prop
+reaches a joiner through the save, which carries the frozen and static state. A glowstick's stick comes with its record behind its spawn row, a stick whose struck prop is not bound at the joiner waits for it (`coop/props/glowstick_struck`), and a hold of it that began before the join reaches the joiner as the host's freed record. A prop's nametag comes with the save, and a tag put on after the save's cut with the host's connect replay: each prop
 whose tag the session published is named to the joiner alone with the tag it carries then, ahead of the snapshot's
 props, so a copy the save loaded takes it at once and a prop the snapshot births takes it when it appears: the client
 keeps the tag by key until the key index shows the prop, and drops it with its world or session. A prop the host's
@@ -549,8 +551,8 @@ prop resolves.
 | Limit | Evidence |
 |---|---|
 | Two players who grab one keyed prop inside one round trip both hold it until the host's refusal reaches the one it did not keep, so the refused player sees the prop in hand for that round trip before it is taken away. A swinger's drag has no such judge: two peers dragging one lid each move their own copy. A release delayed past another peer's whole later hold of the prop still puts it back where the first holder let go, and a join's snapshot row read before a live stick, unstick or release can reach the joiner after it and undo it there, until the window's late re-flush corrects the prop | `[V]` the grab race (`coop/dev/director/grab_race_probe`): both peers fired the grab within 20 ms of each other, three runs; the host refused the client's hold each time, the client let go with no release, and over a 4 s watch no sample on either peer had two holders and the client's copy followed the host's stream in 138 of 139; `[V]` `coop/props/remote_prop_drive` leaves a door the local player drags to that drag; `[RD]` the rows carry no version; the join gate holds a live stick or release behind the snapshot rows, so a joiner applies the rows first `[?]` |
-| A prop let go of without a throw (a drop, a place) flies by each peer's own physics from the same release transform and velocity, so the copies can take different paths before the releaser's rest corrects the others; a thrown prop is streamed by its thrower and the host (above). A fire extinguisher dropped from the hand ended between 0.2 and 152.6 cm apart on the two peers over fourteen drops before that correction existed, the widest where the client's copy stayed on a surface about a metre up that the host's copy landed on and rolled off. A copy that rests apart moves there in one step, a visible jump; one still moving ten seconds after its release is not corrected, and past sixteen released props at once the rest falls uncorrected. What the flying copy knocks on one peer stays knocked there alone | `[V]` the fire extinguisher drill (`coop/dev/fireext_drill`): the host's rest line against the client's last watch line; `[?]` `coop/props/prop_settle`, not yet measured in a two-peer run |
-| A prop whose own grab prelude adds to the base one gets only the base one on a receiver. The sprinkler's also detaches its hose; the grabber's own cut reaches the others through the garden hose lane ([deployables.md](deployables.md)), which a grab of the sprinkler has not been driven through on the rig. The glowstick's replaces the base one with its own release, and a receiver runs the base one; its release reaches the others with its record (`coop/props/glowstick_sync`) | `[V]` the sprinkler and glowstick Blueprints: `prop_sprinkler_C`'s prelude calls `prop_C::playerGrabbed_pre` and `hose->detachSprinkler`, `prop_glowstick_C`'s calls `releaseGlowstick` alone; `coop/props/remote_prop` runs the base prelude; `[?]` the sprinkler grab through `coop/world/ground_hose_sync` |
+| A prop let go of without a throw (a drop, a place) lands by each peer's own physics from the same release transform and velocity, and nothing converges where it comes to rest; a thrown prop is streamed by its thrower and the host (above). A fire extinguisher dropped from the hand ended between 0.2 and 152.6 cm apart on the two peers over fourteen drops, the widest where the client's copy stayed on a surface about a metre up that the host's copy landed on and rolled off | `[V]` the fire extinguisher drill (`coop/dev/fireext_drill`): the host's rest line (its last watch line where its copy had not settled) against the client's last watch line, which prints a move of 3 cm or more |
+| A prop whose own grab prelude adds to the base one gets only the base one on a receiver: the sprinkler's also detaches its hose, so the hose stays tied to a sprinkler another peer carries away. The glowstick's replaces the base one with its own release, which a receiver runs at a hold's begin (`coop/props/glowstick_sync`) before the base one | `[V]` the sprinkler and glowstick Blueprints: `prop_sprinkler_C`'s prelude calls `prop_C::playerGrabbed_pre` and `hose->detachSprinkler`, `prop_glowstick_C`'s calls `releaseGlowstick` alone; `coop/props/remote_prop` runs the base prelude |
 | Only the prop-properties tool's press crosses. The stacker sets flags on the props it stacks and on its parent, a grab that unfreezes a frozen prop and a wall-mount that writes static and frozen directly each change the peer that did it alone | `[?]` `coop/props/prop_tool_flags` catches `tool_propProps_C::init` only; not yet measured in a two-peer run |
 | Another peer's hold can carry away the chair this peer sits in at the laptop, which single player never allows: the laptop freezes the seat only on the machine whose player sits | `[V]` the laptop Blueprint: `stabilizeSeat` sets the seat frozen, and the exit's `setPropProps` clears it; `coop/props/remote_prop` unfreezes a held copy at the hold's first pose |
 | A nested container's contents travel in container slices only: the player inventory's records and a prop's own record never carry them, so a container a client carries in its inventory across a rejoin, or one whose own record a prop lane sends, still names its slot as before; and several signal photos in one record, slice or inventory can pass that path's bound (a photo is 8.7 to 23.3 KB, a bound 32 to 56 KB), which refuses that carrier whole with a log | `[V]` `ue_wrap/actors/inventory` and `coop/props/prop_save_data` strip the nested contents, `coop/props/container_contents_io` attaches them; `coop/props/container_contents_publish`, `coop/items/player_inventory_sync` refuse | 

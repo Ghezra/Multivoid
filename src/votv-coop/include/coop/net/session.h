@@ -39,7 +39,7 @@
 
 namespace coop::net {
 
-// kMaxPeers (the host + 3 clients) is coop::players::kMaxPeers; the alias sizes this header's
+// kMaxPeers (the host + 15 clients) is coop::players::kMaxPeers; the alias sizes this header's
 // arrays.
 inline constexpr uint8_t kMaxPeers = coop::players::kMaxPeers;
 
@@ -433,8 +433,12 @@ private:
     // the round-trip probe each slot owes. See coop/net/send_rate_control.h.
     void SampleLinkRates(uint64_t nowMs);
     void HandleConnStatusChanged(void* info);
-    // Host: the lowest empty slot in [1..kMaxPeers-1], or -1 when full.
-    int FindFreePeerSlotForClient();
+    // Host: the lowest empty slot in [1..kMaxPeers-1], or -1 when the seated players, the host
+    // among them, have reached the host's limit (coop/net/player_limit.h) or no slot is empty. A
+    // `rejoin` (an identity that held a seat which was just freed for it) is not held to the limit.
+    int FindFreePeerSlotForClient(bool rejoin);
+    // Host: the players seated now, the host among them.
+    int SeatedPlayers() const;
     // The peer slot that owns hConn, or -1.
     int FindPeerSlotForConn(uint32_t hConn);
     // Per-peer reset, at the slot's disconnect and at session stop; slot 0's covers the host's own
@@ -520,13 +524,13 @@ private:
     // --- Pending (unadmitted) connections ---
     // A connection GNS accepted but that has not yet proved itself holds no player seat: it lives
     // here, its user data `kPendingTag | index`, outside the [1, kMaxPeers) range the drain site
-    // validates. So three silent sockets cannot lock the three seats, and every IsSlotReady
+    // validates. So silent sockets cannot lock the client seats, and every IsSlotReady
     // consumer inherits the gate unchanged.
     static constexpr int64_t  kPendingTag   = 0x7000'0000LL;
 
 public:
     // Public: peer_admission.cpp sizes its per-pending exchange rows to it.
-    static constexpr int      kMaxPending   = 8;  // sockets, not seats
+    static constexpr int      kMaxPending   = 16;  // sockets, not seats
     // How long an unproved socket may sit before SweepPending closes it. Generous: a pending entry
     // costs one socket, and on P2P the whole ICE negotiation runs between the host's park edge and
     // the client's Hello.
@@ -551,9 +555,10 @@ public:
     // oldest unproved entry (the .cpp says why an arrival outranks it). Net thread.
     int  ParkPending(uint32_t hConn);
     // Promote a pending connection to a seat: the lowest free slot, the user data re-pointed, the
-    // generation minted, the lanes configured. -1 if the lobby is full (the caller closes). Net
-    // thread.
-    int  AdmitPending(int pendingIdx, uint32_t hConn);
+    // generation minted, the lanes configured. -1 if the host's limit is reached or no slot is free
+    // (the caller closes); `rejoin` seats an identity that just lost its seat to its own newer
+    // connection, whatever the limit now says. Net thread.
+    int  AdmitPending(int pendingIdx, uint32_t hConn, bool rejoin);
 
 private:
     // The lanes, the send-buffer mirror, the lanes-configured flag and (host) the AssignPeerSlot
