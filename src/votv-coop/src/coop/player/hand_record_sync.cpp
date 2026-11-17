@@ -12,6 +12,8 @@
 #include "ue_wrap/core/cached_obj_ref.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
+#include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/engine_attach.h"
 
 #include <chrono>
 #include <cstdint>
@@ -22,6 +24,7 @@ namespace {
 
 namespace R  = ue_wrap::reflection;
 namespace SR = ue_wrap::save_record;
+namespace E  = ue_wrap::engine;
 namespace W  = coop::save_record_wire;
 namespace N  = coop::net;
 
@@ -112,6 +115,10 @@ void TickMirrors() {
         if (!h.dirty && h.appliedTo.Is(mirror)) continue;
         if (R::ClassNameOf(mirror) != h.rec.className) continue;  // the hand moved on: its next record follows
         const bool ok = SR::ApplyRecord(mirror, h.rec, load);
+        // The prop's own loadData turns its physics back on, and a display falls out of the hand between the
+        // view's placings (Ghezra/Multivoid#38, a disc seen hanging and sinking): it is made a display again.
+        E::SetActorSimulatePhysics(mirror, false);
+        E::SetActorEnableCollision(mirror, false);
         h.appliedTo.Set(mirror);
         h.dirty = false;
         UE_LOGI("hand_record: slot %u's hand %ls written into its mirror here (ok=%d)", s, h.rec.className.c_str(),
