@@ -389,6 +389,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/pi3_arms.cpp
     src/coop/dev/pi3_drill.cpp
     src/coop/dev/native_spawn_probe.cpp
+    src/coop/dev/join_stall_probe.cpp
     src/coop/dev/kdisc_watch.cpp
     src/coop/dev/kfollow_probe.cpp
     src/coop/dev/blood_probe.cpp

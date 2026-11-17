@@ -128,6 +128,7 @@
 #include "coop/dev/creature_hit_drill.h"  // [dev] a parked creature's hit delivered to a client, a client's hit on it judged by the host
 #include "coop/dev/hostile_drill.h"  // [dev] the receive boundary: a client forges malformed packets, the host judges
 #include "coop/dev/native_pile_inert_probe.h"
+#include "coop/dev/join_stall_probe.h"   // [dev] a client's game thread held still while it joins
 #include "coop/dev/kdisc_watch.h"   // [dev] every floppy disc's place, parent and physics
 #include "coop/dev/kfollow_probe.h"   // [dev] an Omega following a player, each leap logged
 #include "coop/dev/blood_probe.h"   // [dev] a player's blood drops, counted on both
@@ -363,6 +364,7 @@ void RearmSelftests() {
 
 void TickLoadWindow(coop::net::Session& session) {
     coop::dev::hotbar_icon_probe::Tick();  // [dev] the quick-slot bar's icons, decided during the load
+    coop::dev::join_stall_probe::Tick(&session);  // [dev] a client held still while it joins (a latched read when off)
     coop::dev::load_reroll_watch::Tick(session);  // [dev] what it watches runs inside the world load
     coop::dev::radio_tower_probe::Tick(session);  // [dev] the radio tower's state and calls (one string read when off)
     coop::dev::desk_verb_drill::TickLoad(&session);  // [dev] the join's census, armed ahead of the load it counts
