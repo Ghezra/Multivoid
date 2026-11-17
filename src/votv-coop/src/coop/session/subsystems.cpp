@@ -148,6 +148,7 @@
 #include "coop/interactables/generator_sync.h"   // a portable generator's fuel and on/off, the host's
 #include "coop/world/flood_sync.h"   // the basement flood, the host's
 #include "coop/creatures/kerfur_dress_sync.h"   // an Omega's outfit and its pat
+#include "coop/creatures/kerfur_camera.h"   // a client's Omega camera on its laptop list
 #include "coop/world/arir_ship_sync.h"   // the Ariral ship in the sky
 #include "coop/world/cave_rock_sync.h"   // the Antibreather cave's entrance
 #include "coop/world/sound_relay.h"   // a player's own sounds at a place
@@ -747,7 +748,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:atv"}; coop::atv_sync::Tick(); }  // ATV: the host judges its own seat and grab, a client asks the host; the syncer streams its pose (host+client)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:drone"}; coop::drone_sync::Tick(); }  // delivery drone: host streams transform / client suppresses tick + mirrors
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:turbine"}; coop::turbine_sync::Tick(); }  // wind turbines: host ~1 Hz driver-float poll / client deferred-apply retry
-    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:woodchipper"}; coop::woodchipper_sync::Tick(); coop::generator_sync::Tick(); coop::flood_sync::Tick(); coop::kerfur_dress_sync::Tick(); coop::arir_ship_sync::Tick(); coop::cave_rock_sync::Tick(); coop::glowstick_sync::Tick(); }  // woodchippers: the host's intents and its changed chippers, the burn read once a second / the client's held states
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:woodchipper"}; coop::woodchipper_sync::Tick(); coop::generator_sync::Tick(); coop::flood_sync::Tick(); coop::kerfur_dress_sync::Tick(); coop::kerfur_camera::Tick(session); coop::arir_ship_sync::Tick(); coop::cave_rock_sync::Tick(); coop::glowstick_sync::Tick(); }  // woodchippers: the host's intents and its changed chippers, the burn read once a second / the client's held states
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:atv_host"}; coop::atv_host_sync::Tick(); }  // the ATVs' fuel, health and modules
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:alarm"}; coop::alarm_sync::Tick(); }  // base radar alarm: 1 Hz active-bit poll BOTH roles (host broadcasts transitions; client forwards local ones)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:server"}; coop::serverbox_sync::Tick(); }  // the server boxes: the watches settled, then the HOST's 1 Hz poll -> broadcast on change
