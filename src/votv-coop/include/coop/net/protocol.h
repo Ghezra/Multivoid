@@ -32,7 +32,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 331;
+inline constexpr uint16_t kProtocolVersion = 332;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1603,6 +1603,9 @@ enum class ReliableKind : uint16_t {
     // pre-world. KerfurDressPayload.
     KerfurDressState = 287,
     KerfurDressIntent = 288,
+    // HOST->ALL: the Antibreather cave's entrance rock shut or open (coop/world/cave_rock_sync), when it changes and to a
+    // joiner. Not pre-world. CaveRockPayload.
+    CaveRockState = 289,
 };
 
 #pragma pack(push, 1)
@@ -2541,6 +2544,14 @@ struct KerfurDressPayload {
     char     names[216];  // 216
 };
 static_assert(sizeof(KerfurDressPayload) == 224, "KerfurDressPayload must be 224 bytes");
+
+// CaveRockState. The spawner (antibreatherSPawner_C, placed in the level) by its object name.
+struct CaveRockPayload {
+    WireKey name;      // 32 -- the spawner's object name
+    uint8_t closed;    // 1 -- the rock shown, the cave shut
+    uint8_t _pad[3];   // 3 -- zero
+};
+static_assert(sizeof(CaveRockPayload) == 36, "CaveRockPayload must be 36 bytes");
 
 // SoundAt. The Sound and the attenuation as object paths ("/Game/audio/x.x", ASCII, NUL-padded; an empty attenuation
 // plays with none), the place, the volume and the pitch, as the original call passed them.

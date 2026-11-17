@@ -39,6 +39,7 @@
 #include "coop/interactables/generator_sync.h"
 #include "coop/world/flood_sync.h"
 #include "coop/creatures/kerfur_dress_sync.h"
+#include "coop/world/cave_rock_sync.h"
 #include "coop/world/sound_relay.h"
 #include "coop/interactables/woodchipper_sync.h"
 #include "coop/interactables/atv_host_judge.h"
@@ -511,6 +512,18 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         if (intent) ::coop::generator_sync::OnIntent(msg.senderPeerSlot, p);
         else ::coop::generator_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::CaveRockState: {
+        // HOST->ALL.
+        if (session.role() == net::Role::Host || msg.payloadLen < sizeof(net::CaveRockPayload)) {
+            UE_LOGW("event_feed: a cave rock state the wrong way or too short from slot %d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        net::CaveRockPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.closed > 1) break;
+        ::coop::cave_rock_sync::OnState(p);
         break;
     }
     case net::ReliableKind::KerfurDressState:

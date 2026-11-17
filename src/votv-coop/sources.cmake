@@ -99,6 +99,8 @@ set(VOTVCOOP_SOURCES
     src/coop/interactables/generator_sync.cpp
     src/coop/world/flood_sync.cpp
     src/coop/creatures/kerfur_dress_sync.cpp
+    src/coop/world/arir_ship_sync.cpp
+    src/coop/world/cave_rock_sync.cpp
     src/coop/world/sound_relay.cpp
     src/coop/props/glowstick_sync.cpp
     src/coop/interactables/woodchipper_gate.cpp

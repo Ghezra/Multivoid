@@ -148,6 +148,8 @@
 #include "coop/interactables/generator_sync.h"   // a portable generator's fuel and on/off, the host's
 #include "coop/world/flood_sync.h"   // the basement flood, the host's
 #include "coop/creatures/kerfur_dress_sync.h"   // an Omega's outfit and its pat
+#include "coop/world/arir_ship_sync.h"   // the Ariral ship in the sky
+#include "coop/world/cave_rock_sync.h"   // the Antibreather cave's entrance
 #include "coop/world/sound_relay.h"   // a player's own sounds at a place
 #include "coop/props/glowstick_sync.h"   // a glowstick stuck to a surface, on every peer
 #include "coop/interactables/woodchipper_sync.h"
@@ -337,6 +339,8 @@ void Install(coop::net::Session& session) {
     coop::generator_sync::Install(&session);    // the host's portable generators
     coop::flood_sync::Install(&session);        // the basement's burst pipes and flood
     coop::kerfur_dress_sync::Install(&session);  // an Omega's outfit and its pat
+    coop::arir_ship_sync::Install(&session);  // the Ariral ship in the sky
+    coop::cave_rock_sync::Install(&session);  // the Antibreather cave's entrance
     coop::glowstick_sync::Install(&session);    // a glowstick's stick, through its record
     coop::atv_host_sync::Install(&session);  // what of an ATV is the host's beyond its rig
     coop::upgrade_sync::Install(&session);  // a client's upgrade purchase is charged and written by the host
@@ -641,6 +645,7 @@ DisconnectStats DisconnectAll() {
     coop::generator_sync::OnDisconnect();
     coop::flood_sync::OnDisconnect();
     coop::kerfur_dress_sync::OnDisconnect();
+    coop::cave_rock_sync::OnDisconnect();
     coop::glowstick_sync::OnDisconnect();
     coop::upgrade_sync::OnDisconnect();  // and its own upgrade panel buys locally again
     coop::device_occupancy::OnDisconnect();
@@ -742,7 +747,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:atv"}; coop::atv_sync::Tick(); }  // ATV: the host judges its own seat and grab, a client asks the host; the syncer streams its pose (host+client)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:drone"}; coop::drone_sync::Tick(); }  // delivery drone: host streams transform / client suppresses tick + mirrors
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:turbine"}; coop::turbine_sync::Tick(); }  // wind turbines: host ~1 Hz driver-float poll / client deferred-apply retry
-    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:woodchipper"}; coop::woodchipper_sync::Tick(); coop::generator_sync::Tick(); coop::flood_sync::Tick(); coop::kerfur_dress_sync::Tick(); coop::glowstick_sync::Tick(); }  // woodchippers: the host's intents and its changed chippers, the burn read once a second / the client's held states
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:woodchipper"}; coop::woodchipper_sync::Tick(); coop::generator_sync::Tick(); coop::flood_sync::Tick(); coop::kerfur_dress_sync::Tick(); coop::arir_ship_sync::Tick(); coop::cave_rock_sync::Tick(); coop::glowstick_sync::Tick(); }  // woodchippers: the host's intents and its changed chippers, the burn read once a second / the client's held states
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:atv_host"}; coop::atv_host_sync::Tick(); }  // the ATVs' fuel, health and modules
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:alarm"}; coop::alarm_sync::Tick(); }  // base radar alarm: 1 Hz active-bit poll BOTH roles (host broadcasts transitions; client forwards local ones)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:server"}; coop::serverbox_sync::Tick(); }  // the server boxes: the watches settled, then the HOST's 1 Hz poll -> broadcast on change
