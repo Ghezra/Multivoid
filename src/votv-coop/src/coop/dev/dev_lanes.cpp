@@ -127,6 +127,7 @@
 #include "coop/dev/creature_hit_drill.h"  // [dev] a parked creature's hit delivered to a client, a client's hit on it judged by the host
 #include "coop/dev/hostile_drill.h"  // [dev] the receive boundary: a client forges malformed packets, the host judges
 #include "coop/dev/native_pile_inert_probe.h"
+#include "coop/dev/event_probe.h"   // [dev] what an event leaves on each peer
 #include "coop/dev/vent_probe.h"   // [dev] a player crawling in a vent, its steps logged
 #include "coop/dev/kdress_probe.h"   // [dev] an Omega's outfit and its pat, logged on both
 #include "coop/dev/hit_probe.h"   // [dev] a player's melee hit on the floor, its sound logged on both
@@ -478,6 +479,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::pi1_selftest::Tick(&session);  // [dev] the substrate primitives' selftest, once (latched read when off)
     coop::dev::pi2_selftest::Tick(&session);  // [dev] the puppet-identity substrate's selftest, once (latched read when off)
     coop::dev::pi3_drill::Tick(&session);  // [dev] the puppet-identity verb drill (a latched read when off)
+    coop::dev::event_probe::Tick(&session);  // [dev] the event census probe (a latched read when off)
     coop::dev::vent_probe::Tick(&session);  // [dev] the vent crawl probe (a latched read when off)
     coop::dev::kdress_probe::Tick(&session);  // [dev] the Omega outfit probe (a latched read when off)
     coop::dev::hit_probe::Tick(&session);  // [dev] the melee hit sound (a latched read when off)
