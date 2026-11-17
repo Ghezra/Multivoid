@@ -16,8 +16,11 @@
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
+#include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/engine_attach.h"
+#include "ue_wrap/world/world_singleton.h"
 
 #include <windows.h>
 
@@ -67,11 +70,41 @@ void Census(const char* when) {
             ue_wrap::FVector at{};
             if (!ue_wrap::engine::TryGetActorLocation(obj, at)) return;   // actors only
             ++*x->n;
-            UE_LOGI("[EVPROBE] %s: %ls '%ls' at (%.0f,%.0f,%.0f)", x->when, x->name->c_str(),
-                    R::ToString(R::NameOf(obj)).c_str(), at.X, at.Y, at.Z);
+            // An `active` bit, where the class has one (a camera's), and the actor's owner (a child actor's parent).
+            int32_t off = -1;
+            uint8_t mask = 0;
+            const int active = R::FindBoolProperty(R::ClassOf(obj), L"active", off, mask) && off >= 0
+                                   ? ((static_cast<const uint8_t*>(obj)[off] & mask) != 0 ? 1 : 0) : -1;
+            void* parent = nullptr;
+            ue_wrap::engine::GetAttachParentActor(obj, parent);
+            UE_LOGI("[EVPROBE] %s: %ls '%ls' at (%.0f,%.0f,%.0f) active=%d parent=%ls", x->when, x->name->c_str(),
+                    R::ToString(R::NameOf(obj)).c_str(), at.X, at.Y, at.Z, active,
+                    parent ? R::ClassNameOf(parent).c_str() : L"-");
         }, &ctx);
     }
     UE_LOGI("[EVPROBE] %s: %d actor(s) of a class holding '%ls'", when, n, sub.c_str());
+    // VOTVCOOP_EVENT_PROBE_CAMS=1: the gamemode's `cams`, the laptop's camera list (each camera adds itself).
+    if (coop::config::ReadEnv("VOTVCOOP_EVENT_PROBE_CAMS").empty()) return;
+    void* const gm = ue_wrap::world_singleton::Gamemode();
+    const int32_t off = gm ? R::FindPropertyOffset(R::ClassOf(gm), L"cams") : -1;
+    if (off < 0) return;
+    struct Arr { void** data; int32_t num; int32_t max; };
+    const auto* a = reinterpret_cast<const Arr*>(static_cast<const uint8_t*>(gm) + off);
+    for (int32_t i = 0; i < a->num && i < 64; ++i) {
+        void* const c = a->data[i];
+        if (!c || !R::IsLive(c)) {
+            UE_LOGI("[EVPROBE] %s: cams[%d] none", when, i);
+            continue;
+        }
+        int32_t ao = -1;
+        uint8_t am = 0;
+        const int active = R::FindBoolProperty(R::ClassOf(c), L"active", ao, am) && ao >= 0
+                               ? ((static_cast<const uint8_t*>(c)[ao] & am) != 0 ? 1 : 0) : -1;
+        void* parent = nullptr;
+        ue_wrap::engine::GetAttachParentActor(c, parent);
+        UE_LOGI("[EVPROBE] %s: cams[%d] %ls active=%d parent=%ls", when, i, R::ClassNameOf(c).c_str(), active,
+                parent ? R::ClassNameOf(parent).c_str() : L"-");
+    }
 }
 
 }  // namespace
