@@ -388,6 +388,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/pi3_arms.cpp
     src/coop/dev/pi3_drill.cpp
     src/coop/dev/native_spawn_probe.cpp
+    src/coop/dev/lift_probe.cpp
     src/coop/dev/event_probe.cpp
     src/coop/dev/vent_probe.cpp
     src/coop/dev/kdress_probe.cpp
