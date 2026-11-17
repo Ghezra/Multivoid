@@ -484,6 +484,12 @@ DWORD WINAPI ClientThread(LPVOID) {
     }
     g_clientMirror.store(mirror, std::memory_order_release);
 
+    // Within reach of the mirror, before the disc: the director's walk clears the hand first.
+    if (const char* bad = steps::WalkUpTo(mirror, kReachCm, kWalkDeadlineS)) {
+        Invalid(bad);
+        return 0;
+    }
+
     // The client's own red disc in hand, by the game's own pickup, as the host's drill takes its own.
     Before b;
     if (!Run([&] {
@@ -506,11 +512,6 @@ DWORD WINAPI ClientThread(LPVOID) {
         return 0;
     }
 
-    // Within reach of the mirror.
-    if (const char* bad = steps::WalkUpTo(mirror, kReachCm, kWalkDeadlineS)) {
-        Invalid(bad);
-        return 0;
-    }
     if (!AimFan(mirror, mirrorIdx)) {
         if (Alive()) Invalid("no aim of the fan put the trace and the look-at on the Omega's mirror");
         return 0;
