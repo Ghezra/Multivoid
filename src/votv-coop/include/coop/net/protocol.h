@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 336;
+inline constexpr uint16_t kProtocolVersion = 337;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -4745,7 +4745,9 @@ enum class DeskInputField : uint8_t {
                          //         (desk_input_sync's dial handoff); the host clamps it to 0..1000 and its sim
                          //         stream carries it on
     PoFilterOffset = 18, // float   DL_poFilterOffset, the same for the polarity dial (wrapped into 0..360)
-    Count = 19,
+    DialHolder = 19,     // HOST->ALL: intVal = the dial (0 frequency, 1 polarity) | the holder's slot << 8, boolVal = held;
+                         //         one player turns a dial at a time, and a client takes this from the host alone
+    Count = 20,
 };
 
 struct DeskInputPayload {
