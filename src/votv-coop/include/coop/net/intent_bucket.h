@@ -19,10 +19,14 @@ struct IntentBudget {
 class IntentBucket {
 public:
     // One intent at `nowMs`, a steady clock's milliseconds: true when the bucket holds a token, which it spends.
-    bool Take(const IntentBudget& budget, uint64_t nowMs) {
+    bool Take(const IntentBudget& budget, uint64_t nowMs) { return TakeN(budget, nowMs, 1.0f); }
+
+    // An intent that costs `cost` tokens (a request for ten props costs ten): true when the bucket holds that many,
+    // which it spends; otherwise nothing is spent. A cost above the burst can never be taken.
+    bool TakeN(const IntentBudget& budget, uint64_t nowMs, float cost) {
         Refill(budget, nowMs);
-        if (tokens_ < 1.0f) return false;
-        tokens_ -= 1.0f;
+        if (tokens_ < cost) return false;
+        tokens_ -= cost;
         return true;
     }
 
@@ -33,6 +37,14 @@ public:
         if (tokens_ - 1.0f < -maxDebt) return false;
         tokens_ -= 1.0f;
         return true;
+    }
+
+    // The time, in `nowMs`'s clock, at which the bucket is full again (`nowMs` itself when it is full now). A client's
+    // menu publishes it, and any thread works out how many tokens the bucket holds at a later time from it alone.
+    uint64_t FullAtMs(const IntentBudget& budget, uint64_t nowMs) {
+        Refill(budget, nowMs);
+        if (tokens_ >= budget.burst || !(budget.perSecond > 0.0f)) return nowMs;
+        return nowMs + static_cast<uint64_t>((budget.burst - tokens_) / budget.perSecond * 1000.0f) + 1;
     }
 
     // A taken token back: the intent it paid for ran nothing.

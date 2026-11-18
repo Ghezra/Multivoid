@@ -26,10 +26,13 @@ namespace {
 // by SetEnabled (menu/boot).
 std::atomic<bool> g_enabled{false};
 
+// The key watcher thread is alive. It ends when the toggle is off and no menu of ours is up.
+std::atomic<bool> g_threadRunning{false};
+
 bool KeyDown(int vk) { return (::GetAsyncKeyState(vk) & 0x8000) != 0; }
 
 // Watches the Q key while enabled and opens the spawn menu on the rising edge.
-// Started lazily on the first enable (no idle worker for players who never use
+// Runs only while the toggle is on or a menu this module opened is up (no idle worker for players who never use
 // this dev feature). Mirrors freecam's InputDriverThread:
 //   - foreground-gated (GetAsyncKeyState is process-GLOBAL, so a same-box
 //     host+client pair would otherwise double-fire from one Q press);
@@ -40,13 +43,33 @@ bool KeyDown(int vk) { return (::GetAsyncKeyState(vk) & 0x8000) != 0; }
 DWORD WINAPI KeyWatcherThread(LPVOID) {
     bool prevRawQ = false;  // RAW Q edge (independent of focus) so the diagnostics fire once per press
     while (!coop::shutdown::IsShuttingDown()) {
-        if (g_enabled.load(std::memory_order_acquire)) {
+        // Q is watched while the toggle is on, and also for as long as a menu this module opened is up:
+        // the game's own Q release cannot close it in story mode, so the button's open owes a close.
+        // Past both the thread ends; EnsureThread starts it again at the next enable or open. A key's state has no
+        // engine signal, so while one of the two holds it is polled.
+        const bool enabled = g_enabled.load(std::memory_order_acquire);
+        const bool open = ue_wrap::spawn_menu::IsOpen();
+        if (!enabled && !open) {
+            g_threadRunning.store(false, std::memory_order_release);
+            // A toggle or an open that landed between the check and the store started no thread: take the loop back.
+            if ((g_enabled.load(std::memory_order_acquire) || ue_wrap::spawn_menu::IsOpen()) &&
+                !g_threadRunning.exchange(true, std::memory_order_acq_rel))
+                continue;
+            return 0;
+        }
+        if (enabled || open) {
             // Live role gate: a watcher enabled while solo/hosting dies the moment
             // this peer is a connected client (dev tools are host-only).
             if (!coop::dev_gate::Allowed()) {
-                g_enabled.store(false, std::memory_order_release);
-                UE_LOGW("spawn_menu_unlock: auto-off -- dev features are disabled "
-                        "while connected as a client");
+                if (enabled) {
+                    g_enabled.store(false, std::memory_order_release);
+                    UE_LOGW("spawn_menu_unlock: auto-off -- dev features are disabled "
+                            "while connected as a client");
+                }
+                if (open) {
+                    GT::Post([] { ue_wrap::spawn_menu::Close(coop::players::Registry::Get().Local()); });
+                    ::Sleep(250);  // the close lands on the game thread; do not post it again meanwhile
+                }
                 prevRawQ = false;
                 ::Sleep(16);
                 continue;
@@ -58,12 +81,16 @@ DWORD WINAPI KeyWatcherThread(LPVOID) {
                 const bool focused = ::ui::input_focus::IsOurWindowForeground() &&
                                      !::ui::input_focus::IsOverlayCapturingText();
                 if (focused) {
-                    UE_LOGI("spawn_menu_unlock: Q pressed (foreground) -- posting Toggle() to the game thread");
+                    UE_LOGI("spawn_menu_unlock: Q pressed (foreground) -- posting %s to the game thread",
+                            enabled ? "the toggle" : "the close");
                     // Toggle, not Open: Q both opens AND dismisses the menu. Open() leaves the
                     // player in GameAndUI cursor mode, so with only an open path the player is
                     // stranded and can no longer interact with the world.
-                    GT::Post([] {
-                        ue_wrap::spawn_menu::Toggle(coop::players::Registry::Get().Local());
+                    // With the toggle off the key only dismisses: it never opens the menu.
+                    GT::Post([enabled] {
+                        void* local = coop::players::Registry::Get().Local();
+                        if (enabled) ue_wrap::spawn_menu::Toggle(local);
+                        else ue_wrap::spawn_menu::CloseUnlessTyping(local);
                     });
                 } else {
                     // The most common "nothing happens" cause: our window is not foreground -- the
@@ -83,10 +110,12 @@ DWORD WINAPI KeyWatcherThread(LPVOID) {
 }
 
 void EnsureThread() {
-    static std::atomic<bool> started{false};
-    if (started.exchange(true)) return;
+    if (g_threadRunning.exchange(true, std::memory_order_acq_rel)) return;
     if (HANDLE t = ::CreateThread(nullptr, 0, &KeyWatcherThread, nullptr, 0, nullptr)) {
         ::CloseHandle(t);  // detached
+    } else {
+        g_threadRunning.store(false, std::memory_order_release);
+        return;
     }
     UE_LOGI("spawn_menu_unlock: Q-key watcher thread started (story-mode prop spawn menu)");
 }
@@ -146,8 +175,10 @@ void SetEnabled(bool on) {
                 "connected as a client");
         return;
     }
-    if (on) EnsureThread();
+    // Stored before the thread starts: a thread that starts first can read the toggle off and end, leaving it on with no
+    // watcher.
     g_enabled.store(on, std::memory_order_release);
+    if (on) EnsureThread();
     UE_LOGI("spawn_menu_unlock: Q-key spawn menu %s", on ? "ENABLED (story mode)" : "disabled");
 }
 
@@ -159,7 +190,17 @@ void OpenNow() {
                 "while connected as a client");
         return;
     }
-    GT::Post([] { ue_wrap::spawn_menu::Open(coop::players::Registry::Get().Local()); });
+    // Q closes what this opens, with the toggle on or off: the watcher starts once the open has landed, and ends at the
+    // close.
+    GT::Post([] {
+        if (ue_wrap::spawn_menu::Open(coop::players::Registry::Get().Local())) EnsureThread();
+    });
 }
+
+void CloseNow() {
+    GT::Post([] { ue_wrap::spawn_menu::Close(coop::players::Registry::Get().Local()); });
+}
+
+bool IsMenuOpen() { return ue_wrap::spawn_menu::IsOpen(); }
 
 }  // namespace coop::dev::spawn_menu_unlock

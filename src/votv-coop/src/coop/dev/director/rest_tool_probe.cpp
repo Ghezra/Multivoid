@@ -1,4 +1,4 @@
-// coop/dev/director/rest_tool_probe.cpp -- the two-peer measure of where a dropped prop rests (coop/props/prop_settle)
+// coop/dev/director/rest_tool_probe.cpp -- the two-peer measure of where a dropped prop rests
 // and of a toolgun's flags (coop/props/prop_tool_flags). DEV-ONLY, env-gated; see coop/dev/director/director.h.
 //
 // The host picks a loose keyed prop near itself. Each peer in turn walks to it, takes it through the use key's grab

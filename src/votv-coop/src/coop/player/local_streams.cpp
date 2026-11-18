@@ -19,8 +19,6 @@
 #include "coop/player/skin_effects.h"  // own-body step FX at the wire-pose stride
 #include "coop/props/trash_channel.h"   // CtxForEid, the trash sync-time context
 #include "coop/props/prop_element_tracker.h"
-#include "coop/props/prop_hold_claim.h"    // AdmitLocalGrab, IsOwnHoldRefused: one hold per keyed prop
-#include "coop/props/prop_settle.h"        // Watch: where a released prop rests
 #include "coop/props/prop_drive_host.h"    // Coast: the host's own throw streams to rest
 #include "coop/props/prop_hold_claim.h"    // AdmitLocalGrab, IsOwnHoldRefused: one hold per keyed prop
 #include "coop/props/prop_syncer.h"        // Claim: a dragged swinger's parent prop
@@ -367,8 +365,6 @@ void SendHeldRelease(coop::net::Session& session) {
             }
         }
         session.SendPropRelease(rel);
-        // Unthrown, every copy falls by its own physics from here; where this one rests goes out once it does.
-        if (rel.hasPose && throwSeq == 0) coop::prop_settle::Watch(g_lastHeldProp.Raw(), g_holdGen, g_lastHeldKey);
         coop::dev::swinger_drill::NoteReleased(g_lastHeldProp.Raw());
         // This peer's own release: a join-window correction armed before the hold is older than
         // where the prop was put down, and would snap it back once the drain's grab deferral ends.
@@ -379,16 +375,21 @@ void SendHeldRelease(coop::net::Session& session) {
                 coop::element::quiescence_drain::SupersedePosCorrection(heldEid, "own release");
         }
     }
-    // The host's own throw of a prop it held: its copy flies on, and the driven-prop stream follows it to rest so every
-    // mirror lands where the host does. Opened after the hold state clears (a prop in a hand opens no row); a client's
-    // throw is the thrower's to stream, elected by the host.
-    void* const thrown = (throwSeq != 0 && g_lastHeldProp.Alive()) ? g_lastHeldProp.Raw() : nullptr;
+    // The host's own release of a prop it held, thrown or let go: its copy flies or falls on, and the driven-prop
+    // stream follows it to rest so every mirror lands where the host does. Opened after the hold state clears (a prop
+    // in a hand opens no row); a client's throw is the thrower's to stream, elected by the host.
+    // A let-go trash piece or swinger is left to its own lane.
+    void* const released = g_lastHeldProp.Alive() ? g_lastHeldProp.Raw() : nullptr;
+    const bool plainLetGo = throwSeq == 0 && !isTrashEid && !g_heldSwinger;
     g_lastHeldProp.Reset();
     g_lastHeldKey = {};
     g_heldSwinger = false;
     g_coasting = false;
     g_lastHeldEid = coop::element::kInvalidId;  // the cached held eid goes with the release
-    if (thrown && session.role() == coop::net::Role::Host) coop::prop_drive_host::Coast(thrown, "throw");
+    if (released && session.role() == coop::net::Role::Host) {
+        if (throwSeq != 0) coop::prop_drive_host::Coast(released, "throw");
+        else if (plainLetGo) coop::prop_drive_host::CoastLetGo(released, "release");
+    }
 }
 
 }  // namespace

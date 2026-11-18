@@ -4,6 +4,7 @@
 
 #include "ue_wrap/core/cached_obj_ref.h"  // the drill measures the SHIPPED predicate
 #include "ue_wrap/core/game_thread.h"
+#include "ue_wrap/core/hot_path_guard.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/sdk_profile.h"
@@ -26,6 +27,9 @@ std::atomic<void*>    g_currentWorld{nullptr};
 std::atomic<uint32_t> g_generation{1};   // 0 is reserved for "never stamped"
 std::atomic<bool>     g_degraded{false};
 std::atomic<WorldKind> g_worldKind{WorldKind::Unknown};
+
+WorldChangeFn g_listeners[kMaxWorldChangeListeners] = {};   // game thread only
+int g_listenerCount = 0;
 
 // The gameplay map's name as a substring, a deliberate widening: NameContains is
 // case-insensitive already, so the exact name would match, but the substring is what the
@@ -181,6 +185,7 @@ void RefreshOnGameThread_() {
         // The edge, at info: the line that answers why a cache survived a travel.
         UE_LOGI("world_identity: current world %p -> %p (gen=%u, pc=%p)", prev, world,
                 g_generation.load(std::memory_order_relaxed), pc);
+        for (int i = 0; i < g_listenerCount; ++i) g_listeners[i]();
     }
 }
 
@@ -250,6 +255,16 @@ void* CurrentWorld() {
 }
 
 uint32_t Generation() { return g_generation.load(std::memory_order_relaxed); }
+
+bool AddWorldChangeListener(WorldChangeFn fn) {
+    UE_ASSERT_GAME_THREAD("world_identity::AddWorldChangeListener");
+    if (!fn) return false;
+    for (int i = 0; i < g_listenerCount; ++i)
+        if (g_listeners[i] == fn) return true;
+    if (g_listenerCount >= kMaxWorldChangeListeners) return false;
+    g_listeners[g_listenerCount++] = fn;
+    return true;
+}
 
 WorldKind CurrentWorldKind() {
     // The same shape as CurrentWorld: the game thread drives the refresh, everyone else reads the

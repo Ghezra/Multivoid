@@ -10,9 +10,9 @@
 // block bails; and its flying branch quits the game when that key file does not match.
 //
 // So this opens the menu itself, on the widget the game already created: honour the activeInterface
-// guard, set the widget visible through the NATIVE UWidget::SetVisibility, run the widget's own
-// opened(), then SetInputMode_GameAndUIEx and show the cursor so it is clickable. No asset edit
-// (RULE 3), and no gamemode flip -- that branch drives weapons, flight, the backrooms, save paths.
+// guard, show the widget through the NATIVE UWidget::SetVisibility, run its own opened(), then set
+// GameAndUI input with the cursor. The game's close, on the Q release, sits behind the same guard,
+// so this closes it too. No asset edit (RULE 3), and no gamemode flip (weapons, flight, saves).
 
 #pragma once
 
@@ -29,8 +29,8 @@ bool Open(void* localPlayer);
 // Close the spawn menu for `localPlayer`: the INVERSE of Open(). Restores
 // SetInputMode_GameOnly + hides the mouse cursor (the load-bearing un-stick -- Open()
 // leaves the player in GameAndUI/cursor mode, so without a close the player can no longer
-// interact with the world), then collapses the widget + runs its closed() teardown if
-// present. Reproduces vanilla's close block (ExecuteUbergraph_mainPlayer @11555) natively.
+// interact with the world), then collapses the widget (the widget has no closing function of
+// its own). Reproduces vanilla's close block (ExecuteUbergraph_mainPlayer @11555) natively.
 // Idempotent + safe to call when already closed. GAME THREAD ONLY.
 bool Close(void* localPlayer);
 
@@ -39,5 +39,17 @@ bool Close(void* localPlayer);
 // open state. Self-correcting if the game closed the menu via its own path. The dev
 // Q-key watcher calls this and injects `localPlayer`. GAME THREAD ONLY.
 bool Toggle(void* localPlayer);
+
+// Close(), unless the menu's own search box holds the keyboard: a Q pressed there is a letter
+// of the search, the case the game's own close block skips too. Toggle's dismiss half, and what
+// a key press calls. Returns false when it left the menu up. GAME THREAD ONLY.
+bool CloseUnlessTyping(void* localPlayer);
+
+// An Open() here has not been followed by a Close() or by the game's own close: the menu this
+// layer put up is still up. Any thread. The game's own Q release cannot close it in story mode
+// (the same isBuoyant guard as its open), so whoever opens it owes the player a way out while
+// this is true. When the game does close it, a watch on the Q release event reads the widget's
+// visibility once and ends the debt; a world change ends it too, the widget going with the world.
+bool IsOpen();
 
 }  // namespace ue_wrap::spawn_menu

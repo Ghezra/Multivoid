@@ -14,10 +14,17 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/meadow_selftest.cpp
     src/coop/dev/meadow_selftest_rows.cpp
     src/coop/dev/order_probe.cpp
-    src/coop/dev/add_points.cpp
     src/coop/dev/spawn_order_probe.cpp
     src/coop/dev/prop_birth_key_probe.cpp
     src/coop/dev/impact_damage_probe.cpp
+    src/coop/dev/build_probe.cpp
+    src/coop/dev/build_probe_aim.cpp
+    src/coop/dev/build_probe_brick.cpp
+    src/coop/dev/build_probe_damage.cpp
+    src/coop/dev/build_probe_place.cpp
+    src/coop/dev/build_probe_watch.cpp
+    src/coop/dev/build_identity_census.cpp
+    src/coop/dev/build_identity_drill.cpp
     src/coop/dev/feedback_probe.cpp
     src/coop/dev/kerfur_seat_probe.cpp
     src/coop/dev/requester_feedback_exercise.cpp
@@ -67,6 +74,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/hostile_drill_atv.cpp
     src/coop/dev/hostile_drill_atv_client.cpp
     src/coop/dev/hostile_drill_atv_host.cpp
+    src/coop/dev/hostile_drill_destroy.cpp
     src/coop/dev/hostile_drill_kerfur.cpp
     src/coop/dev/hostile_drill_remover.cpp
     src/coop/dev/hostile_drill_latest.cpp
@@ -86,6 +94,9 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/stat_order_drill.cpp
     src/coop/dev/chat_drill.cpp
     src/coop/dev/l10n_drill.cpp
+    src/coop/dev/cheat_drill.cpp
+    src/coop/dev/cheat_drill_arms.cpp
+    src/coop/dev/cheat_drill_raw.cpp
     src/coop/dev/ban_drill.cpp
     src/coop/dev/bug_report_drill.cpp
     src/coop/dev/grants_drill.cpp
@@ -299,6 +310,17 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/keypad_drill.cpp
     src/coop/dev/lookat_aim_drill.cpp
     src/coop/dev/fireext_drill.cpp
+    src/coop/dev/fireext_drill_runaway.cpp
+    src/coop/dev/level_ground.cpp
+    src/coop/dev/body_push_drill.cpp
+    src/coop/dev/body_push_drill_client.cpp
+    src/coop/dev/body_push_drill_host.cpp
+    src/coop/dev/body_push_drill_hits.cpp
+    src/coop/dev/collision_probe.cpp
+    src/coop/dev/end_trace.cpp
+    src/coop/dev/coast_drill.cpp
+    src/coop/dev/rest_compare.cpp
+    src/coop/dev/drill_ground.cpp
     src/coop/dev/pry_drill.cpp
     src/coop/dev/recycled_slot_drill.cpp
     src/coop/dev/rehost_rejoin.cpp
@@ -420,7 +442,6 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/reelspam_probe.cpp
     src/coop/dev/genp_probe.cpp
     src/coop/dev/deathhand_probe.cpp
-    src/coop/dev/crowbarpry_probe.cpp
     src/coop/dev/blackfog_probe.cpp
     src/coop/dev/droneunhook_probe.cpp
     src/coop/dev/wall_fill_probe.cpp
@@ -431,6 +452,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/hand_record_drill_can.cpp
     src/coop/dev/hand_record_drill_wire.cpp
     src/coop/dev/sleep_speedup_drill.cpp
+    src/coop/dev/crowbarpry_drill.cpp
 )
 # Per-developer local sources: a gitignored file on this box may append its own entries to
 # VOTVCOOP_DEV_SOURCES and add its own include root. Absent from the public tree; a no-op without it.

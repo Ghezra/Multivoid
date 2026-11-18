@@ -1,8 +1,7 @@
 // coop/dispatch/event_dispatch_prop_drive.cpp -- the driven prop's reliable kinds: PropDriveEnd (the
 // close of a prop's stream, the host's to all or a syncing client's to the host) and the prop
 // syncer's pair, PropSyncClaim (client to host) and PropSyncAnswer (host to one client), the host's refusal of
-// a second hold of one prop (PropHoldRefused, host to every client), where a released prop came to rest
-// (PropSettle, its releaser to all), a garbage container's state (GarbageBinState, host to all) and a container's
+// a second hold of one prop (PropHoldRefused, host to every client), a garbage container's state (GarbageBinState, host to all) and a container's
 // break or a saw's cut asked of the host (ContainerBreakRequest), and the developer
 // filler DevLoadFiller (host to one client), DevParityReport (a joiner's pose report to the host) and
 // DevContainerParity (a joiner's container content report to the host). Each case
@@ -48,12 +47,9 @@
 #include "coop/props/prop_drive_stream.h"  // the driven-prop end edge
 #include "coop/props/prop_food_sync.h"     // a world food's condition and a client's bite
 #include "coop/props/prop_hold_claim.h"    // the client's receiver of a refused hold
-#include "coop/props/prop_settle.h"        // where a released prop rests
-#include "coop/player/hand_record_sync.h"  // a held item's own record on its hand mirrors
 #include "coop/props/prop_syncer.h"        // the client's answer receiver
 #include "coop/props/prop_syncer_host.h"   // the host's claim judge and a client's End
 
-#include "coop/world/spill_sync.h"
 #include "coop/world/sus_hole_intent.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/devices/atv.h"   // ClampCharge: a host state's battery
@@ -175,37 +171,6 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         ::coop::prop_hold_claim::OnRefused(p);
-        break;
-    }
-    case net::ReliableKind::PropSettle: {
-        // ANY->ALL: where the sender's released prop came to rest. A client's copy is relayed to the other clients
-        // at the host's receive edge (session_lanes.h); the host applies it as every client does.
-        if (msg.senderPeerSlot < 0 || msg.senderPeerSlot >= net::kMaxPeers) {
-            UE_LOGW("event_feed: PropSettle from invalid senderPeerSlot=%d -- dropping", msg.senderPeerSlot);
-            break;
-        }
-        if (msg.payloadLen < sizeof(net::PropSettlePayload)) {
-            UE_LOGW("event_feed: PropSettle payload too short (%zu < %zu)",
-                    static_cast<size_t>(msg.payloadLen), sizeof(net::PropSettlePayload));
-            break;
-        }
-        net::PropSettlePayload p{};
-        std::memcpy(&p, msg.payload, sizeof(p));
-        const float vals[6] = { p.locX, p.locY, p.locZ, p.rotPitch, p.rotYaw, p.rotRoll };
-        bool finite = true;
-        for (float v : vals) { if (!std::isfinite(v)) { finite = false; break; } }
-        if (!finite || std::fabs(p.locX) > net::kMaxCoord || std::fabs(p.locY) > net::kMaxCoord ||
-            std::fabs(p.locZ) > net::kMaxCoord || std::fabs(p.rotPitch) > 180.f || std::fabs(p.rotYaw) > 180.f ||
-            std::fabs(p.rotRoll) > 180.f) {
-            UE_LOGW("event_feed: PropSettle pose non-finite or out of bounds -- dropping");
-            break;
-        }
-        if (p.key.len == 0 || p.key.len > sizeof(p.key.data) || p.holdGen == 0) {
-            UE_LOGW("event_feed: PropSettle key.len=%u hold=%u malformed -- dropping",
-                    static_cast<unsigned>(p.key.len), static_cast<unsigned>(p.holdGen));
-            break;
-        }
-        ::coop::prop_settle::OnSettle(msg.senderPeerSlot, p);
         break;
     }
     case net::ReliableKind::FoodState: {

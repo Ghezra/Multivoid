@@ -30,8 +30,6 @@
 #include "coop/creatures/orb_authority.h"     // the black orb's encounter, judged by the host
 #include "coop/world/ufo_sync.h"              // the ambient UFOs' paths and the Midas run, the host's
 #include "coop/props/prop_nametag.h"      // a prop's nametag, the host's
-#include "coop/creatures/orb_authority.h"     // the black orb's encounter, judged by the host
-#include "coop/world/ufo_sync.h"              // the ambient UFOs' paths and the Midas run, the host's
 #include "coop/props/prop_save_data.h"    // the per-prop save record lane
 #include "coop/props/prop_stick_sync.h"
 #include "coop/props/prop_throw.h"        // JudgeRelease: the bounds and the relay of a client's release

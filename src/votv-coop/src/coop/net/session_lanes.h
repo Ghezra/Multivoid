@@ -119,7 +119,6 @@ constexpr bool IsClientRelayableReliableKind(ReliableKind k) {
     case ReliableKind::ItemActivate:
     case ReliableKind::PropSpawn:
     case ReliableKind::PropDestroy:
-    case ReliableKind::PropSettle:        // where a client's released prop came to rest, behind its release
     case ReliableKind::FoodHand:          // the food in a client's hand, for the copy others show there
     case ReliableKind::KitchenState:      // a client's press on a microwave or a mini oven
     case ReliableKind::PropStickState:    // a client's wall-attachable stick
@@ -219,7 +218,7 @@ inline bool IsPreWorldSendableKind(ReliableKind k) {
     // ready, and the receiver only fills the config layer's session values and, for an announced
     // row, prints one chat line, touching no world.
     case ReliableKind::ServerSetting:
-    // The machine's own local dev grants: the receiver fills one atomic word, touching no world.
+    // The machine's own projected grants: the receiver fills one atomic word, touching no world.
     case ReliableKind::PermissionGrants:
     // A command's answer is a private text line; the receiver touches no world.
     case ReliableKind::CommandReply:

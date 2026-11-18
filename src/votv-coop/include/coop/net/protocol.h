@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 335;
+inline constexpr uint16_t kProtocolVersion = 336;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1041,8 +1041,8 @@ enum class ReliableKind : uint16_t {
     // from any other slot is dropped. CommandReplyPayload.
     CommandReply = 167,
 
-    // host -> one client, not relayed, the host trusted: this machine's local dev grants
-    // (coop/session/grants_sync); a late joiner gets them at its proof
+    // host -> one client, not relayed, the host trusted: this machine's projected grants, the rights the host
+    // projects to it (coop/session/grants_sync); a late joiner gets them at its proof
     PermissionGrants = 168,
 
     // Host to one client: set one row of that player's stat table, add a status effect or remove one. The owner
@@ -1275,14 +1275,6 @@ enum class ReliableKind : uint16_t {
     // edge; never relayed; not pre-world. Late join: none, a refusal is an act; a joiner gets the kept hold's
     // stream. PropHoldRefusedPayload.
     PropHoldRefused = 210,
-    // ANY->ALL: a prop this peer let go of has come to rest here, and where. Each copy falls by its own physics
-    // from the release, so the copies can rest apart; the releaser's copy is the one its player watched, and every
-    // other peer whose copy no hold, drive or park moves puts it there. The holder sends it once per release, for a
-    // keyed prop that left the hand unfrozen and was not thrown (a throw is streamed to rest); a new hold, a drive or
-    // a ten-second bound cancels it. A client's copy is relayed to the other clients, on the lane of the release it
-    // follows by at least the rest time; a settle that still passes its release is dropped as no released hold.
-    // Not pre-world. Late join: none, the snapshot carries the host's pose. PropSettlePayload.
-    PropSettle = 269,
     // HOST->ALL: a world food's temperature, ripeness and use count, sent when they move, and its poison (the two floats a
     // bite adds as an effect), which every send carries. A client's food is refused its tick at the gate, so these are its
     // values. Not pre-world. Late join: every food again at the joiner's ready edge, on the poll's budget, poison included.
@@ -1301,12 +1293,12 @@ enum class ReliableKind : uint16_t {
     // ANY->ALL: this peer's player changed a microwave's or a mini oven's setting, started or stopped it, opened or
     // closed a microwave's door, or changed a grill's coals, fire
     // or lid; the host's burn of a grill's coals goes the same way. A client's copy is relayed. Not pre-world. Late join: every machine not at its defaults, at the ready edge. KitchenStatePayload.
-    KitchenState = 270,
+    KitchenState = 278,
     // HOST->ALL: a placed radio's or TV's track, time, play state and mode, and a TV's channel and picture, on a change and
     // every few seconds while it plays. A track is a hash a peer looks up in its own catalog. CLIENT->HOST: what this
     // client's player changed through its interface; never relayed, the host's next state answers. Not pre-world. Late join: every device again at
     // the ready edge. MediaDeviceStatePayload.
-    MediaDeviceState = 271,
+    MediaDeviceState = 279,
     // HOST->ALL: a plant's identity, place and values, at once on an edge a viewer sees and every few seconds while it changes,
     // or its end. Not relayed, not pre-world. Late join: every plant again at the ready edge. PlantStatePayload.
     PlantState = 224,
@@ -1318,26 +1310,26 @@ enum class ReliableKind : uint16_t {
     // HOST->ALL: a keyed prop of the host's burns, with its flame's fuel and speed, at the edge, on a refuel and every 2 s while
     // it burns, or it stopped. A client's copy shows that flame and burns nothing down. Not relayed, not pre-world. Late join:
     // every burning prop again at the ready edge. PropFirePayload.
-    PropFireState = 272,
+    PropFireState = 280,
     // CLIENT->HOST: this client's player lit a keyed prop with a lighter or a torch, with the fuel the light gives. Never relayed;
     // the host lights its own copy and its next PropFireState answers. PropFirePayload.
-    PropFireRequest = 273,
+    PropFireRequest = 281,
     // HOST->ALL: a finished garden hose of the host's, as its own save record, when it is new or changed, or its key once
     // when it went. A client lays it on its copy, tied to its faucet and sprinkler. Not relayed, not pre-world. Late
     // join: every hose again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
-    GroundHoseState = 274,
+    GroundHoseState = 282,
     // CLIENT->HOST: a hose this client's player finished laying or changed (op 1, its record), or took up (op 2). Never
     // relayed; the host lays or takes up its own and its next GroundHoseState answers. BlobChunkPayload, as above.
-    GroundHoseIntent = 275,
+    GroundHoseIntent = 283,
     // HOST->ALL: a piece of the host's a player built -- a nail, or a custom wall unfinished, wet or finished -- as its own
     // save record, when it is new or changed, or its key once when it went. A client makes it on its copy, or applies the
     // record to its piece of that key, a nail tied to the actors its keys name there. Not relayed, not pre-world. Late join:
     // every piece again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
-    BuildState = 276,
+    BuildState = 284,
     // CLIENT->HOST: a piece this client's player made (op 1, its record), took away (op 2), a wall it hit or repaired
     // (op 3, [f32] the health it lost, negative, or gained), or a nail its pull snapped (op 4). Never relayed; the host
     // makes, destroys, hits, repairs or snaps its own and its BuildState answers. BlobChunkPayload, as above.
-    BuildIntent = 277,
+    BuildIntent = 285,
     // CLIENT->HOST: this client's player pressed the toolgun's prop-properties tool on a keyed prop, with the tool's
     // own static, frozen, active and sleep, seen from this camera point at this hit point. The host judges the sender's
     // right, a toolgun in its hand, who holds the prop and the sight, applies the tool's values through the game's
@@ -1551,70 +1543,83 @@ enum class ReliableKind : uint16_t {
     // changes (the points at most once a second) and to a joiner at its ready edge; a client's copy writes them and
     // repaints through the rig's own `upd`. Op 1, HOST->that client: its ask was granted or refused. Never relayed; not
     // pre-world. MinerPayload.
-    MinerState = 278,
+    MinerState = 286,
     // CLIENT->HOST: this client's player used a GPU, a cooler or scrap metal on a rig (op 2) or claimed its points
     // (op 3). The host judges the sender's reach and pace and runs its own rig's `upgrade` or claim, whose hints go to
     // the asker. Never relayed. MinerPayload.
-    MinerIntent = 279,
+    MinerIntent = 287,
     // HOST->ALL: a fire extinguisher's foam (coop/props/fireext_sync). Op 0: a world extinguisher's runaway thrust (its
     // `active` with charge left) and its charge, when either changes and to a joiner at its ready edge; a client's copy
     // shows the thrust's foam and sound, and never runs the thrust itself. Op 1: a player's spray from the extinguisher
     // in its hand, on or off, with the host's count of its charge, sent twice a second while it runs: the sprayer's hand and
     // every mirror of it take it. Never relayed; not pre-world. FireExtPayload.
-    FireExtState = 280,
+    FireExtState = 288,
     // CLIENT->HOST: this client's player started or stopped spraying the extinguisher in its hand (op 2), with the hand's
     // charge. The host checks the sender's hand holds one, sprays the game's own extinguishing ray along the sender's aim
     // while it is on, drains its own count of the charge, never above the hand's word, and sends op 1 to every peer.
     // Never relayed. FireExtPayload.
-    FireExtIntent = 281,
+    FireExtIntent = 289,
     // HOST->ALL: a cover's state (coop/world/cover_sync), when it changes and to a joiner at its ready edge. The signal
     // desk's four back plates: which are on and which are unbolted, written into the desk and shown through its own
     // updPanels. A transformer station's (generator_C) maintenance door: open or shut, shown through its own openDoor.
     // Op 5, HOST->that client: its take-off was granted or refused. Never relayed; not pre-world. CoverPayload.
-    CoverState = 282,
+    CoverState = 290,
     // CLIENT->HOST: this client's player unbolted or bolted a back plate (op 1), took one off (op 2), set one back (op 3,
     // the plate prop's element id), or pressed a transformer station's door (op 4, the state it wants). The host judges
     // the sender's reach and its own desk's or station's state, runs the change on its copy, and CoverState answers.
     // Never relayed. CoverPayload.
-    CoverIntent = 283,
+    CoverIntent = 291,
     // A wall builder's aiming preview (coop/items/wall_preview_sync): its holder's, when it changes (at most ten a
     // second) and once as it ends, a client's to the host, which checks its mirror of that hand is a wall builder and
     // sends it on, the host's own to everyone. Each peer shows it on its mirror of that hand. Not pre-world.
     // WallPreviewPayload.
-    WallPreview = 284,
+    WallPreview = 292,
     // The dingus found (coop/props/dingus_sync): a client's report of one it found, to the host (op 0), and the host's
     // word that one is found, to every client and to a joiner (op 1); each peer marks its copies under the key found and
     // turns their music off. Not pre-world. DingusFoundPayload.
-    DingusFound = 285,
+    DingusFound = 293,
     // A portable generator's fuel and on/off (coop/interactables/generator_sync): the host's, to every client when one
     // changes, once a second while one runs, and to a joiner (GeneratorState); a client's pour or start/stop press, to the
     // host, which judges it and runs it on its copy (GeneratorIntent). Not pre-world. GeneratorPayload.
-    GeneratorState = 286,
-    GeneratorIntent = 287,
+    GeneratorState = 294,
+    GeneratorIntent = 295,
     // The basement flood (coop/world/flood_sync): a burst pipe's state and a flood volume's level, the host's, to every
     // client when one changes and to a joiner (FloodState); a client's repair of a pipe, to the host, which judges it and
     // mends its copy (FloodIntent). Not pre-world. FloodPayload.
-    FloodState = 288,
-    FloodIntent = 289,
+    FloodState = 296,
+    FloodIntent = 297,
     // A sound the game played at a place on one machine alone (coop/world/sound_relay): a melee hit's impact sound. Its
     // player's machine sends it; the host plays a client's and relays it to the other clients. Not pre-world.
     // SoundAtPayload.
-    SoundAt = 290,
+    SoundAt = 298,
     // An Omega's outfit and its pat (coop/creatures/kerfur_dress_sync). HOST->ALL: an Omega's `drip` rows when they change
     // and every one to a joiner (op 0), and a pat to show (op 3, sent on past its patter). CLIENT->HOST: its player put an
     // item on (op 1) or took one off (op 2) an Omega, or patted one (op 3); the host judges and runs it on its copy. Not
     // pre-world. KerfurDressPayload.
-    KerfurDressState = 291,
-    KerfurDressIntent = 292,
+    KerfurDressState = 299,
+    KerfurDressIntent = 300,
     // HOST->ALL: the Antibreather cave's entrance rock shut or open (coop/world/cave_rock_sync), when it changes and to a
     // joiner. Not pre-world. CaveRockPayload.
-    CaveRockState = 293,
+    CaveRockState = 301,
     // A chair a player sits on (coop/player/chair_seat). HOST->ALL: who sits on which chair, when it changes and every
     // seat to a joiner (op 0 sit, op 1 stand), and the word to a sitter to get up (op 2), when another player takes its
     // chair or the host refused its sit. CLIENT->HOST: this client's player sat down on a chair (op 0) or got up (op 1);
     // the host judges the reach, the chair free and not held, and files it. Not pre-world. ChairSeatPayload.
-    ChairSeatState = 294,
-    ChairSeatIntent = 295,
+    ChairSeatState = 302,
+    ChairSeatIntent = 303,
+
+    // Client to host: one cheat a player asks for -- spawn items, add or remove points, fire a game event -- which the
+    // host runs only while its setting net.allow_player_cheats is on and the sender holds the right
+    // multivoid.dev.local.cheats (the host may withhold it from a player). The host judges everything (the setting,
+    // the sender's right, the item, the target, what a player may fire or spawn, a rate) and the world is written by
+    // the host alone; a client never acts on its own request. Answered by CheatResult to that client alone. Never
+    // relayed. Late join: none (a request carries no state). Pre-world: not sent (the client's menu offers none before
+    // its world is announced); one that arrives is dropped by the host without work or answer. CheatRequestPayload.
+    CheatRequest = 276,
+
+    // Host to one client: what the host did with its CheatRequest (CheatReason). Never relayed. Late join: none. Trust:
+    // from the host alone. CheatResultPayload.
+    CheatResult = 277,
 };
 
 #pragma pack(push, 1)
@@ -2409,19 +2414,6 @@ struct SusHoleIntentPayload {
 static_assert(sizeof(SusHoleIntentPayload) == 12, "SusHoleIntentPayload must be 12 bytes");
 static_assert(sizeof(SusHoleIntentPayload) <= 256 - 20 - 8, "SusHoleIntentPayload must fit in one reliable datagram");
 
-// Where a released prop came to rest on its releaser (PropSettle): the prop by key, its world transform at rest,
-// its frozen and sleep there, and the hold whose release it follows.
-struct PropSettlePayload {
-    WireKey  key;                          // 32 -- the prop's Key
-    float    locX, locY, locZ;             // 12 -- world cm
-    float    rotPitch, rotYaw, rotRoll;    // 12 -- degrees
-    uint16_t holdGen;                      // 2  -- the released hold
-    uint8_t  physFlags;                    // 1  -- propspawn_flags of the copy at rest
-    uint8_t  _pad;                         // 1  -- zero
-};
-static_assert(sizeof(PropSettlePayload) == 60, "PropSettlePayload must be 60 bytes");
-static_assert(sizeof(PropSettlePayload) <= 256 - 20 - 8,
-              "PropSettlePayload must fit in one reliable datagram");
 
 // A world food's condition (FoodState): the food by key, and the three fields its tick and its bites move.
 struct FoodStatePayload {
@@ -3236,6 +3228,58 @@ struct RemoverResultPayload {
     uint8_t  _pad[3];    // 3 -- zeroed
 };
 static_assert(sizeof(RemoverResultPayload) == 8, "RemoverResultPayload must be 8 bytes");
+
+// What a player's cheat request asks for (CheatRequest). Append-only.
+enum class CheatOp : uint8_t {
+    SpawnItem = 1,  // `count` props named `name`, in front of the sender (`target` 0xFF) or at the player in slot `target`
+    Points    = 2,  // `amount` credits added (or removed, when negative) on the host's balance
+    Event     = 3,  // the game event named `name`
+};
+
+// Why the host did what it did with a CheatRequest (CheatResult). Ok and the notices the player sees are told to the
+// player; the rest are the host's own count.
+enum class CheatReason : uint8_t {
+    Ok          = 0,  // the host did it
+    Off         = 1,  // the host's setting net.allow_player_cheats is off, or the host withheld the sender's right
+    NotReady    = 2,  // the host cannot do it yet: no balance to read, no place for the asker or the target yet
+    Rate        = 3,  // too many requests in a moment
+    BadRequest  = 4,  // a shape the host refuses: an unknown op, a count or amount out of bounds, a name that is not text
+    UnknownItem = 5,  // the host's game lists no such prop, or its class does not load
+    UnknownEvent = 6, // the host's game has no such event
+    Refused     = 7,  // an event or item the host does not offer a player: an event that is not Safe or is a story
+                      // event, or a prop that explodes
+    NoTarget    = 8,  // the named target is not a player in the session
+    Failed      = 9,  // the host ran it and the game refused or nothing came of it
+    Count       = 10,
+};
+
+inline constexpr size_t kCheatNameMax = 64;
+inline constexpr int    kCheatMaxCount = 10;           // items one request may spawn
+inline constexpr int    kCheatMaxPoints = 100000;      // credits one request may add or remove (absolute)
+inline constexpr uint8_t kCheatInFront = 0xFF;         // `target`: in front of the sender
+
+// A client's cheat request (CheatRequest). `id` is the client's own and pairs the answer; `name` is ASCII, NUL-padded:
+// a prop name from the host's own list, or an event name from its table.
+struct CheatRequestPayload {
+    uint32_t id;                  // 4  -- the client's request number, echoed in the answer
+    int32_t  amount;              // 4  -- Points: the credits, signed
+    uint8_t  op;                  // 1  -- CheatOp
+    uint8_t  count;               // 1  -- SpawnItem: how many (1..kCheatMaxCount)
+    uint8_t  target;              // 1  -- SpawnItem: kCheatInFront, or the slot of the player to spawn at
+    uint8_t  _pad;                // 1  -- zeroed
+    char     name[kCheatNameMax]; // 64 -- NUL-padded ASCII
+};
+static_assert(sizeof(CheatRequestPayload) == 76, "CheatRequestPayload must be 76 bytes");
+static_assert(sizeof(CheatRequestPayload) <= 256 - 20 - 8, "CheatRequestPayload must fit one reliable datagram");
+
+// The host's answer to a CheatRequest, to the sender alone.
+struct CheatResultPayload {
+    uint32_t id;      // 4 -- the request's id
+    uint8_t  op;      // 1 -- the request's CheatOp
+    uint8_t  reason;  // 1 -- CheatReason
+    uint16_t done;    // 2 -- SpawnItem: how many were spawned; otherwise 0
+};
+static_assert(sizeof(CheatResultPayload) == 8, "CheatResultPayload must be 8 bytes");
 
 // A client's ask to pocket, hold or use a world prop (PropActRequest), the host's answer (PropActReply) and the client's
 // closing word (PropActCommit). `id` is the client's own, nonzero, and pairs the three; `eid` is the prop's element
@@ -4359,7 +4403,7 @@ static_assert(sizeof(CommandReplyPayload) == 204, "CommandReplyPayload must be 2
 static_assert(sizeof(CommandReplyPayload) <= 256 - 20 - 8,
               "CommandReplyPayload must fit in one reliable datagram");
 
-// PermissionGrantsPayload -- the receiving machine's own local dev grants (PermissionGrants). Host to one
+// PermissionGrantsPayload -- the receiving machine's own projected grants (PermissionGrants). Host to one
 // client. `count` is the number of projected nodes the host's table holds, `bits` one bit per node in table
 // order (coop/permissions/grants_core.h); a client whose own table has another count refuses the message.
 struct PermissionGrantsPayload {

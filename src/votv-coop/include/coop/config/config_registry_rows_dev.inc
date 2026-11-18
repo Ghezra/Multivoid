@@ -193,6 +193,8 @@ CFG_ENUM(stat_order_drill, "stat_order_drill", "dev", "off", "off|on|red|redjoin
     "answer, redjoin the host's effect on the joiner.")
 CFG_ENUM(bug_report_drill, "bug_report_drill", "dev", "off", "off|on|red", "VOTVCOOP_BUG_REPORT_DRILL",
     "The bug-report drill: plants values, saves a report, opens it and judges it (red: plants an address unmarked).")
+// The cheat tools drill: its own file, one concept.
+#include "coop/config/config_registry_rows_dev_cheat.inc"
 CFG_ENUM(grants_drill, "grants_drill", "dev", "off", "off|grant|none|hostdeny", "VOTVCOOP_GRANTS_DRILL",
     "The local grants drill: checks this machine's dev grants against an arm's expectation.")
 CFG_ENUM(grants_drill_expect, "grants_drill_expect", "dev", "same", "same|grant|none|hostdeny",
@@ -385,15 +387,6 @@ CFG_ENUM(world_roll_drill, "world_roll_drill", "dev", "off",
     "joiner's copy must show it within 20 s, and then the joiner's own toggle, as its noon would run it with "
     "a red sky live, must be refused, its sky still red. Run it on a fresh host world; every refused step is "
     "logged and ends the arm as invalid.")
-CFG_ENUM(fireext_drill, "fireext_drill", "dev", "off", "off|carry|short|client|join",
-    "VOTVCOOP_FIREEXT_DRILL",
-    "Drill (BOTH peers): a wall-mounted fire extinguisher taken off through the use key's own grab "
-    "chain. carry: the host carries it a few metres once a client's join is over, and the client runs "
-    "the laptop exit's setPropProps on its carried copy once, which the drive must re-latch. short: "
-    "the host lets go the moment it holds it, then re-sends the closed hold's pose for a moment, which "
-    "every receiver must drop. client: the client carries it and the host watches. join: the host "
-    "takes it off while a joiner is still loading. Both peers print every extinguisher they have and "
-    "every move of one.")
 CFG_ENUM(pry_drill, "pry_drill", "dev", "off", "off|host|client|join",
     "VOTVCOOP_PRY_DRILL",
     "Drill (BOTH peers): a stuck pryable (a sign, a torch holder) pried off its wall by its own "
@@ -401,6 +394,8 @@ CFG_ENUM(pry_drill, "pry_drill", "dev", "off", "off|host|client|join",
     "runs its copy's hand unstick, which a pryable refuses with its 'Tool required' hint. client: the "
     "client pries and the host watches. join: the host pries while a joiner is still loading. Both peers "
     "print every pryable they have and every change of one.")
+// The crowbar pry drill and its red arm: their own file, one concept, included as _dev_port.inc is above.
+#include "coop/config/config_registry_rows_dev_crowbarpry.inc"
 CFG_FLAG(recycled_slot_drill, "recycled_slot_drill", "dev", false, "VOTVCOOP_RECYCLED_SLOT_DRILL",
     "Drill (either peer): once the local pawn and the object index are up, stage an object slot the "
     "engine recycled on the pawn's root component -- a queued birth naming the slot's old class, and a "

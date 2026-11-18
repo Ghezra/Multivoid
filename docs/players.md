@@ -471,6 +471,27 @@ at once. When a server setting such as the voice range changes, every player's c
 friend given `multivoid.set` in the permission files can change them too: their line runs on the
 host. A setting that holds a password is never set or shown by command.
 
+### Cheats
+
+The host's F1 **Host tools** (Items, Economy, Events, Entities, World; see [ui.md](ui.md)) are the host's alone. The
+server setting "Let players use cheats", `net.allow_player_cheats`, is off by default; changed with `/set` or by the
+checkbox in Host tools > Player cheats, it persists with the host's other settings and tells every player when it
+changes. The host can also withhold the right from one player: the permission node `multivoid.dev.local.cheats` is
+granted by default and projected to each client like the other local grants (Source's `sv_cheats` is the master switch,
+MTA's per-right check the per-player layer). While the setting is on and the right is held, a client's menu offers
+Player tools > Items, Economy and Events (and Teleport to the host, a client-local move), and each use is a
+`CheatRequest`: a prop name, a count and where (in front of the sender, or at a player), a signed amount of points, or an
+event name. The host judges everything and runs the cheat itself; the client writes nothing. It refuses with the
+setting off or the right withheld (an id that is not proved holds none), a name
+that is not text, a count over 10 or an amount over 100000, an item the game's own list lacks or whose class does not
+load, an unknown event, an event that is not Safe or is a story event, a prop that explodes, and a sender past its budget
+(a bucket of ten tokens refilled three a second, a request costing one token and a spawn one per prop; a client keeps the
+same bucket and offers nothing past it, and a request from a
+world not yet announced is dropped unanswered, which the menu never sends). A removal of points stops at zero, and one that would change nothing fails. Each request is
+logged on the host with the player's name and what came of it, and the host's chat says what each player did;
+the player is told the result (`CheatResult`). A spawned prop is an ordinary host spawn, expressed to every client by the prop lane; a credit
+is mirrored by the balance lane; an event is broadcast by the event watch.
+
 ## Who owns what
 
 | State | Owner | Shape |
@@ -504,6 +525,7 @@ host. A setting that holds a password is never set or shown by command.
 | `SleepState` | a client to the host; the host to all | a rest state with its bed (awake, resting, dreaming); the host's sleeping flag; one peer's rest state relayed |
 | `PlayerInventoryBlob` | both | the per-player profile (items, vitals, standing spot), pre-world |
 | `TeleportClient` | host to one peer | a placement; the administration action, not the join |
+| `CheatRequest`, `CheatResult` | a client to the host; the host to that client | one cheat a player asks for (spawn props, change the points, fire an event) and what the host did with it |
 
 ## Late join
 

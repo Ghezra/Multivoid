@@ -2,6 +2,8 @@
 
 #include "coop/props/prop_spawn_authoring.h"
 
+#include "coop/config/config.h"
+#include "coop/config/config_registry.h"
 #include "coop/props/prop_lifecycle.h"      // DestroyLocalProp -- a ghost the unscrew left, destroyed with no broadcast
 
 #include "ue_wrap/core/cached_obj_ref.h"
@@ -33,11 +35,11 @@ void* g_gamemodeSpawnFn = nullptr;   // mainGamemode_C::spawnPropThroughGamemode
 void* g_menuSpawnFn     = nullptr;   // ui_spawnmenu_C::spawn -- the caller that makes it a player's
 void* g_toolUberFn      = nullptr;   // tool_spawn_C::ExecuteUbergraph_tool_spawn -- the toolgun
 void* g_sawUberFn       = nullptr;   // prop_hacksaw_C::ExecuteUbergraph_prop_hacksaw -- the hacksaw's cut
-void* g_pryEndFn        = nullptr;   // pryingCrowbar_C::End -- the crowbar a pry hands back
 void* g_unscrewFn       = nullptr;   // ATV_C::unscrewPanel -- the battery an unscrew hands back (atv_gate's watch)
 bool  g_unscrewBattery  = false;     // the unscrew now starting is the battery's branch
 ue_wrap::CachedObjRef g_unscrewBorn;  // the battery prop that branch's body spawned on this client, until its POST takes it
 ue_wrap::CachedObjRef g_batteryCls;   // prop_atvcarbattery_C, found again when a world reload has re-created it
+void* g_pryEndFn        = nullptr;   // pryingCrowbar_C::End -- the crowbar a pry hands back
 bool  g_watchInstalled  = false;
 
 // The negative arm, and it is the half a run cannot otherwise see. Catching every menu spawn and
@@ -171,8 +173,8 @@ bool BirthIsPlayerAuthored(void* born) {
         return false;
     }
     if (caller == g_toolUberFn) return true;
-    if (!g_toolUberFn &&
-        FunctionIs(const_cast<void*>(caller), g_toolUberName, L"tool_spawn_C")) {
+    // A class a world reloaded is a new function, so a miss of the latch is asked by name again.
+    if (FunctionIs(const_cast<void*>(caller), g_toolUberName, L"tool_spawn_C")) {
         g_toolUberFn = const_cast<void*>(caller);
         UE_LOGI("prop_spawn_authoring: the toolgun's ubergraph is the calling frame -- its births "
                 "are a player's");
@@ -193,16 +195,6 @@ bool BirthIsPlayerAuthored(void* born) {
                 "player's");
         return true;
     }
-    // A pry's end: the crowbar the player's own crowbar became when the pry began (its begin destroyed the held one)
-    // comes back as a new crowbar, freed from the board, dropped at it, or put back in the hand. The pry runs only on
-    // the prying player's game, so without this the crowbar is gone for every other player.
-    if (caller == g_pryEndFn) return true;
-    if (!g_pryEndFn && FunctionIs(const_cast<void*>(caller), g_pryEndName, L"pryingCrowbar_C")) {
-        g_pryEndFn = const_cast<void*>(caller);
-        UE_LOGI("prop_spawn_authoring: a prying crowbar's End is the calling frame -- the crowbar a pry hands back is "
-                "a player's");
-        return true;
-    }
     // An ATV's battery unscrewed: its unscrewPanel (a custom event, so the calling frame is the ATV's whole ubergraph)
     // spawns the battery at the panel. That birth is no player's: the host spawns the battery every peer shares, so this
     // client's own prop is only recorded here, for the POST of that body to destroy. The birth stays an unauthored
@@ -211,6 +203,20 @@ bool BirthIsPlayerAuthored(void* born) {
     if (g_unscrewBattery && g_unscrewFn && born && R::IsLive(born) && sg::IsBodyActive(g_unscrewFn)) {
         if (!g_batteryCls.Alive()) g_batteryCls.Set(ue_wrap::object_index::ClassByName(L"prop_atvcarbattery_C"));
         if (g_batteryCls.Raw() && R::ClassOf(born) == g_batteryCls.Raw()) g_unscrewBorn.Set(born);
+    }
+    // A pry's end: the crowbar the player's own crowbar became when the pry began (its begin destroyed the held one)
+    // comes back as a new crowbar, freed from the board, dropped at it, or put back in the hand. The pry runs only on
+    // the prying player's game, so without this the crowbar is gone for every other player.
+    // The drill's red arm: the pry's End is not admitted as a player's birth (a developer knob, off).
+    static const bool s_pryUnadmitted =
+        coop::config::ResolveFlag(coop::config_registry::rows::crowbarpry_authorship_off);
+    if (caller == g_pryEndFn) return !s_pryUnadmitted;
+    // A reloaded world re-creates pryingCrowbar_C, so a miss of the latch is asked by name again.
+    if (FunctionIs(const_cast<void*>(caller), g_pryEndName, L"pryingCrowbar_C")) {
+        g_pryEndFn = const_cast<void*>(caller);
+        UE_LOGI("prop_spawn_authoring: a prying crowbar's End is the calling frame -- the crowbar a pry hands back is "
+                "a player's");
+        return !s_pryUnadmitted;
     }
     return false;
 }

@@ -243,7 +243,6 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // Containers: photos in a record, a nested container, a garbage container, a container that breaks.
     SpawnIf("VOTVCOOP_RUN_CONTAINER_GAPS", "container gaps drill", &ContainerGapsThread, role);
     SpawnIf("VOTVCOOP_RUN_FARM_HARVEST", "farm harvest drill", &FarmHarvestThread, role);
-    SpawnIf("VOTVCOOP_RUN_BODY_PUSH", "body push drill", &BodyPushThread, role);
     SpawnIf("VOTVCOOP_RUN_SV_REQUEST", "sv.request drill", &SvRequestThread, role);
     SpawnIf("VOTVCOOP_RUN_MODULE_BUY", "module row drill", &ModuleBuyThread, role);
     // A device's claim when its user ragdolls.

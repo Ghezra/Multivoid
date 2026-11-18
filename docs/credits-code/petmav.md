@@ -19,3 +19,15 @@ One contributor's code, from the [credit ledger](../credits.md#the-ledger).
 - **Slower hunger in larger groups** ([#154](https://github.com/VOTV-MP/Multivoid/pull/154)): a host rule, off by default, that slows each player's hunger as the
   session grows (74% for two, 54% for four), written through the game's own hunger multiplier. Kept as written; on top,
   it follows the roster and the vaccine effect's end instead of a once-a-second poll, and says its rate in the log.
+- **Cheat panels in F1** ([#146](https://github.com/VOTV-MP/Multivoid/pull/146)): the host got its tools in the F1 menu (spawn any
+  listed prop by name, points, events, entities, snow, clock, vitals, freecam, Unstuck) and players got theirs as requests the
+  host checks, behind a host setting that is off by default. Kept as written; on top, a player's cheats are also a right the
+  host can withhold from one player, players may fire only safe non-story events and spawn no explosive, a request costs its
+  count, teleports land on the NavMesh, the item list builds when the game says it is filled, and a drill with a red for each
+  rule.
+- **A prop at rest alike on every screen** ([#156](https://github.com/VOTV-MP/Multivoid/pull/156)): a prop a player dropped, set down or let go of without a
+  throw settled by each player's own physics, so it came to rest in a different place on every screen, and a damaged
+  extinguisher could run away on one screen only. Now the host flies a let-go prop to its rest and every copy follows,
+  and the host owns a runaway extinguisher's flight. Kept as written: the host's coast of a let-go, the runaway's host
+  claim, and the log of every correction. On top: the cap shared by every kind of coast, a client's own extinguisher
+  kept from running away, and a drill with a red for each mechanism.

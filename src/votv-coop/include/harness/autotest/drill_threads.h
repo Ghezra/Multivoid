@@ -298,9 +298,6 @@ DWORD WINAPI TvStateThread(LPVOID arg);
 // VOTVCOOP_RUN_FARM_HARVEST, both peers -- harness/autotest/autotest_farm_harvest.cpp
 DWORD WINAPI FarmHarvestThread(LPVOID arg);
 
-// VOTVCOOP_RUN_BODY_PUSH, both peers -- harness/autotest/autotest_body_push.cpp
-DWORD WINAPI BodyPushThread(LPVOID arg);
-
 // VOTVCOOP_RUN_UPGRADE_BUY, both peers -- harness/autotest/autotest_upgrade_buy.cpp
 DWORD WINAPI UpgradeBuyThread(LPVOID arg);
 
@@ -326,4 +323,5 @@ DWORD WINAPI HacksawThread(LPVOID arg);
 
 // The row glowstick_drill, both peers -- harness/autotest/autotest_glowstick.cpp
 DWORD WINAPI GlowstickThread(LPVOID arg);
+
 }  // namespace harness::autotest

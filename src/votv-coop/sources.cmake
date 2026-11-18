@@ -9,12 +9,11 @@
 # Order follows the principle-7 split -- bootstrap and loader, then src/ue_wrap/ (engine
 # wrapper), then src/coop/ (gameplay and network), then src/ui/ and src/harness/, with the
 # resource scripts last. The developer drills and probes of src/coop/dev/ are a list of their
-# own (sources_dev.cmake), appended at the end. The src/ue_wrap/ lines are two lists in
-# sources_ue_wrap.cmake, expanded in place, and so is the src/harness/ and src/l10n/ tail, in
-# sources_harness.cmake.
+# own (sources_dev.cmake), as are the cheat tools (sources_cheats.cmake) and the props lanes
+# (sources_props.cmake), appended at the end.
+# The src/ue_wrap/ lines are two lists in sources_ue_wrap.cmake, expanded in place.
 
 include(${CMAKE_CURRENT_LIST_DIR}/sources_ue_wrap.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/sources_harness.cmake)
 
 set(VOTVCOOP_SOURCES
     src/bootstrap/dllmain.cpp
@@ -40,27 +39,8 @@ set(VOTVCOOP_SOURCES
     src/coop/player/skin_registry.cpp
     src/coop/player/local_body.cpp
     src/coop/requester_feedback/requester_feedback.cpp
-    src/coop/props/prop_act_host.cpp
-    src/coop/props/prop_act_request.cpp
-    src/coop/props/prop_act_selftest.cpp
-    src/coop/props/snack_act.cpp
-    src/coop/props/prop_hold.cpp
-    src/coop/props/prop_hold_claim.cpp
-    src/coop/props/prop_settle.cpp
-    src/coop/props/prop_tool_flags.cpp
-    src/coop/props/prop_tool_park.cpp
-    src/coop/props/remover_request.cpp
-    src/coop/props/toolgun_sight.cpp
-    src/coop/props/remote_prop.cpp
-    src/coop/props/remote_prop_drive.cpp
-    src/coop/props/unresolved_pose_ledger.cpp
-    src/coop/props/remote_prop_convert.cpp
-    src/coop/props/remote_prop_destroy.cpp
     src/coop/save/save_guard.cpp
     src/coop/world/balance_sync.cpp
-    src/coop/world/cover_sync.cpp
-    src/coop/player/hand_record_sync.cpp
-    src/coop/items/wall_preview_sync.cpp
     src/coop/world/daily_task_sync.cpp
     src/coop/save/save_block.cpp
     src/coop/save/save_button_disable.cpp
@@ -96,15 +76,6 @@ set(VOTVCOOP_SOURCES
     src/coop/comms/chat_rate.cpp
     src/coop/interactables/turbine_sync.cpp
     src/coop/interactables/woodchipper_sync.cpp
-    src/coop/interactables/generator_sync.cpp
-    src/coop/world/flood_sync.cpp
-    src/coop/creatures/kerfur_dress_sync.cpp
-    src/coop/creatures/kerfur_camera.cpp
-    src/coop/world/arir_ship_sync.cpp
-    src/coop/world/cave_rock_sync.cpp
-    src/coop/player/chair_seat.cpp
-    src/coop/world/sound_relay.cpp
-    src/coop/props/glowstick_sync.cpp
     src/coop/interactables/woodchipper_gate.cpp
     src/coop/interactables/atv_gate.cpp
     src/coop/interactables/atv_host_judge.cpp
@@ -139,9 +110,6 @@ set(VOTVCOOP_SOURCES
     src/coop/interactables/sleepingbag_sync.cpp
     src/coop/world/time_sync.cpp
     src/coop/world/ufo_sync.cpp
-    src/coop/props/roomba_sync.cpp
-    src/coop/props/miner_sync.cpp
-    src/coop/props/fireext_sync.cpp
     src/coop/world/day_edge.cpp
     src/coop/world/sky_sync.cpp
     src/coop/world/power_decay.cpp
@@ -210,7 +178,6 @@ set(VOTVCOOP_SOURCES
     src/coop/session/player_handshake_nick.cpp
     src/coop/session/player_handshake_roster.cpp
     src/coop/session/player_handshake_version.cpp
-    src/coop/props/grab_observer.cpp
     src/coop/player/item_activate.cpp
     src/coop/player/player_damage.cpp
     src/coop/player/puppet_cremation.cpp
@@ -230,7 +197,6 @@ set(VOTVCOOP_SOURCES
     src/coop/player/vidcam_hint.cpp
     src/coop/player/skin_preview.cpp
     src/coop/player/flashlight_click_sound.cpp
-    src/coop/props/prop_sound.cpp
     src/coop/items/inventory_pickup_sync.cpp
     src/coop/session/shutdown.cpp
     src/coop/player/players_registry.cpp
@@ -271,95 +237,24 @@ set(VOTVCOOP_SOURCES
     src/coop/creatures/owner_entity_sync.cpp
     src/coop/world/world_actor_sync.cpp
     src/coop/world/world_actor_mirror.cpp
-    src/coop/props/prop_echo_suppress.cpp
-    src/coop/props/pile_look.cpp
-    src/coop/props/pile_spawn_bind.cpp
-    src/coop/props/snapshot_census.cpp
-    src/coop/props/save_identity_map.cpp
-    src/coop/props/save_identity_bind.cpp
-    src/coop/props/prop_census.cpp
-    src/coop/props/prop_element_tracker.cpp
-    src/coop/props/prop_tracked_keys.cpp
-    src/coop/props/prop_key_index.cpp
-    src/coop/props/prop_destroy_seam.cpp
-    src/coop/props/prop_lifecycle.cpp
-    src/coop/props/prop_food_state.cpp
     src/coop/interactables/garbage_bin_sync.cpp
-    src/coop/props/container_break.cpp
-    src/coop/props/hacksaw_cut.cpp
     src/coop/world/vent_crawler_sync.cpp
-    src/coop/props/prop_food_sync.cpp
+    src/coop/player/hand_record_sync.cpp
     src/ue_wrap/actors/food.cpp
-    src/coop/interactables/kitchen_sync.cpp
-    src/coop/world/media_device_sync.cpp
     src/coop/world/plant_sync.cpp
-    src/coop/props/prop_fire_sync.cpp
-    src/coop/world/ground_hose_sync.cpp
-    src/coop/interactables/atv_passenger.cpp
-    src/coop/interactables/cargo_lift.cpp
-    src/coop/interactables/atv_riders.cpp
     src/coop/interactables/desk_short_sync.cpp
-    src/coop/props/body_push.cpp
-    src/coop/world/build_sync.cpp
-    src/coop/world/spill_sync.cpp
+    src/coop/interactables/cargo_lift.cpp
     src/coop/world/plant_edit_gate.cpp
+    src/coop/interactables/atv_riders.cpp
     src/coop/interactables/atv_rider_watch.cpp
     src/ue_wrap/actors/growing_plant.cpp
-    src/ue_wrap/actors/ambient_creature.cpp
     src/coop/world/world_sound_sync.cpp
-    src/ue_wrap/world/media_device.cpp
-    src/ue_wrap/devices/kitchen.cpp
-    src/coop/props/food_tick_gate.cpp
-    src/coop/props/prop_record_refresh.cpp
-    src/coop/props/prop_record_wire.cpp
-    src/coop/props/prop_can_state.cpp
-    src/coop/props/pack_trash_intent.cpp
-    src/coop/props/prop_drop_intent.cpp
-    src/coop/props/hit_target_prop.cpp
-    src/coop/props/bracket_position_wait.cpp
-    src/coop/props/prop_damage_gate.cpp
-    src/coop/props/prop_throw.cpp
-    src/coop/props/prop_throw_host.cpp
-    src/coop/props/prop_spawn_authoring.cpp
-    src/coop/props/prop_snapshot.cpp
-    src/coop/props/prop_save_data.cpp
-    src/coop/props/prop_birth_ledger.cpp
-    src/coop/props/prop_nametag.cpp
-    src/coop/props/disc_record_ceiling.cpp
-    src/coop/props/prop_record_gates.cpp
-    src/coop/props/glowstick_stick_record.cpp
-    src/coop/props/glowstick_stick_judge.cpp
-    src/coop/props/glowstick_struck.cpp
-    src/coop/props/glowstick_sync.cpp
-    src/coop/props/prop_stick_sync.cpp
-    src/coop/props/prop_synth_key.cpp
-    src/coop/props/prop_fresh_spawn.cpp
-    src/coop/props/prop_wire_parity.cpp
-    src/coop/props/remote_prop_spawn.cpp
-    src/coop/props/join_membership_sweep.cpp
     src/coop/session/world_load_episode.cpp
     src/coop/session/save_replay_watch.cpp
     src/coop/interactables/garbage_sync.cpp
-    src/coop/props/host_spawn_watcher.cpp
-    src/coop/props/trash_channel.cpp
-    src/coop/props/trash_grab_intent.cpp
-    src/coop/props/trash_collect_sync.cpp
-    src/coop/props/trash_use_intercept.cpp
-    src/coop/props/trash_morph_gate.cpp
-    src/coop/props/trash_native_hold.cpp
-    src/coop/props/trash_pile_sync.cpp
-    src/coop/props/trash_mirror.cpp
     src/coop/player/puppet_carry_drive.cpp
-    src/coop/props/trash_clump_pose_stream.cpp
-    src/coop/props/trash_sweep.cpp
-    src/coop/props/prop_drive_host.cpp
-    src/coop/props/prop_drive_stream.cpp
-    src/coop/props/prop_syncer_host.cpp
-    src/coop/props/prop_syncer_client.cpp
-    src/coop/props/prop_child_release.cpp
-    src/coop/props/prop_park.cpp
-    src/coop/props/rider_hold.cpp
     src/coop/world/weather_sync.cpp
+    src/coop/world/spill_sync.cpp
     src/coop/world/sus_hole_intent.cpp
     src/coop/world/weather_fog.cpp
     src/coop/world/weather_lightning.cpp
@@ -408,12 +303,12 @@ set(VOTVCOOP_SOURCES
     src/coop/session/host_world_settle.cpp
     src/coop/session/net_pump_world_ready.cpp
     src/coop/player/puppet_drive.cpp
-    src/coop/props/registry_reaper.cpp
     src/coop/session/pause_guard.cpp
     src/coop/session/connect_replay.cpp
     src/coop/session/session_gate_hold.cpp
     src/coop/session/subsystems.cpp
     src/coop/session/desk_subsystems.cpp
+    src/coop/session/power_subsystems.cpp
     src/coop/session/world_ready_answer.cpp
     src/coop/player/local_streams.cpp
     src/coop/interactables/device_occupancy.cpp
@@ -478,29 +373,6 @@ set(VOTVCOOP_SOURCES
     src/coop/game_build/game_build.cpp
     src/coop/items/inventory_wire.cpp
     src/coop/items/save_record_wire.cpp
-    src/coop/props/container_act_host.cpp
-    src/coop/props/container_act_host_overlap.cpp
-    src/coop/props/container_act_host_put.cpp
-    src/coop/props/container_act_put.cpp
-    src/coop/props/container_act_request.cpp
-    src/coop/props/container_act_selftest.cpp
-    src/coop/props/container_act_selftest_overlap.cpp
-    src/coop/props/container_act_selftest_put.cpp
-    src/coop/props/container_act_state.cpp
-    src/coop/props/container_act_wire.cpp
-    src/coop/props/container_apply_hold.cpp
-    src/coop/props/container_birth.cpp
-    src/coop/props/container_contents_io.cpp
-    src/coop/props/container_arming.cpp
-    src/coop/props/container_contents_publish.cpp
-    src/coop/props/container_contents_sync.cpp
-    src/coop/props/container_park.cpp
-    src/coop/props/container_reach.cpp
-    src/coop/props/container_record_edit.cpp
-    src/coop/props/container_slice_wire.cpp
-    src/coop/props/container_truth.cpp
-    src/coop/props/container_view_close.cpp
-    src/coop/props/container_writer_watch.cpp
     src/ue_wrap/actors/inventory.cpp
     src/ue_wrap/hotbar/icons.cpp
     src/coop/items/hotbar_icon_edge.cpp
@@ -517,8 +389,6 @@ set(VOTVCOOP_SOURCES
     src/coop/voice/voice_chat.cpp
     src/coop/voice/voice_capture.cpp
     src/coop/voice/voice_playback.cpp
-    src/coop/voice/camcorder_voice.cpp
-    src/coop/props/dingus_sync.cpp
     src/ui/voice_icons.cpp
     src/ui/voice_panel.cpp
   src/coop/dev/floppy_selftest.cpp
@@ -539,6 +409,7 @@ set(VOTVCOOP_SOURCES
     src/ui/overlay_backend_vk_frame.cpp
     src/ui/dev_menu.cpp
     src/ui/dev_panes.cpp
+    src/ui/player_tools_pane.cpp
     src/ui/skins_panel.cpp
     src/ui/admin_panel.cpp
     src/ui/bug_report_pane.cpp
@@ -557,7 +428,6 @@ set(VOTVCOOP_SOURCES
     src/ui/server_browser_native.cpp
     src/ui/server_browser_panels.cpp
     src/ui/server_browser_rows.cpp
-    src/ui/server_browser_filter.cpp
     src/ui/server_browser_tabs.cpp
     src/ui/server_browser_surface.cpp
     src/ui/server_browser_selftest.cpp
@@ -628,11 +498,172 @@ set(VOTVCOOP_SOURCES
     src/coop/permissions/permissions_cases_files.cpp
     src/coop/permissions/permissions_cases_grants.cpp
     src/coop/commands/command_sync.cpp
-    ${VOTVCOOP_SOURCES_HARNESS}
+    src/harness/harness.cpp
+    src/harness/session_runtime.cpp
+    src/harness/join_leave.cpp
+    src/harness/pump.cpp
+    src/harness/world_boot.cpp
+    src/harness/harness_diag.cpp
+    src/harness/browser_click_arm.cpp
+    src/harness/autotest/autotest_grab.cpp
+    src/harness/autotest/autotest_grabintent.cpp
+    src/harness/autotest/autotest_hostthrow.cpp
+    src/harness/autotest/autotest_pilelook.cpp
+    src/harness/autotest/autotest_broomstroke.cpp
+    src/harness/autotest/autotest_broomstroke_world.cpp
+    src/harness/autotest/autotest_chippile.cpp
+    src/harness/autotest/autotest_trashpark.cpp
+    src/harness/autotest/autotest_driveslot.cpp
+    src/harness/autotest/autotest_clump.cpp
+    src/harness/autotest/autotest_flashlight.cpp
+    src/harness/autotest/autotest_tracker_selftest.cpp
+    src/harness/autotest/autotest_weather.cpp
+    src/harness/autotest/autotest_seeddrill.cpp
+    src/harness/autotest/autotest_scanparity.cpp
+    src/harness/autotest/autotest_worldrules.cpp
+    src/harness/autotest/autotest_menuspawn.cpp
+    src/harness/autotest/autotest_config.cpp
+    src/harness/autotest/autotest_dispatch.cpp
+    src/harness/autotest/autotest_wait.cpp
+    src/harness/autotest/autotest_damage.cpp
+    src/harness/autotest/autotest_dmghazard.cpp
+    src/harness/autotest/autotest_playerdmg.cpp
+    src/harness/autotest/death_state_probe.cpp
+    src/harness/autotest/autotest_death.cpp
+    src/harness/autotest/death_badsun_arm.cpp
+    src/harness/autotest/autotest_puppetframe.cpp
+    src/harness/autotest/autotest_ragdoll.cpp
+    src/harness/autotest/autotest_ragdoll_spawn_probe.cpp
+    src/harness/autotest/autotest_menutravel_probe.cpp
+    src/harness/autotest/autotest_reloadchurn.cpp
+    src/harness/autotest/autotest_islive_drill.cpp
+    src/harness/autotest/autotest_fog_probe.cpp
+    src/harness/autotest/autotest_hud_tint.cpp
+    src/harness/autotest/autotest_eventforce.cpp
+    src/harness/autotest/autotest_alarmforce.cpp
+    src/harness/autotest/autotest_piramidforce.cpp
+    src/harness/autotest/autotest_wisplane.cpp
+    src/harness/autotest/autotest_navprobe.cpp
+    src/harness/autotest/autotest_kwisp_probe.cpp
+    src/harness/autotest/autotest_pauseguard.cpp
+    src/harness/autotest/autotest_kickprobe.cpp
+    src/harness/autotest/autotest_floodprobe.cpp
+    src/harness/autotest/autotest_scriptgate.cpp
+    src/harness/autotest/autotest_runend.cpp
+    src/harness/autotest/autotest_slip.cpp
+    src/harness/autotest/autotest_flash_battery.cpp
+    src/harness/autotest/autotest_chipper_feed.cpp
+    src/harness/autotest/autotest_chipper_carry.cpp
+    src/harness/autotest/peer_signal.cpp
+    src/harness/autotest/meet.cpp
+    src/harness/autotest/autotest_seat_ragdoll.cpp
+    src/harness/autotest/autotest_move_osc.cpp
+    src/harness/autotest/autotest_beam_look.cpp
+    src/harness/autotest/autotest_desk_view.cpp
+    src/harness/autotest/autotest_cap_label.cpp
+    src/harness/autotest/autotest_dish_sound.cpp
+    src/harness/autotest/autotest_save_notice.cpp
+    src/harness/autotest/autotest_vent_crawler.cpp
+    src/harness/autotest/autotest_can_state.cpp
+    src/harness/autotest/autotest_food_state.cpp
+    src/harness/autotest/autotest_plant_state.cpp
+    src/harness/autotest/autotest_plant_gate.cpp
+    src/harness/autotest/autotest_sv_request.cpp
+    src/harness/autotest/autotest_module_buy.cpp
+    src/harness/autotest/autotest_world_sound.cpp
+    src/harness/autotest/autotest_saveui.cpp
+    src/harness/autotest/autotest_spill.cpp
+    src/harness/autotest/autotest_drone_hover.cpp
+    src/harness/autotest/autotest_desk_short.cpp
+    src/harness/autotest/autotest_hacksaw.cpp
+    src/harness/autotest/autotest_glowstick.cpp
+    src/harness/autotest/glowstick_drill_common.cpp
+    src/harness/autotest/glowstick_drill_client.cpp
+    src/harness/autotest/autotest_ambient_creature.cpp
+    src/harness/autotest/autotest_ambient_field.cpp
+    src/harness/autotest/autotest_sus_hole.cpp
+    src/harness/autotest/autotest_cargo_lift.cpp
+    src/harness/autotest/autotest_woodchipper.cpp
+    src/harness/autotest/autotest_class_resolve.cpp
+    src/harness/autotest/autotest_prop_props.cpp
+    src/harness/autotest/autotest_nightmare.cpp
+    src/harness/autotest/autotest_level_visit.cpp
+    src/harness/autotest/autotest_ufo.cpp
+    src/harness/autotest/autotest_orb.cpp
+    src/harness/autotest/autotest_sky_tp.cpp
+    src/harness/autotest/autotest_roomba.cpp
+    src/harness/autotest/autotest_container_gaps.cpp
+    src/harness/autotest/autotest_container_gaps_bin.cpp
+    src/ui/input_focus.cpp
+    src/harness/screenshot.cpp
+    src/harness/mod_environment.cpp
+    src/harness/compat_boot.cpp
+    src/harness/compat_report.cpp
+    src/harness/fingerprint_capture.cpp
+    src/harness/fingerprint_census.cpp
+    src/harness/sdk_check.cpp
+    src/l10n/po_reader.cpp
+    src/l10n/plural_expr.cpp
+    src/l10n/printf_check.cpp
+    src/l10n/fmt.cpp
+    src/l10n/catalog.cpp
+    src/l10n/locale_choice.cpp
+    src/l10n/l10n.cpp
+    src/l10n/l10n_selftest.cpp
+    # Fork-only lanes (Ghezra/Multivoid), above upstream's list.
+    src/harness/autotest/autotest_upgrade_buy.cpp
+    src/harness/autotest/autotest_info_hint.cpp
+    src/harness/autotest/autotest_beam_sweep.cpp
+    src/harness/autotest/autotest_class_dump.cpp
+    src/harness/autotest/autotest_cook_state.cpp
+    src/harness/autotest/autotest_radio_state.cpp
+    src/harness/autotest/autotest_tv_state.cpp
+    src/harness/autotest/autotest_farm_harvest.cpp
+    src/harness/autotest/autotest_level_travel.cpp
+    src/harness/autotest/autotest_join_drop.cpp
+    src/harness/autotest/autotest_prop_fire.cpp
+    src/harness/autotest/autotest_ground_hose.cpp
+    src/harness/autotest/autotest_build.cpp
+    src/harness/autotest/autotest_browser_filter.cpp
+    src/harness/autotest/autotest_disc_race.cpp
+    src/harness/autotest/autotest_mushroom.cpp
+    src/harness/autotest/autotest_crowbar.cpp
+    src/harness/autotest/autotest_data_case.cpp
+    src/harness/autotest/autotest_atv_passenger.cpp
+    src/harness/autotest/autotest_kerfus_wheels.cpp
+    src/harness/autotest/autotest_vidcam_drop.cpp
+    src/harness/autotest/autotest_backrooms_probe.cpp
+    src/coop/creatures/kerfur_camera.cpp
+    src/coop/creatures/kerfur_dress_sync.cpp
+    src/coop/interactables/atv_passenger.cpp
+    src/coop/interactables/generator_sync.cpp
+    src/coop/interactables/kitchen_sync.cpp
+    src/coop/items/wall_preview_sync.cpp
+    src/coop/player/chair_seat.cpp
+    src/coop/props/dingus_sync.cpp
+    src/coop/props/fireext_sync.cpp
+    src/coop/props/miner_sync.cpp
+    src/coop/props/prop_fire_sync.cpp
+    src/coop/voice/camcorder_voice.cpp
+    src/coop/world/arir_ship_sync.cpp
+    src/coop/world/build_sync.cpp
+    src/coop/world/cave_rock_sync.cpp
+    src/coop/world/cover_sync.cpp
+    src/coop/world/flood_sync.cpp
+    src/coop/world/ground_hose_sync.cpp
+    src/coop/world/media_device_sync.cpp
+    src/coop/world/sound_relay.cpp
+    src/ue_wrap/devices/kitchen.cpp
+    src/ue_wrap/world/media_device.cpp
+    src/ui/server_browser_filter.cpp
 )
 
 include(${CMAKE_CURRENT_LIST_DIR}/sources_dev.cmake)
 list(APPEND VOTVCOOP_SOURCES ${VOTVCOOP_DEV_SOURCES})
+include(${CMAKE_CURRENT_LIST_DIR}/sources_cheats.cmake)
+list(APPEND VOTVCOOP_SOURCES ${VOTVCOOP_CHEATS_SOURCES})
+include(${CMAKE_CURRENT_LIST_DIR}/sources_props.cmake)
+list(APPEND VOTVCOOP_SOURCES ${VOTVCOOP_PROPS_SOURCES})
 
 # The net library's translation units (coop-net, CMakeLists.txt): the session and what its closure
 # stands on, which reaches no engine object -- the game-side calls of the session are NetHooks the

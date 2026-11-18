@@ -8,7 +8,7 @@
 // world load (the gamemode's pre-delete and respawn of every save object), the destroy seam
 // must not broadcast the keyed-prop destroys the load churn issues; they are local net-zero
 // rebuild churn, on the wire only the destroy half fires, and broadcasting it made the host
-// destroy most of its authoritative copies by key on a bare join. The probe counts the load-tail population (keyless props, allowlisted NPCs, the
+// destroy most of its authoritative copies by key on a bare join. The probe counts the load-tail population (keyless props and building pieces, allowlisted NPCs, the
 // chipPile field) at 5 Hz; a stable count for the required scans means the async load pass
 // has drained, and an absolute ceiling bounds a pathological load, the announce firing
 // anyway, loudly. The latch is a serially reused session (the join load, a travel re-seed,
@@ -92,6 +92,16 @@ long long MsSinceQuiesced();
 
 // Session teardown: clear the episode, the probe session and the latch. Game thread.
 void Reset();
+
+// How many building pieces (nail, wall, unfinished wall, poster) the most recent load-tail scan counted unsettled,
+// a piece being settled once its actor_save key reads; -1 before a scan of the open session or after a scan the purge
+// skipped. At a stability latch it is the last scan's, which the world-ready announce follows; at the ceiling's it is
+// whatever the last scan counted, so a reader asks QuiescedByStability first. Game thread.
+int UnsettledBuildPieces();
+
+// True when the most recent probe session latched on a stable population, the load's real settle, and false when it
+// latched by the absolute ceiling (degraded), is still open, or none opened. Reset with the latch. Game thread.
+bool QuiescedByStability();
 
 // True while a client world-load episode is in progress; the destroy seam suppresses
 // keyed-prop destroy broadcasts while it holds. Any thread (a relaxed atomic; advisory for

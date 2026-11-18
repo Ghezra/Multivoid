@@ -4,6 +4,7 @@
 #include "coop/session/world_load_episode.h"
 
 #include "coop/config/config.h"  // ReadEnv, for the drill switch
+#include "coop/config/config_registry.h"  // the building identity drill's red
 #include "coop/net/net_clock.h"
 #include "coop/net/session.h"
 #include "coop/session/save_replay_watch.h"
@@ -63,10 +64,12 @@ bool g_everOpened = false;     // any session opened since Reset. While false,
                                // HasQuiesced() is VACUOUSLY true: a flow that never
                                // saw a world load has nothing to wait for
 bool g_quiesced   = false;     // the latch of the most recent session
+bool g_quiescedByStability = false;  // valid while g_quiesced: the latch was a stable population, not the ceiling
 std::chrono::steady_clock::time_point g_probeArmedAt{};      // absolute-ceiling base
 std::chrono::steady_clock::time_point g_lastScanAt{};        // {} => not yet scanned this session
 std::chrono::steady_clock::time_point g_quiescedAt{};        // valid while g_quiesced
 int  g_lastUnsettledCount = -1;
+int  g_lastUnsettledPieces = -1;   // the building pieces' part of the last scan; -1 before any scan of this session
 int  g_stableScans        = 0;
 std::string g_probeReason;     // logged at arm + latch
 
@@ -115,19 +118,36 @@ void ReconLowerGT_(const char* why) {
     }
 }
 
-// Load-tail population census: two populations whose sum settles exactly when the async load pass
-// finishes materialising the world -- the allowlisted NPCs, and the keyless in-universe props that
-// have not minted a key yet. Live chipPiles count unconditionally, because a join-time world reload
+// Load-tail population census: the populations whose sum settles exactly when the async load pass
+// finishes materialising the world -- the allowlisted NPCs, and the keyless in-universe props and
+// building pieces that have not minted a key yet. Live chipPiles count unconditionally, because a join-time world reload
 // drops the field and the async reload climbs it back, so the gate refuses to quiesce through
 // either half of that reload, including the window where the purge has started but is not yet
 // flagged. One GUObjectArray walk, pure pointer-compare class filters before any key or name read,
 // throttled and only while a session is open. Stability is about population CHANGE, not membership:
 // a claimed still-keyless actor contributes a constant term that cannot block the latch.
-// One object's term of the census, its class already told: (a) an allowlisted NPC, or (b) a keyed interactable.
-int TailTerm_(void* obj, bool npc) {
+// The building identity drill's red `settle_count_off`: a piece counts unsettled whatever its key read says, so the
+// settle count ignores the read. Off in every other run.
+bool SettleIgnoresPieceKey_() {
+    static const bool s =
+        coop::config::ResolveEnum(coop::config_registry::rows::build_identity_drill) == "settle_count_off";
+    return s;
+}
+
+// What a class counts as in the census: an allowlisted NPC, a keyed interactable, or a building piece.
+enum class TailKind : uint8_t { Npc, Keyed, Piece };
+
+// One object's term of the census, its class already told: (a) an allowlisted NPC, (b) a keyed interactable, or (c) a
+// building piece, settled once its actor_save key reads (a piece is not an Aprop_C).
+int TailTerm_(void* obj, TailKind kind) {
     if (!R::IsLive(obj)) return 0;
     if (R::NameStartsWith(R::NameOf(obj), L"Default__")) return 0;  // CDO (alloc-free)
-    if (npc) return 1;
+    if (kind == TailKind::Npc) return 1;
+    if (kind == TailKind::Piece) {
+        if (SettleIgnoresPieceKey_()) return 1;
+        const std::wstring pkey = ue_wrap::prop::GetInteractableKeyString(obj);
+        return (pkey.empty() || pkey == L"None") ? 1 : 0;
+    }
     // (b') The chipPile field, counted even mid-purge.
     if (ue_wrap::prop::IsChipPile(obj)) return 1;
     if (coop::prop_lifecycle::IsPerPlayerPropClass(R::ClassNameOf(obj))) return 0;
@@ -136,8 +156,9 @@ int TailTerm_(void* obj, bool npc) {
 }
 
 struct TailWalk_ {
-    int  unsettled;
-    bool npc;
+    int      unsettled;
+    int      pieces;  // the part of `unsettled` that is building pieces
+    TailKind kind;
 };
 
 int CountLoadTailUnsettled_() {
@@ -146,31 +167,41 @@ int CountLoadTailUnsettled_() {
     // probe needs ten in a row: the stutter a joiner felt once its loading screen dropped). While the index
     // trails the engine its membership is not the array's, and the array is walked as before.
     if (ue_wrap::object_index::IsSeeded() && ue_wrap::object_index::Backlog() == 0) {
-        TailWalk_ walk{0, false};
+        TailWalk_ walk{0, 0, TailKind::Keyed};
         ue_wrap::object_index::ForEachClass([](void* ctx, void* cls, void* /*anyInstance*/) {
             TailWalk_* w = static_cast<TailWalk_*>(ctx);
             // (a) before (b), as the array walk tests them: an unresolved allowlist degrades to prop-only.
-            if (coop::npc_sync::IsAllowlistedClass(cls)) w->npc = true;
-            else if (ue_wrap::prop::IsClassKeyedInteractable(cls)) w->npc = false;
+            if (coop::npc_sync::IsAllowlistedClass(cls)) w->kind = TailKind::Npc;
+            else if (ue_wrap::prop::IsClassKeyedInteractable(cls)) w->kind = TailKind::Keyed;
+            else if (ue_wrap::prop::IsClassBuildPiece(cls)) w->kind = TailKind::Piece;
             else return;
             ue_wrap::object_index::ForEachInstance(cls, [](void* c, void* obj, int32_t) {
                 TailWalk_* inner = static_cast<TailWalk_*>(c);
-                inner->unsettled += TailTerm_(obj, inner->npc);
+                const int term = TailTerm_(obj, inner->kind);
+                inner->unsettled += term;
+                if (inner->kind == TailKind::Piece) inner->pieces += term;
             }, w);
         }, &walk);
+        g_lastUnsettledPieces = walk.pieces;
         return walk.unsettled;
     }
     const int32_t n = R::NumObjects();
-    int unsettled = 0;
+    int unsettled = 0, pieces = 0;
     for (int32_t i = 0; i < n; ++i) {
         void* obj = R::ObjectAt(i);
         if (!obj) continue;
         void* cls = R::ClassOf(obj);
-        // (a) The allowlisted-NPC load tail, then (b) the keyless-prop load tail. Lineage tests first, so the
-        // name and liveness reads run only for the few that pass.
-        if (coop::npc_sync::IsAllowlistedClass(cls)) unsettled += TailTerm_(obj, true);
-        else if (ue_wrap::prop::IsClassKeyedInteractable(cls)) unsettled += TailTerm_(obj, false);
+        // (a) The allowlisted-NPC load tail, then (b) the keyless-prop load tail, then (c) the building pieces.
+        // Lineage tests first, so the name and liveness reads run only for the few that pass.
+        if (coop::npc_sync::IsAllowlistedClass(cls)) unsettled += TailTerm_(obj, TailKind::Npc);
+        else if (ue_wrap::prop::IsClassKeyedInteractable(cls)) unsettled += TailTerm_(obj, TailKind::Keyed);
+        else if (ue_wrap::prop::IsClassBuildPiece(cls)) {
+            const int term = TailTerm_(obj, TailKind::Piece);
+            unsettled += term;
+            pieces += term;
+        }
     }
+    g_lastUnsettledPieces = pieces;
     return unsettled;
 }
 
@@ -181,6 +212,7 @@ void OpenProbeSession_(const char* reason, bool forRequest) {
     g_probeArmedAt = std::chrono::steady_clock::now();
     g_lastScanAt = {};
     g_lastUnsettledCount = -1;
+    g_lastUnsettledPieces = -1;
     g_stableScans = 0;
     g_probeReason = reason ? reason : "?";
     char replay[64] = "";
@@ -196,9 +228,10 @@ void OpenProbeSession_(const char* reason, bool forRequest) {
             g_probeReason.c_str(), replay, kQuiesceScans, kScanIntervalMs, kAbsoluteCeilingMs / 1000);
 }
 
-void Latch_(const char* how) {
+void Latch_(const char* how, bool byStability) {
     g_probeOpen = false;
     g_quiesced = true;
+    g_quiescedByStability = byStability;
     g_quiescedAt = std::chrono::steady_clock::now();
     const bool closesEpisode = g_inEpisode.load(std::memory_order_relaxed);
     if (closesEpisode) g_inEpisode.store(false, std::memory_order_relaxed);
@@ -347,7 +380,7 @@ bool TickQuiesceProbe() {
         UE_LOGW("world_load_episode: probe ABSOLUTE ceiling (%d s) -- latching DEGRADED (stuck "
                 "purge / pathological load; the settled-world guarantee does NOT hold for this join)",
                 kAbsoluteCeilingMs / 1000);
-        Latch_("ABSOLUTE ceiling -- DEGRADED");
+        Latch_("ABSOLUTE ceiling -- DEGRADED", /*byStability*/ false);
         return true;
     }
     // A registry mid-purge, or one never seeded, means the loading world is incomplete; the
@@ -355,6 +388,7 @@ bool TickQuiesceProbe() {
     if (!coop::prop_element_tracker::HasSeededOnce() ||
         coop::prop_element_tracker::InPurgeEpisode()) {
         g_lastUnsettledCount = -1;
+        g_lastUnsettledPieces = -1;
         g_stableScans = 0;
         return false;
     }
@@ -365,7 +399,7 @@ bool TickQuiesceProbe() {
         return false;
     }
     if (++g_stableScans < kQuiesceScans) return false;  // stable, but not for long enough yet
-    Latch_("population stable");
+    Latch_("population stable", /*byStability*/ true);
     return true;
 }
 
@@ -393,6 +427,7 @@ void Reset() {
     g_everOpened = false;  // back to vacuous: a reconnect with no world change announces freely
     g_quiesced = false;
     g_lastUnsettledCount = -1;
+    g_lastUnsettledPieces = -1;
     g_stableScans = 0;
     // Session teardown lowers the reconcile window and clears its classifier.
     g_reconRaiseRequested.store(false, std::memory_order_relaxed);
@@ -402,6 +437,10 @@ void Reset() {
 }
 
 bool InEpisode() { return g_inEpisode.load(std::memory_order_relaxed); }
+
+int UnsettledBuildPieces() { return g_lastUnsettledPieces; }
+
+bool QuiescedByStability() { return g_quiesced && g_quiescedByStability; }
 
 // ---- The reconcile window; see the header block ----
 

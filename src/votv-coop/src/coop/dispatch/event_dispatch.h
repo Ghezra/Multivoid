@@ -84,6 +84,12 @@ bool HandleCargoLiftEvent(net::Session& session,
 bool HandleRequesterFeedbackEvent(net::Session& session,
                                   const net::Session::ReliableMessage& msg);
 
+// Cheat family: a player's cheat request and the host's answer. CheatRequest checks role()==Host and a client sender
+// slot here and hands the request to the host's judge (coop/cheats/cheat_request); CheatResult is the HOST->CLIENT
+// answer, dropped on the host and from any sender but slot 0.
+bool HandleCheatEvent(net::Session& session,
+                      const net::Session::ReliableMessage& msg);
+
 // Kerfur-command family: a client's radial command for a kerfur and the host's answer to it. KerfurCommand checks
 // role()==Host and the sender slot here and hands the request to the host's lane (its short payload is counted in
 // that lane's tally); KerfurCommandAnswer is the HOST->CLIENT answer, dropped on the host and from any sender but
@@ -105,8 +111,7 @@ bool HandleEconomyEvent(net::Session& session,
 // and answer. PropDriveEnd on the host is a syncing client's End, handed to the claim judge; on a client
 // it is the host's End, applied by the stream's receiver. PropSyncClaim checks role()==Host AND a client
 // sender slot; PropSyncAnswer is the HOST->CLIENT verdict, refused from a client at the host's edge, and
-// PropHoldRefused the host's refusal of a second hold, to every client; PropSettle is where a released prop
-// rests, from its releaser to all; FoodState a world
+// PropHoldRefused the host's refusal of a second hold, to every client; FoodState a world
 // food's condition, host to all, FoodBite a client's bite and FoodRelease the food it let go, client to host,
 // FoodHand the food in a hand, holder to all; KitchenState a press on a kitchen machine, from its presser to all;
 // MediaDeviceState a placed radio's or TV's state, host to all or a client's edit to the host; AmbientTreeState a

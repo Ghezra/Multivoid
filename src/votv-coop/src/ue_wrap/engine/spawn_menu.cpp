@@ -3,20 +3,30 @@
 #include "ue_wrap/engine/spawn_menu.h"
 
 #include "ue_wrap/core/call.h"
+#include "ue_wrap/engine/world_identity.h"
 #include "ue_wrap/engine/engine.h"      // GetController -- the local player's PlayerController for input mode
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
+#include "ue_wrap/core/script_gate.h"
 #include "ue_wrap/core/sdk_profile.h"
+#include "ue_wrap/facts/function_row.h"
 #include "ue_wrap/world/world_singleton.h"
 
+#include <atomic>
 #include <cstdint>
 
 namespace ue_wrap::spawn_menu {
 
 namespace R = ue_wrap::reflection;
 namespace P = ue_wrap::profile;
+namespace sg = ue_wrap::script_gate;
 
 namespace {
+
+// The game closes this menu with a native SetVisibility(Collapsed) reached only from the Q input event's
+// release, so that event's body ending is the engine's own signal that the menu may be gone.
+UE_FACT_FN(kRowQRelease, "spawn_menu", L"mainPlayer_C", L"InpActEvt_spawnmenu_K2Node_InputActionEvent_3", Declared);
+constexpr int kTagQRelease = 0x534D4E55;  // 'SMNU'
 
 // The widget's visibility byte, which Open() drives: the offset is the class's layout, the same in
 // every world.
@@ -37,6 +47,76 @@ int ReadVis(void* widget) {
     if (g_visOff == -2) g_visOff = R::FindPropertyOffset(R::ClassOf(widget), L"Visibility");
     if (g_visOff < 0) return -3;
     return *reinterpret_cast<const uint8_t*>(reinterpret_cast<const uint8_t*>(widget) + g_visOff);
+}
+
+// A visibility byte that draws: Visible, HitTestInvisible or SelfHitTestInvisible.
+bool Shown(int vis) { return vis == 0 || vis == 3 || vis == 4; }
+
+// Open() ran and neither Close() nor the game's own close has since. Written on the game thread, read by the key
+// watcher.
+std::atomic<bool> g_open{false};
+
+// Whether the menu is up, and with it the script gate: the watch on the game's close needs the gate while the menu
+// is up and nothing else does, so a solo game pays for it only then (a coop session holds the gate anyway). Game
+// thread.
+void SetOpen(bool open) {
+    static bool sHeld = false;
+    if (open && !sHeld) {
+        sHeld = true;
+        sg::Acquire("the spawn menu");
+    } else if (!open && sHeld) {
+        sHeld = false;
+        sg::Release("the spawn menu");
+    }
+    g_open.store(open, std::memory_order_release);
+}
+
+// After the game's Q release ran: when the widget is no longer drawn the game closed it, so the open this layer
+// owes a close for is over and the key watcher can end. Read once, at the event.
+void OnQRelease(const sg::Call&) {
+    if (!g_open.load(std::memory_order_acquire)) return;
+    if (Shown(ReadVis(FindSpawnMenuWidget()))) return;
+    SetOpen(false);
+    UE_LOGI("spawn_menu: the game closed the menu itself -- no close is owed");
+}
+
+// The widget belongs to the world that was current: a world change destroys it with no Q release to say so, so the open
+// is forgotten here, and with it the gate hold.
+void OnWorldChange() noexcept {
+    if (!g_open.load(std::memory_order_acquire)) return;
+    SetOpen(false);
+    UE_LOGI("spawn_menu: the world changed -- the menu is gone with it, no close is owed");
+}
+
+// Watch the game's close and the world's change, registered once. Game thread.
+void ArmCloseWatch() {
+    static bool sArmed = false;
+    if (sArmed) return;
+    sArmed = true;
+    if (!ue_wrap::world_identity::AddWorldChangeListener(&OnWorldChange))
+        UE_LOGE("spawn_menu: the world-change list is full -- a menu left open across a world change stays owed a close");
+    if (!sg::WatchName(kRowQRelease, kTagQRelease, nullptr, &OnQRelease))
+        UE_LOGE("spawn_menu: the watch on %ls::%ls was refused -- the menu stays owed a close until Q is pressed",
+                kRowQRelease.Class(), kRowQRelease.Name());
+    sg::ResolvePendingNames();
+}
+
+// The menu's search box holds the keyboard: a Q typed there is a letter of the search.
+bool SearchHasKeyboard(void* widget) {
+    static int32_t sBoxOff = -2;
+    if (sBoxOff < 0) sBoxOff = R::FindPropertyOffset(R::ClassOf(widget), L"textbox_search");   // a miss is asked again
+    if (sBoxOff < 0) return false;
+    void* box = *reinterpret_cast<void* const*>(reinterpret_cast<const uint8_t*>(widget) + sBoxOff);
+    if (!box) return false;
+    static void* sHasFocusFn = nullptr;
+    if (!sHasFocusFn) {
+        void* widgetCls = R::FindClass(L"Widget");
+        sHasFocusFn = widgetCls ? R::FindFunction(widgetCls, L"HasKeyboardFocus") : nullptr;
+    }
+    if (!sHasFocusFn) return false;
+    ue_wrap::ParamFrame f(sHasFocusFn);
+    if (!f.valid() || !ue_wrap::Call(box, f)) return false;
+    return f.Get<bool>(L"ReturnValue");
 }
 
 }  // namespace
@@ -92,11 +172,13 @@ bool Open(void* localPlayer) {
     if (sSetVisFn) {
         ue_wrap::ParamFrame f(sSetVisFn);
         if (f.valid()) {
-            f.Set<uint8_t>(L"InVisibility", 0);  // ESlateVisibility::Visible
+            // SelfHitTestInvisible, the value the game's own open block sets: the menu's buttons take
+            // clicks and its full-screen root passes the rest to the world.
+            f.Set<uint8_t>(L"InVisibility", 4);
             ue_wrap::Call(widget, f);
         }
     } else if (g_visOff >= 0) {
-        *(reinterpret_cast<uint8_t*>(widget) + g_visOff) = 0;  // fallback: raw byte (may not render)
+        *(reinterpret_cast<uint8_t*>(widget) + g_visOff) = 4;  // fallback: raw byte (may not render)
         UE_LOGW("spawn_menu::Open: native UWidget::SetVisibility unresolved -- raw byte fallback (Slate may not render)");
     }
     // opened() on the widget's own class, through the memoised lookup: it holds the answer by slot
@@ -130,12 +212,17 @@ bool Open(void* localPlayer) {
     }
 
     const int visAfter = ReadVis(widget);
-    UE_LOGI("spawn_menu::Open: native SetVisibility(Visible) + opened() + GameAndUI input -- "
-            "visibility %d -> %d (0=Visible)", visBefore, visAfter);
+    ArmCloseWatch();
+    SetOpen(true);
+    UE_LOGI("spawn_menu::Open: native SetVisibility + opened() + GameAndUI input -- "
+            "visibility %d -> %d (4=SelfHitTestInvisible)", visBefore, visAfter);
     return true;
 }
 
+bool IsOpen() { return g_open.load(std::memory_order_acquire); }
+
 bool Close(void* localPlayer) {
+    SetOpen(false);
     // (1) THE LOAD-BEARING UN-STICK: restore SetInputMode_GameOnly + hide the cursor. Open() leaves
     // the player in GameAndUI/cursor mode (spawn_menu.cpp Open() @ SetInputMode_GameAndUIEx + cursor);
     // without this the world interaction/use trace stays dead. Do it FIRST and unconditionally (even
@@ -179,12 +266,6 @@ bool Close(void* localPlayer) {
         } else if (g_visOff >= 0) {
             *(reinterpret_cast<uint8_t*>(widget) + g_visOff) = 1;  // fallback: raw byte
         }
-        // (3) Symmetric content teardown if the widget exposes one. Absence is fine: the memoised
-        // lookup holds a miss as a miss while the class lives.
-        if (void* closedFn = R::FindDispatchFunctionCached(R::ClassOf(widget), L"closed")) {
-            ue_wrap::ParamFrame f(closedFn);
-            if (f.valid()) ue_wrap::Call(widget, f);
-        }
     }
 
     UE_LOGI("spawn_menu::Close: restored GameOnly input + hid cursor%s",
@@ -196,8 +277,14 @@ bool Toggle(void* localPlayer) {
     // Decide from GROUND TRUTH (the live Visibility byte), never a cached open-flag -- so a Q press
     // does the right thing even if the game closed the menu via its own path.
     void* widget = FindSpawnMenuWidget();
-    if (widget && ReadVis(widget) == 0) return Close(localPlayer);  // currently Visible -> dismiss
+    if (widget && Shown(ReadVis(widget))) return CloseUnlessTyping(localPlayer);  // drawn -> dismiss
     return Open(localPlayer);                                       // collapsed / not-yet-created -> open
+}
+
+bool CloseUnlessTyping(void* localPlayer) {
+    void* widget = FindSpawnMenuWidget();
+    if (widget && Shown(ReadVis(widget)) && SearchHasKeyboard(widget)) return false;
+    return Close(localPlayer);
 }
 
 }  // namespace ue_wrap::spawn_menu
