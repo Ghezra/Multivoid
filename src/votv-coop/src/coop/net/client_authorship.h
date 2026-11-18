@@ -49,6 +49,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::MinerIntent:
     case ReliableKind::FireExtIntent:
     case ReliableKind::CoverIntent:
+    case ReliableKind::ChairSeatIntent:
     case ReliableKind::WallPreview:
     case ReliableKind::DingusFound:       // op 0 a client's report; op 1 is the host's, its handler checks the slot
     case ReliableKind::GroundHoseIntent:
@@ -216,6 +217,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::FloodState:
     case ReliableKind::KerfurDressState:
     case ReliableKind::CaveRockState:
+    case ReliableKind::ChairSeatState:
     case ReliableKind::AtvHostState:
     case ReliableKind::SkySignalState:
     case ReliableKind::EmailAppend:

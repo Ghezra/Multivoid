@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 334;
+inline constexpr uint16_t kProtocolVersion = 335;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1609,6 +1609,12 @@ enum class ReliableKind : uint16_t {
     // HOST->ALL: the Antibreather cave's entrance rock shut or open (coop/world/cave_rock_sync), when it changes and to a
     // joiner. Not pre-world. CaveRockPayload.
     CaveRockState = 293,
+    // A chair a player sits on (coop/player/chair_seat). HOST->ALL: who sits on which chair, when it changes and every
+    // seat to a joiner (op 0 sit, op 1 stand), and the word to a sitter to get up (op 2), when another player takes its
+    // chair or the host refused its sit. CLIENT->HOST: this client's player sat down on a chair (op 0) or got up (op 1);
+    // the host judges the reach, the chair free and not held, and files it. Not pre-world. ChairSeatPayload.
+    ChairSeatState = 294,
+    ChairSeatIntent = 295,
 };
 
 #pragma pack(push, 1)
@@ -1706,6 +1712,7 @@ inline constexpr uint8_t kStateBitInAir   = 0x01;
 inline constexpr uint8_t kStateBitRagdoll = 0x02;  // the source is ragdolled (faint, manual, knock-out), not dead
 inline constexpr uint8_t kStateBitBurning = 0x04;  // the source's body is on fire (its burningTime runs), display only
 inline constexpr uint8_t kStateBitCrouched = 0x08; // the source is crouched (ACharacter::bIsCrouched): its steps come twice as often
+inline constexpr uint8_t kStateBitSeated  = 0x10;  // the source sits on a seat that is not an ATV (mainPlayer_C::sittingOn)
 
 // The game's vital scalars (food, sleep, the default max health) top out at 100. health is
 // normalised by the peer's own max health before quantisation; food and sleep by this.
@@ -2547,6 +2554,16 @@ struct KerfurDressPayload {
     char     names[216];  // 216
 };
 static_assert(sizeof(KerfurDressPayload) == 224, "KerfurDressPayload must be 224 bytes");
+
+// A chair seat (ChairSeatState, ChairSeatIntent).
+inline constexpr uint8_t kChairSeatSit = 0, kChairSeatStand = 1, kChairSeatGetUp = 2;
+struct ChairSeatPayload {
+    uint32_t eid;     // 4 -- the chair prop's element id (ops 0 and 1)
+    uint8_t  op;      // 1 -- kChairSeat*
+    uint8_t  slot;    // 1 -- the sitter (the host's ops; an intent's is the sender's own, unread)
+    uint8_t  _pad[2]; // 2 -- zero
+};
+static_assert(sizeof(ChairSeatPayload) == 8, "ChairSeatPayload must be 8 bytes");
 
 // CaveRockState. The spawner (antibreatherSPawner_C, placed in the level) by its object name.
 struct CaveRockPayload {

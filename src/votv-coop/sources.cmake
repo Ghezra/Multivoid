@@ -102,6 +102,7 @@ set(VOTVCOOP_SOURCES
     src/coop/creatures/kerfur_camera.cpp
     src/coop/world/arir_ship_sync.cpp
     src/coop/world/cave_rock_sync.cpp
+    src/coop/player/chair_seat.cpp
     src/coop/world/sound_relay.cpp
     src/coop/props/glowstick_sync.cpp
     src/coop/interactables/woodchipper_gate.cpp

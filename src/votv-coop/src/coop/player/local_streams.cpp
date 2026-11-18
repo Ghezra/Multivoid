@@ -120,6 +120,13 @@ bool ReadLocalPose(void* local, void* controller, coop::net::PoseSnapshot& out) 
     }
     // The crouch bit: a crouched player's own steps come at twice the rate (its graph's x2.0), so a puppet's do too.
     if (ue_wrap::puppet::ReadCharacterIsCrouched(local)) out.stateBits |= coop::net::kStateBitCrouched;
+    // The seat bit: a chair's sit (mainPlayer_C::sit) puts the player at the seat and the puppet shows the seat pose. An
+    // ATV's passenger spot is the host's seat table's, which every peer applies itself (coop/player/puppet_seat).
+    {
+        void* on = nullptr;
+        if (ue_wrap::engine::ReadMainPlayerSittingOn(local, on) && on && !ue_wrap::atv::IsAtv(on))
+            out.stateBits |= coop::net::kStateBitSeated;
+    }
     // The ragdoll bit: isRagdoll is the AnimBP gate every ragdoll cause flips (the C key, an
     // exhaustion faint, a KO), synced as a display flag so the puppet flops on the other screens; a
     // death is excluded by `dead`. One wrapper read.

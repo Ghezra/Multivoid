@@ -153,6 +153,7 @@
 #include "coop/creatures/kerfur_camera.h"   // a client's Omega camera on its laptop list
 #include "coop/world/arir_ship_sync.h"   // the Ariral ship in the sky
 #include "coop/world/cave_rock_sync.h"   // the Antibreather cave's entrance
+#include "coop/player/chair_seat.h"      // a player sitting on a chair
 #include "coop/world/sound_relay.h"   // a player's own sounds at a place
 #include "coop/props/glowstick_sync.h"   // a glowstick stuck to a surface, on every peer
 #include "coop/interactables/woodchipper_sync.h"
@@ -318,6 +319,7 @@ void Install(coop::net::Session& session) {
     coop::kerfur_dress_sync::Install(&session);  // an Omega's outfit and its pat
     coop::arir_ship_sync::Install(&session);  // the Ariral ship in the sky
     coop::cave_rock_sync::Install(&session);  // the Antibreather cave's entrance
+    coop::chair_seat::Install(&session);  // a player sitting on a chair
     coop::glowstick_sync::Install(&session);    // a glowstick's stick, through its record
     coop::atv_host_sync::Install(&session);  // what of an ATV is the host's beyond its rig
     coop::upgrade_sync::Install(&session);  // a client's upgrade purchase is charged and written by the host
@@ -483,6 +485,7 @@ void DisconnectSlot(coop::net::Session& session, int slot) {
     coop::fuse_tower_ops::OnPeerLeft(static_cast<uint8_t>(slot));  // and its tower ops
     coop::voice_chat::OnDisconnectSlot(slot);  // drop the leaver's voice channel + icon state
     coop::puppet_hide::Forget(static_cast<uint8_t>(slot));  // the reasons its copy was hidden for end with it
+    coop::chair_seat::OnPeerLeft(slot);  // the chair it sat on is free
     coop::puppet_seat::Forget(static_cast<uint8_t>(slot));  // and the seat its body was held on
     coop::level_visit::OnPeerLeft(static_cast<uint8_t>(slot));  // and what its poses said of a visited map
     coop::sleep_sync::OnDisconnectForSlot(slot);  // the leaver's rest state back to awake, told to every client
@@ -625,6 +628,7 @@ DisconnectStats DisconnectAll() {
     coop::flood_sync::OnDisconnect();
     coop::kerfur_dress_sync::OnDisconnect();
     coop::cave_rock_sync::OnDisconnect();
+    coop::chair_seat::OnDisconnect();
     coop::glowstick_sync::OnDisconnect();
     coop::upgrade_sync::OnDisconnect();  // and its own upgrade panel buys locally again
     coop::device_occupancy::OnDisconnect();
@@ -727,7 +731,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:atv"}; coop::atv_sync::Tick(); }  // ATV: the host judges its own seat and grab, a client asks the host; the syncer streams its pose (host+client)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:drone"}; coop::drone_sync::Tick(); }  // delivery drone: host streams transform / client suppresses tick + mirrors
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:turbine"}; coop::turbine_sync::Tick(); }  // wind turbines: host ~1 Hz driver-float poll / client deferred-apply retry
-    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:woodchipper"}; coop::woodchipper_sync::Tick(); coop::generator_sync::Tick(); coop::flood_sync::Tick(); coop::kerfur_dress_sync::Tick(); coop::kerfur_camera::Tick(session); coop::arir_ship_sync::Tick(); coop::cave_rock_sync::Tick(); }  // woodchippers: the host's intents and its changed chippers, the burn read once a second / the client's held states
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:woodchipper"}; coop::woodchipper_sync::Tick(); coop::generator_sync::Tick(); coop::flood_sync::Tick(); coop::kerfur_dress_sync::Tick(); coop::kerfur_camera::Tick(session); coop::arir_ship_sync::Tick(); coop::cave_rock_sync::Tick(); coop::chair_seat::Tick(); }  // woodchippers: the host's intents and its changed chippers, the burn read once a second / the client's held states
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:glowstick"}; coop::glowstick_sync::Tick(); }  // a glowstick's stick: the sticks a player ended published, the waits for a struck prop retried
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:atv_host"}; coop::atv_host_sync::Tick(); }  // the ATVs' fuel, health and modules
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:alarm"}; coop::alarm_sync::Tick(); }  // base radar alarm: 1 Hz active-bit poll BOTH roles (host broadcasts transitions; client forwards local ones)
