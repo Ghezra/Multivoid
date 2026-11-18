@@ -169,6 +169,7 @@
 #include "coop/dev/reelspam_probe.h"   // [dev] the tape recorder's eject spammed, reels counted on every peer
 #include "coop/dev/slip_probe.h"   // [dev] a player slips on a soap, its health and death logged on every peer
 #include "coop/dev/dingus_probe.h"  // [dev] the dingus found, pocketed and dropped, its music logged on every peer
+#include "coop/dev/bucket_drill.h"  // [dev] a mop bucket's water and concrete, acted on by one player, logged on every peer
 #include "coop/dev/wall_fill_probe.h"  // [dev] an unfinished wall filled with bricks by both players, logged on both
 #include "coop/dev/wall_preview_probe.h"  // [dev] a client's wall builder preview, logged on both
 #include "coop/dev/tower_poof_probe.h"  // [dev] the stolen radio tower fired on the host, its tower read on both
@@ -547,6 +548,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::reelspam_probe::Tick(&session);  // [dev] the reel eject spam (a latched read when off)
     coop::dev::slip_probe::Tick(&session);    // [dev] the soap slip (a latched read when off)
     coop::dev::dingus_probe::Tick(&session);  // [dev] the dingus (a latched read when off)
+    coop::dev::bucket_drill::Tick(&session);  // [dev] a mop bucket's water and concrete on every peer (a latched read when off)
     coop::dev::wall_fill_probe::Tick(&session);  // [dev] an unfinished wall's bricks on both peers (a latched read when off)
     coop::dev::wall_preview_probe::Tick(&session);  // [dev] a wall builder's preview on both peers (a latched read when off)
     coop::dev::tower_poof_probe::Tick(&session);  // [dev] the radio tower on both peers (a latched read when off)

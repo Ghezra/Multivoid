@@ -405,8 +405,8 @@ drifts; a prop whose change is derived from the shared clock does not. The rule 
 progression, in one of three shapes chosen per prop: park the brain and let the host author the progression through the
 existing lanes (the pile shape); a host corrector that re-snaps a deterministic, clamped accrual when the game keeps
 re-enabling the tick (the tape reel, at one hertz); or an anchor, a start stamp every peer computes from, valid only
-while the rate is constant ([architecture.md](architecture.md), where the authority is going). The reel corrector and
-the food's tick gate are built; concrete is designed and not built.
+while the rate is constant ([architecture.md](architecture.md), where the authority is going). The reel corrector, the
+food's tick gate and the buckets' lane are built.
 
 A world food takes the first shape (`coop/props/prop_food_sync`), cooking progress included. Its tick rolls temperature and spoilage and, at the
 ends of the range, spawns a burnt or frozen copy and destroys itself, so a client's copy is refused its tick at the
@@ -453,6 +453,28 @@ goes out (`RoombaState`), to a joiner too, and a copy takes it through the clean
 (`coop/props/roomba_sync`) `[V]` (`coop/dev/roomba_probe`: the host's cleaner switched on, the client's copy within 10
 cm of it each second and resting 1 cm from it; the client's press switched the host's off and its own).
 
+A mop bucket (`prop_bucket_C`) holds its water as `Height`, with `soap` and the alcohol it brews beside it. Its tick
+pours the water out while it is tipped, fills it under water and brews; its left click fills it from water, waters a
+plant or throws the water out, a sponge dips in it and a jar takes from it. A cement bag's left click on a bucket with
+water and `canConcrete` turns it (`lib.replaceProp`) into a concrete bucket (`prop_concreteBucket_C`) of
+round(Height / MaxHeight * 20) `units`, taken from the bag. The trowel's left click takes one unit, a tip spills five,
+a 600 s timer dries it, and an empty one turns back into a mop bucket. All of it used to run on the peer it ran on and
+nowhere else: a client's water and mix stayed on its screen, and its concrete bucket existed only there
+(`coop/props/bucket_sync`). The host reads its mop buckets, concrete buckets and cement bags four times a second and
+sends the ones that changed (`BucketState`), and every one to a joiner at its world-ready. A client puts each row on
+its copy through the bucket's own `upd` or the concrete bucket's `updStage`. The client's concrete buckets are refused
+their tick at the script-body gate, so the spill, the drying and the turn back are the host's. Its mop buckets keep their
+tick for the water's look while tipped, and a change to one outside that tick, which is one of its own verbs, goes to
+the host as the water and soap the verb left (`BucketIntent` op 0). Its player's cement bag on a bucket (op 1) and
+trowel on a concrete bucket (op 2) are refused there and asked of the host, the trowel taking its load at once. The
+host judges each ask within 6 m of the sender's body, mixes with the bag's own rule and `lib.replaceProp`, whose births
+reach every client as any host birth, and runs `takeConcrete` on its own copy. A refused ask is answered with the host's
+row of the bucket to the sender alone, which puts its copy back. `[V]` on the rig, three peers (`coop/dev/bucket_drill`:
+fill, throw out, fill, mix, take, and the last take that turns it back, once by a client and once by the host): every
+step's water, units, stage and bag on all three peers; before the lane a client's every step stayed on its own copy,
+and its concrete bucket had no host element. The ReceiveTick watch costs a client about 0.55 ms a second (220,000
+calls in 10 s).
+
 ## Who owns what
 
 | State | Owner | Shape |
@@ -472,6 +494,7 @@ cm of it each second and resting 1 cm from it; the client's press switched the h
 | notebook page text | the editing peer; the host takes it from the claim's holder, or from anyone while it is free | the notebook's own save record on the record lane, at the editor's commit and at the close |
 | a keyed prop's fire | the host | its flame on every copy; a client's light is a request |
 | the robot cleaner | the host | its drive on the drive stream; its switch a request; a client's tick and pickup refused |
+| a mop bucket's water, a concrete bucket's concrete, a cement bag's units | the host | rows when they change; a client's verb is a request; a client's concrete bucket tick refused |
 | a client's shared-world spawners | the host | refused on a client at the script-body gate; shared-world content arrives only from the host |
 
 ## Wire messages
@@ -484,6 +507,7 @@ cm of it each second and resting 1 cm from it; the client's press switched the h
 | `FoodState`, `FoodBite`, `FoodRelease`, `FoodHand` | the host to all; a client to the host; a client to the host; the holder to all | a world food's temperature, ripeness and uses; a client's bite; the condition of a food a client let go; the condition of the food in a hand |
 | `PropFireState`, `PropFireRequest` | the host to all; a client to the host | a keyed prop's flame, its fuel and speed, or that it went out; a client's light with its fuel |
 | `RoombaState`, `RoombaIntent` | the host to all; a client to the host | a robot cleaner's id and whether it runs; a client's press with the state it wants |
+| `BucketState`, `BucketIntent` | the host to all; a client to the host | the rows of the host's buckets and cement bags that changed; a client's water after its verb, its mix, or its trowel's take |
 | `PropHoldRefused` | the host to every client | a hold the host refused, by its holder's slot and generation, the prop's key, and the slot whose hold keeps the prop |
 | `FoodState`, `FoodBite`, `FoodRelease`, `FoodHand` | the host to all; a client to the host; a client to the host; the holder to all | a world food's temperature, ripeness, uses and poison; a client's bite; the condition of a food a client let go; the condition of the food in a hand |
 | `PropPropsIntent`, `PropPropsState` | a client to the host; the host to all, or to the sender alone for a refusal | a client's press of the prop-properties tool with the tool's four values; a prop's static, frozen and sleep read back from the host's copy, or the reason the press was refused `[?]` |
@@ -533,7 +557,8 @@ prop resolves.
 | A nested container's contents travel in container slices only: the player inventory's records and a prop's own record never carry them, so a container a client carries in its inventory across a rejoin, or one whose own record a prop lane sends, still names its slot as before; and several signal photos in one record, slice or inventory can pass that path's bound (a photo is 8.7 to 23.3 KB, a bound 32 to 56 KB), which refuses that carrier whole with a log | `[V]` `ue_wrap/actors/inventory` and `coop/props/prop_save_data` strip the nested contents, `coop/props/container_contents_io` attaches them; `coop/props/container_contents_publish`, `coop/items/player_inventory_sync` refuse | 
 | A keyed prop a client creates outside the intent door (a place after a pickup, the whitelisted births, a container extract, a player's own spawn verb) never reaches the host. It is logged now: the drain names its exit, and `[dev] prop_birth_key_probe` tallies every exit by name | `[V]` `coop/props/prop_drop_intent` drops it at the drain; `coop/dev/prop_birth_key_probe` |
 | Two peers changing one canned food inside one round trip each publish a whole record, and the last to reach the host stands, so a bite can be lost; a can's `health` travels only with those records, so impact damage short of opening it stays on each peer | `[RD]` `coop/props/prop_can_state` publishes the record and takes no claim |
-| Concrete and every other local-accumulator prop drift between peers; only the tape reel and the world food have one author | `[V]` `coop/interactables/tape_caddy_sync`, `coop/props/prop_food_sync` |
+| Local-accumulator props other than the tape reel, the world food and the buckets drift between peers | `[V]` `coop/interactables/tape_caddy_sync`, `coop/props/prop_food_sync`, `coop/props/bucket_sync` |
+| The water a client throws out of a mop bucket, and the drops it pours while tipping one, are drawn on that client alone; its bucket's level is the host's | `[RD]` `getFromWater` and the tick spawn `prop_sponge_bucketpour_C` locally, a world birth that does not cross |
 | A hot food's ignition is the host's alone, since a client's copy is refused its tick, so a client sees no flame on it | `[RD]` `prop_food_C.ReceiveTick`; `ue_wrap/actors/food` |
 | A client's food's frost, impact material and freeze sound are painted but only its frozen flag and steam were read back | `[RD]` `ue_wrap/actors/food`, `coop/props/prop_food_sync` |
 | A food subclass's own counter (the shrimp's `shrimps`) and its own tick are not carried, and a heating device's work on a client's copy is local until the host's next value | `[RD]` `coop/props/prop_food_sync` |
@@ -563,6 +588,7 @@ prop resolves.
 | a world food's condition | `coop/props/prop_food_sync`, `ue_wrap/actors/food` |
 | a keyed prop's fire | `coop/props/prop_fire_sync`, `ue_wrap/actors/prop_fire` |
 | the robot cleaner | `coop/props/roomba_sync`; `coop/dev/roomba_probe` |
+| a mop bucket's water and a concrete bucket's concrete | `coop/props/bucket_sync`; `coop/dev/bucket_drill` |
 | a record that changes in place | `coop/props/prop_record_refresh` (the drive box, the reel case), `coop/props/prop_can_state` (the canned food) |
 | notebook sync | `coop/interactables/notebook_sync`, `coop/props/prop_save_data`, `ue_wrap/actors/notebook` |
 | the pocket blip | `coop/items/inventory_pickup_sync` |
