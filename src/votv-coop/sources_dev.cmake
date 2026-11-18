@@ -411,6 +411,8 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/pi3_arms.cpp
     src/coop/dev/pi3_drill.cpp
     src/coop/dev/native_spawn_probe.cpp
+    src/coop/dev/prop_accuracy_drill.cpp
+    src/coop/dev/prop_census_drift.cpp
     src/coop/dev/hunger_sleep_probe.cpp
     src/coop/dev/sit_probe.cpp
     src/coop/dev/join_stall_probe.cpp

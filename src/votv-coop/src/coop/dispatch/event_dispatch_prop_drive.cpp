@@ -40,6 +40,7 @@
 #include "coop/creatures/kerfur_dress_sync.h"
 #include "coop/world/cave_rock_sync.h"
 #include "coop/player/chair_seat.h"
+#include "coop/props/prop_rest_sync.h"
 #include "coop/world/sound_relay.h"
 #include "coop/interactables/woodchipper_sync.h"
 #include "coop/interactables/atv_host_judge.h"
@@ -512,6 +513,37 @@ bool HandlePropDriveEvent(net::Session& session,
         if (p.op > net::kChairSeatGetUp) break;
         if (intent) ::coop::chair_seat::OnIntent(msg.senderPeerSlot, p);
         else ::coop::chair_seat::OnState(p);
+        break;
+    }
+    case net::ReliableKind::PropRestQuery:
+    case net::ReliableKind::PropRestPose: {
+        // PropRestQuery CLIENT->HOST, PropRestPose HOST->CLIENT (coop/props/prop_rest_sync). Exact length, counts bounded,
+        // every float finite and in bounds.
+        const bool query = msg.kind == net::ReliableKind::PropRestQuery;
+        const size_t want = query ? sizeof(net::PropRestQueryPayload) : sizeof(net::PropRestPosePayload);
+        if (query != (session.role() == net::Role::Host) || msg.payloadLen != want) {
+            UE_LOGW("event_feed: a prop rest message the wrong way or the wrong length from slot %d -- dropping",
+                    msg.senderPeerSlot);
+            break;
+        }
+        if (query) {
+            net::PropRestQueryPayload p{};
+            std::memcpy(&p, msg.payload, sizeof(p));
+            if (p.count == 0 || p.count > net::kPropRestQueryMax) break;
+            ::coop::prop_rest_sync::OnQuery(msg.senderPeerSlot, p);
+        } else {
+            net::PropRestPosePayload p{};
+            std::memcpy(&p, msg.payload, sizeof(p));
+            if (p.count == 0 || p.count > net::kPropRestPoseMax) break;
+            bool ok = true;
+            for (int i = 0; i < p.count; ++i)
+                for (const float v : p.rows[i].loc) ok = ok && std::isfinite(v) && std::fabs(v) <= net::kMaxCoord;
+            if (!ok) {
+                UE_LOGW("event_feed: PropRestPose with a place non-finite or out of bounds -- dropping");
+                break;
+            }
+            ::coop::prop_rest_sync::OnPose(p);
+        }
         break;
     }
     case net::ReliableKind::KerfurDressState:

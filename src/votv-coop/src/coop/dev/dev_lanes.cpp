@@ -133,6 +133,8 @@
 #include "coop/dev/creature_hit_drill.h"  // [dev] a parked creature's hit delivered to a client, a client's hit on it judged by the host
 #include "coop/dev/hostile_drill.h"  // [dev] the receive boundary: a client forges malformed packets, the host judges
 #include "coop/dev/native_pile_inert_probe.h"
+#include "coop/dev/prop_accuracy_drill.h"   // a client handles props for the drift census
+#include "coop/dev/prop_census_drift.h"   // [dev] the keyed props' places on every peer
 #include "coop/dev/hunger_sleep_probe.h"   // [dev] a hungry player tries to sleep
 #include "coop/dev/sit_probe.h"   // the chair sit probe
 #include "coop/dev/join_stall_probe.h"   // [dev] a client's game thread held still while it joins
@@ -510,6 +512,8 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::pi1_selftest::Tick(&session);  // [dev] the substrate primitives' selftest, once (latched read when off)
     coop::dev::pi2_selftest::Tick(&session);  // [dev] the puppet-identity substrate's selftest, once (latched read when off)
     coop::dev::pi3_drill::Tick(&session);  // [dev] the puppet-identity verb drill (a latched read when off)
+    coop::dev::prop_accuracy_drill::Tick(&session);  // VOTVCOOP_PROP_ACC: slot 1 carries, shelves, throws, drags a table
+    coop::dev::prop_census_drift::Tick(&session);  // [dev] the prop drift census (a latched read when off)
     coop::dev::hunger_sleep_probe::Tick(&session);  // [dev] a hungry player tries to sleep (a latched read when off)
     coop::dev::sit_probe::Tick(&session);  // a client sits on a chair; the host looks
     coop::dev::kdisc_watch::Tick(&session);  // [dev] VOTVCOOP_KDISC_WATCH
