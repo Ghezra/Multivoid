@@ -460,8 +460,10 @@ water and `canConcrete` turns it (`lib.replaceProp`) into a concrete bucket (`pr
 round(Height / MaxHeight * 20) `units`, taken from the bag. The trowel's left click takes one unit, a tip spills five,
 a 600 s timer dries it, and an empty one turns back into a mop bucket. All of it used to run on the peer it ran on and
 nowhere else: a client's water and mix stayed on its screen, and its concrete bucket existed only there
-(`coop/props/bucket_sync`). The host reads its mop buckets, concrete buckets and cement bags four times a second and
-sends the ones that changed (`BucketState`), and every one to a joiner at its world-ready. A client puts each row on
+(`coop/props/bucket_sync`). The host sends a mop bucket, a concrete bucket or a cement bag when it changes
+(`BucketState`): a bucket's own tick marks it when its state moved past a row's worth since the host last told it, and
+a verb the host runs marks what it changed. One bucket goes at most ten times a second, and with nothing changed the
+lane does no work. A joiner gets every one at its world-ready, the lane's one walk of the buckets. A client puts each row on
 its copy through the bucket's own `upd` or the concrete bucket's `updStage`. The client's concrete buckets are refused
 their tick at the script-body gate, so the spill, the drying and the turn back are the host's. Its mop buckets keep their
 tick for the water's look while tipped, and a change to one outside that tick, which is one of its own verbs, goes to
@@ -472,8 +474,10 @@ reach every client as any host birth, and runs `takeConcrete` on its own copy. A
 row of the bucket to the sender alone, which puts its copy back. `[V]` on the rig, three peers (`coop/dev/bucket_drill`:
 fill, throw out, fill, mix, take, and the last take that turns it back, once by a client and once by the host): every
 step's water, units, stage and bag on all three peers; before the lane a client's every step stayed on its own copy,
-and its concrete bucket had no host element. The ReceiveTick watch costs a client about 0.55 ms a second (220,000
-calls in 10 s).
+and its concrete bucket had no host element. The lane, its ReceiveTick watch included (about 21,000 calls a second),
+measured 0.56 ms a second on the host and 0.45 to 0.54 on a client, against 0.64 and 1.03 to 1.06 when the host read
+its buckets four times a second and every read walked the class for its fields (the drill's timer, its own overhead in
+both).
 
 ## Who owns what
 
@@ -487,7 +491,6 @@ calls in 10 s).
 | container contents | the host | slices of its object array; an extraction is an intent |
 | a container's break | the host | a client's lethal hit on one it authors is a request; the host's copy breaks and spills |
 | a prop's nametag | the host | a client's tag is a request by the prop's key; the host applies it and tells every client |
-| a container's break | the host | a client's lethal hit on one it authors is a request; the host's copy breaks and spills |
 | a stuck prop, and its unstick | the peer that sticks or frees it; every peer runs the component's own verb | one reliable message |
 | a self-changing prop's progression | the host | park, corrector or anchor, per prop |
 | notebook editor occupancy | the host arbitrates | a claim keyed by the owning prop |
@@ -504,7 +507,6 @@ calls in 10 s).
 | `PropPose` (stream) | the holder to all | the held prop's world transform, per frame, and its hold's generation |
 | `PropSpawn`, `PropDestroy` | the host to all; a destroy from either role | class, key, id, transform, physics flags, the birth scalar; the key and id |
 | `PropRelease` | the holder to all | the prop's transform, its inherited linear and angular velocity and its frozen and sleep at the edge, the hold it closes and the throw sequence (0 = not a throw); a client's goes through the host, which clamps it and sends it on |
-| `FoodState`, `FoodBite`, `FoodRelease`, `FoodHand` | the host to all; a client to the host; a client to the host; the holder to all | a world food's temperature, ripeness and uses; a client's bite; the condition of a food a client let go; the condition of the food in a hand |
 | `PropFireState`, `PropFireRequest` | the host to all; a client to the host | a keyed prop's flame, its fuel and speed, or that it went out; a client's light with its fuel |
 | `RoombaState`, `RoombaIntent` | the host to all; a client to the host | a robot cleaner's id and whether it runs; a client's press with the state it wants |
 | `BucketState`, `BucketIntent` | the host to all; a client to the host | the rows of the host's buckets and cement bags that changed; a client's water after its verb, its mix, or its trowel's take |
@@ -520,7 +522,6 @@ calls in 10 s).
 | `PropSnapPos` | the host to one joiner | a position correction for a save-authoritative prop moved in the join window, with a keyed prop's frozen and sleep; it carries the host's drive context for the prop (claim generation and open), the client drops one older than a drive END still on its copy, and a prop a hand held after its correction went out gets a follow-up after the release `[?]` |
 | `ContainerState`, `ContainerContents`, `ContainerBreakRequest` | the presser; the host; a client to the host (op 1) and the host to the requester (op 2 refusal, op 3 grant of a cut) | open or closed; one slice of the host's object array, its nested containers' contents in its tail; a break the host makes for a client, its refusal with a reason, or the grant of a saw's cut |
 | `InventoryPickup` | each peer, relayed | the pocket blip, so others hear a pickup |
-| `RoombaState`, `RoombaIntent` | the host to all; a client to the host | a robot cleaner's id and whether it runs; a client's press with the state it wants |
 
 ## Late join
 
