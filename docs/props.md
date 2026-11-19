@@ -456,28 +456,29 @@ cm of it each second and resting 1 cm from it; the client's press switched the h
 A mop bucket (`prop_bucket_C`) holds its water as `Height`, with `soap` and the alcohol it brews beside it. Its tick
 pours the water out while it is tipped, fills it under water and brews; its left click fills it from water, waters a
 plant or throws the water out, a sponge dips in it and a jar takes from it. A cement bag's left click on a bucket with
-water and `canConcrete` turns it (`lib.replaceProp`) into a concrete bucket (`prop_concreteBucket_C`) of
-round(Height / MaxHeight * 20) `units`, taken from the bag. The trowel's left click takes one unit, a tip spills five,
-a 600 s timer dries it, and an empty one turns back into a mop bucket. All of it used to run on the peer it ran on and
-nowhere else: a client's water and mix stayed on its screen, and its concrete bucket existed only there
-(`coop/props/bucket_sync`). The host sends a mop bucket, a concrete bucket or a cement bag when it changes
-(`BucketState`): a bucket's own tick marks it when its state moved past a row's worth since the host last told it, and
-a verb the host runs marks what it changed. One bucket goes at most ten times a second, and with nothing changed the
-lane does no work. A joiner gets every one at its world-ready, the lane's one walk of the buckets. A client puts each row on
-its copy through the bucket's own `upd` or the concrete bucket's `updStage`. The client's concrete buckets are refused
-their tick at the script-body gate, so the spill, the drying and the turn back are the host's. Its mop buckets keep their
-tick for the water's look while tipped, and a change to one outside that tick, which is one of its own verbs, goes to
-the host as the water and soap the verb left (`BucketIntent` op 0). Its player's cement bag on a bucket (op 1) and
-trowel on a concrete bucket (op 2) are refused there and asked of the host, the trowel taking its load at once. The
-host judges each ask within 6 m of the sender's body, mixes with the bag's own rule and `lib.replaceProp`, whose births
-reach every client as any host birth, and runs `takeConcrete` on its own copy. A refused ask is answered with the host's
-row of the bucket to the sender alone, which puts its copy back. `[V]` on the rig, three peers (`coop/dev/bucket_drill`:
-fill, throw out, fill, mix, take, and the last take that turns it back, once by a client and once by the host): every
-step's water, units, stage and bag on all three peers; before the lane a client's every step stayed on its own copy,
-and its concrete bucket had no host element. The lane, its ReceiveTick watch included (about 21,000 calls a second),
-measured 0.56 ms a second on the host and 0.45 to 0.54 on a client, against 0.64 and 1.03 to 1.06 when the host read
-its buckets four times a second and every read walked the class for its fields (the drill's timer, its own overhead in
-both).
+water and `canConcrete` turns it (`lib.replaceProp`) into a concrete bucket (`prop_concreteBucket_C`) of round(Height /
+MaxHeight * 20) `units`, taken from the bag. The trowel's left click takes one unit, a tip spills five, a 600 s timer
+dries it, and an empty one turns back into a mop bucket. All of it used to run on the peer it ran on and nowhere else: a
+client's water and mix stayed on its screen, and its concrete bucket existed only there (`coop/props/bucket_sync`). The
+host sends a mop bucket, a concrete bucket or a cement bag when it changes (`BucketState`): a bucket's own tick marks it
+when its state moved past a row's worth since the host last told it, and a verb the host runs marks what it changed. One
+bucket goes at most ten times a second, and with nothing changed the lane does no work. A joiner gets every one at its
+world-ready, the lane's one walk of the buckets. A client puts each row on its copy through the bucket's own `upd` or
+the concrete bucket's `updStage`. The client's concrete buckets are refused their tick at the script-body gate, so the
+spill, the drying and the turn back are the host's. Its mop buckets keep their tick for the water's look while tipped,
+and a change to one outside that tick, which is one of its own verbs, goes to the host as the water and soap the verb
+left (`BucketIntent` op 0). Its player's cement bag on a bucket (op 1) and trowel on a concrete bucket (op 2) are
+refused there and asked of the host, the trowel taking its load at once. The host judges each ask within 6 m of the
+sender's body, mixes with the bag's own rule and `lib.replaceProp`, whose births reach every client as any host birth,
+and runs `takeConcrete` on its own copy. A refused ask is answered with the host's row of the bucket to the sender
+alone, which puts its copy back. `[V]` on the rig, three peers (`coop/dev/bucket_drill`: fill, throw out, fill, mix,
+take, and the last take that turns it back, once by a client and once by the host): every step's water, units, stage and
+bag on all three peers; before the lane a client's every step stayed on its own copy, and its concrete bucket had no
+host element. The lane, its ReceiveTick watch included (21,000 calls a second), cost 0.56 ms a second on the host and
+0.45 to 0.54 on a client, against 0.64 and 1.03 to 1.06 when the host read them on a timer. A class counts by its parent
+chain: the base's mop bucket, `prop_bucket_mop_C`, a `prop_bucket_C` with nothing of its own, stood on each peer alone
+under an exact match (Ghezra/Multivoid issue 42) `[V]` (`VOTVCOOP_BUCKET_CLASS`, `VOTVCOOP_BUCKET_EXACT=1` its red arm:
+a client's fill read 35 there and 0 elsewhere; now every step matches on all three).
 
 ## Who owns what
 
