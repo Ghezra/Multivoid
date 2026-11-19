@@ -124,7 +124,7 @@ builder and sends it on. Each peer shows it on its mirror of that hand every fra
 Content rule set on in the process: the host's mirror of a client's tool showed its aim point, the cube at the
 client's location and scale from the press, followed its stretch as the client turned, and hid at the cancel).
 
-A poster on a wall rides the same lane. A poster item's put spawns a `poster_c` (the treehouse's and the custom poster's
+A poster on a wall rides the same lane. A poster item's put spawns a `poster_C` (the treehouse's and the custom poster's
 classes too), a save actor whose record carries its picture (`type`, and `filename` for a custom one); the poster's own
 action 7 takes it down into the taker's hand and destroys it, and the item is a prop the prop lanes carry. Each ran on the
 one machine, so a poster put up or taken down on one peer stayed as it was on the others. The host now sends each
