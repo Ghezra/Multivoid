@@ -329,7 +329,11 @@ within reach. Blood rides the same lane (Ghezra/Multivoid#38): the marks the fal
 `grime_blood` decals, a bleeding body's) and the blood event's (`blooder_C`, the host's) were each machine's alone. The
 host sends its own as its spills; a client's own drops go to the host as a spill of its hand would, and its own mark
 stays where it fell, the host's copy finding it there. Blood plays no splash `[V]` (`coop/dev/blood_probe`: five drops of
-a client's and five of the host's left the same five marks on both peers in the same second, none twice). A spill that just landed carries its splash: every peer whose own flight did not land it plays the
+a client's and five of the host's left the same five marks on both peers in the same second, none twice). Fallen leaves
+ride it too: the wind's timer has every `autumnLeafSpawner_C` trace a random spot and spawn a `grime_fallenLeaves_C`
+there on each machine, so each peer grew its own; the host's go out as its spills, without a splash, and a client's own
+are removed `[V]` (`coop/dev/clean_drill`, three peers: before the change four leaf decals stood on the host alone and one
+on a client alone; after, the host's every leaf was made on both clients and no other stood). A spill that just landed carries its splash: every peer whose own flight did not land it plays the
 game's `water_splash_Cue` there, as the projectile does at its hit, and a replay plays none. A copy lies at the host's
 own floats, so a peer keeps one spill per message and checks only a replay against a decal already there; a bottle's
 pours land a millimetre apart and stack. A world cup or bottle does not spill on a client, whose copy of a food is
