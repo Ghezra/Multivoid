@@ -103,15 +103,23 @@ chat line on the host and that player once per model. The game's own `load` of a
 on a client without the model, which would otherwise destroy it. A client's light toggle is asked of the host; its bite
 is its own player's food and is told to the host, which counts the bites and ends the object at the last.
 
+The printer's run, the head tracing each layer, is its own tick, so no stream carries it: the host sends when a print
+began and when it ended (`PrinterState`), and a client's copy of the printer runs the game's own `selectMesh` and
+`print` from its player's file between the two. A copy whose run reaches its end spawns an object of its own; its
+`loadFromPrinter`, called by the printer, is refused and the object destroyed at the next tick, as the host's arrives
+as a printed object. A copy still running at the host's end is stopped as the run's own end stops it. A joiner gets
+each printer printing.
+
 `[V]` on the rig, three peers (`coop/dev/kprint_probe`): a client's print went through the host's check and printed on
 the host; both clients built the object from their file at its element id; a lift on the host moved both clients'
 copies to the host's rest, and its light reached both; a client joining after the print adopted its save-loaded copy
 by key. With one client reading as lacking the model (`VOTVCOOP_PRINTER_MODEL_FAKE=missing`, the rig's copies sharing one
 asset folder): joined before the print, the host refused it and the chat line stood on all three; joined after, the
 game's load of its save-loaded copy was refused, the copy was adopted as a placeholder and the line stood on the host and
-that client. Not measured: a player's own hold and throw of a printed object, a client's light toggle and bite, a copy
-with another hash (`differs`), and the printer's run on a client's copy, which does not animate there (the print runs on
-the host's printer alone).
+that client. A print left to its own length (45 s for a 20 cm cube): the asker's copy of the printer ran it, its height
+within a step of the host's; at its end its own object was destroyed and the host's came, one object on each peer. Not
+measured: a player's own hold and throw of a printed object, a client's light toggle and bite, a copy with another hash
+(`differs`), and a joiner arriving mid-print.
 
 ## Wire messages
 
@@ -122,6 +130,7 @@ the host's printer alone).
 | `FireExtState`, `FireExtIntent` | the host to all; a client to the host | a world extinguisher's thrust and charge, a player's spray; a client's spray on or off |
 | `MediaDeviceState` | the host to all; a client to the host | a device's track (a hash of its catalog link), time, play state and mode, and a TV's channel and picture; a client's change through its interface |
 | `PrintAsk`, `PrintCheck`, `PrintCheckReply`, `PrintNotice` | a client to the host; the host to each client; each client to the host; the host to a client | a client's print, by the printer's element id and the model; the host's question of a model; the client's hash of its folder, 0 for none; a chat line naming who lacks which model |
+| `PrinterState` | the host to all | a printer by its element id began printing a model, or its print ended |
 | `PrintedState`, `PrintedIntent` | the host to all; a client to the host | a printed object's element id, key, model and hash, light, bites and rest, or its end; a client's light toggle, its bite, or that it lacks the model |
 
 ## Late join

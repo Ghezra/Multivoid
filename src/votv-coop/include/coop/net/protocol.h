@@ -1645,6 +1645,10 @@ enum class ReliableKind : uint16_t {
     PrintNotice = 313,
     PrintedState = 314,
     PrintedIntent = 315,
+    // HOST->ALL: a printer began printing a model, or its print ended (PrinterState); a client's copy runs the game's own
+    // print between the two, and its own object at the end is refused. To a joiner, each printer printing. Not
+    // pre-world. PrinterStatePayload.
+    PrinterState = 316,
 
     // Client to host: one cheat a player asks for -- spawn items, add or remove points, fire a game event -- which the
     // host runs only while its setting net.allow_player_cheats is on and the sender holds the right
@@ -2736,6 +2740,18 @@ struct PrintedIntentPayload {
     uint16_t pad;  // 2
 };
 static_assert(sizeof(PrintedIntentPayload) == 8, "PrintedIntentPayload must be 8 bytes");
+// PrinterState. op kPrinterRunStart: the printer by host element id prints the model; kPrinterRunEnd: its print ended.
+inline constexpr uint8_t kPrinterRunStart = 0;
+inline constexpr uint8_t kPrinterRunEnd = 1;
+struct PrinterStatePayload {
+    uint32_t printerEid;           // 4
+    uint8_t  op;                   // 1
+    uint8_t  nameLen;              // 1
+    uint16_t pad;                  // 2
+    char     name[kPrintNameMax];  // 95
+    uint8_t  pad2;                 // 1
+};
+static_assert(sizeof(PrinterStatePayload) == 104, "PrinterStatePayload must be 104 bytes");
 
 // CaveRockState. The spawner (antibreatherSPawner_C, placed in the level) by its object name.
 struct CaveRockPayload {
