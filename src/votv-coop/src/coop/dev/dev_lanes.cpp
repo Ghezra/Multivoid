@@ -174,6 +174,7 @@
 #include "coop/dev/kgamer_probe.h"  // [dev] a gamer Kerfur Omega made by the host, logged on every peer
 #include "coop/dev/kprint_probe.h"  // [dev] a 3D print made by one player, its printed object logged on every peer
 #include "coop/dev/kwheel_probe.h"  // [dev] a Kerfus fast and through obstacles, its wheel logged on every peer
+#include "coop/dev/rack_record_probe.h"  // [dev] every drive box's record against the hand lane's bounds
 #include "coop/dev/wall_fill_probe.h"  // [dev] an unfinished wall filled with bricks by both players, logged on both
 #include "coop/dev/wall_preview_probe.h"  // [dev] a client's wall builder preview, logged on both
 #include "coop/dev/tower_poof_probe.h"  // [dev] the stolen radio tower fired on the host, its tower read on both
@@ -557,6 +558,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::kgamer_probe::Tick(&session);  // [dev] the gamer Omega on every peer (a latched read when off)
     coop::dev::kprint_probe::Tick(&session);  // [dev] a 3D print on every peer (a latched read when off)
     coop::dev::kwheel_probe::Tick(&session);  // [dev] a Kerfus's wheel on every peer (a latched read when off)
+    coop::dev::rack_record_probe::Tick(&session);  // [dev] the drive boxes' records (a latched read when off)
     coop::dev::wall_fill_probe::Tick(&session);  // [dev] an unfinished wall's bricks on both peers (a latched read when off)
     coop::dev::wall_preview_probe::Tick(&session);  // [dev] a wall builder's preview on both peers (a latched read when off)
     coop::dev::tower_poof_probe::Tick(&session);  // [dev] the radio tower on both peers (a latched read when off)

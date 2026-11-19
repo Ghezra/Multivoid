@@ -19,6 +19,7 @@
 #include "ue_wrap/actors/inventory.h"
 #include "ue_wrap/actors/prop.h"
 #include "ue_wrap/core/asset_load.h"
+#include "ue_wrap/desk/drive_chain.h"
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
@@ -58,13 +59,43 @@ bool Inventory() {
     return inv;
 }
 
-bool Can() { return Item() != "ext" && Item() != "disc"; }
+bool Rack() { return Item() == "rack"; }
+bool Can() { return Item() != "ext" && Item() != "disc" && !Rack(); }
 bool Disc() { return Item() == "disc"; }
 
-const wchar_t* ClassName() { return Can() ? L"prop_cannedFood_0_C" : Disc() ? L"prop_floppyDisc_C" : L"prop_fireExt_C"; }
+const wchar_t* ClassName() {
+    return Rack() ? L"prop_driveRack_C" : Can() ? L"prop_cannedFood_0_C" : Disc() ? L"prop_floppyDisc_C" : L"prop_fireExt_C";
+}
 const wchar_t* ClassPath() {
-    return Can() ? L"/Game/objects/prop_cannedFood_0.prop_cannedFood_0_C"
-                 : Disc() ? L"/Game/objects/prop_floppyDisc.prop_floppyDisc_C" : L"/Game/objects/prop_fireExt.prop_fireExt_C";
+    return Rack()  ? L"/Game/objects/prop_driveRack.prop_driveRack_C"
+           : Can() ? L"/Game/objects/prop_cannedFood_0.prop_cannedFood_0_C"
+           : Disc() ? L"/Game/objects/prop_floppyDisc.prop_floppyDisc_C" : L"/Game/objects/prop_fireExt.prop_fireExt_C";
+}
+
+// A drive box (VOTVCOOP_ITEM_TRIP_ITEM=rack, VOTV-MP/Multivoid#192): the host fills 12 of its 16 rows, more than the
+// hand record's old 8 signals, each a drive named mvtrip_<n>.
+int RackHeld(void* rack) {
+    ue_wrap::drive_chain::RackRow rows[ue_wrap::drive_chain::kRackSlots];
+    int n = 0, held = 0;
+    if (!ue_wrap::drive_chain::ReadRack(rack, rows, n)) return -1;
+    for (const auto& r : rows) held += r.has ? 1 : 0;
+    return held;
+}
+bool FillRack(void* rack) {
+    bool ok = rack != nullptr;
+    for (int i = 0; ok && i < 12; ++i) {
+        ue_wrap::drive_chain::RackRow r;
+        r.has = true;
+        r.row.name = L"mvtrip_" + std::to_wstring(i);
+        r.row.id = r.row.name;
+        r.row.object = L"mvtrip_object";
+        r.row.signal = L"mvtrip_signal";
+        r.row.size = 10.f;
+        r.row.decoded = 10.f;
+        r.row.hasData = true;
+        ok = ue_wrap::drive_chain::WriteRackRow(rack, i, r);
+    }
+    return ok && ue_wrap::drive_chain::CallRackGen(rack);
 }
 
 int Bool(void* obj, const wchar_t* name) {
@@ -102,7 +133,9 @@ std::vector<void*> Items() {
 
 std::string State(void* item) {
     char buf[96];
-    if (Can()) {
+    if (Rack()) {
+        snprintf(buf, sizeof(buf), "drives=%d", RackHeld(item));
+    } else if (Can()) {
         const int32_t* foods = IntAt(item, L"foods");
         snprintf(buf, sizeof(buf), "opened=%d foods=%d", Bool(item, L"opened"), foods ? *foods : -1);
     } else if (Disc()) {
@@ -198,6 +231,8 @@ void Tick(coop::net::Session* session) {
             void* const item = cls && me && E::TryGetActorLocation(me, at) ? E::SpawnActor(cls, {at.X + 120.f, at.Y, at.Z + 40.f})
                                                                         : nullptr;
             UE_LOGI("[TRIP] host: spawned the item (ok=%d)", item ? 1 : 0);
+            if (Rack()) UE_LOGI("[TRIP] host: filled the drive box's rows (ok=%d, drives=%d)", FillRack(item) ? 1 : 0,
+                                RackHeld(item));
         }
     }
     if (acting && g_step == 1 && t >= 24000u) {
