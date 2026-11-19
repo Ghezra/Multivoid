@@ -51,6 +51,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::ChairSeatIntent:
     case ReliableKind::PropRestQuery:
     case ReliableKind::BucketIntent:
+    case ReliableKind::KerfurColorIntent:
     case ReliableKind::WallPreview:
     case ReliableKind::DingusFound:       // op 0 a client's report; op 1 is the host's, its handler checks the slot
     case ReliableKind::GroundHoseIntent:
@@ -222,6 +223,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::ChairSeatState:
     case ReliableKind::PropRestPose:
     case ReliableKind::BucketState:
+    case ReliableKind::KerfurColorState:
     case ReliableKind::AtvHostState:
     case ReliableKind::SkySignalState:
     case ReliableKind::EmailAppend:

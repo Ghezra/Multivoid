@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 340;
+inline constexpr uint16_t kProtocolVersion = 341;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1621,6 +1621,13 @@ enum class ReliableKind : uint16_t {
     // own, and its BucketState answers. Never relayed. Not pre-world. BucketIntentPayload.
     BucketState = 306,
     BucketIntent = 307,
+    // A custom-colour Kerfur Omega's or Kerfus's colour, its `hsv` (coop/creatures/kerfur_color_sync). HOST->ALL: an
+    // actor's colour when the host's picker applied one, when a kerfur changed form, and every one to a joiner; a client
+    // writes it and repaints. Not pre-world. KerfurColorPayload. CLIENT->HOST: this client's player picked a colour for
+    // one (the picker's colour, as the game's intComs_applyColor takes it); the host judges the reach and applies it on
+    // its own copy, and its KerfurColorState answers. Never relayed. Not pre-world. KerfurColorIntentPayload.
+    KerfurColorState = 308,
+    KerfurColorIntent = 309,
 
     // Client to host: one cheat a player asks for -- spawn items, add or remove points, fire a game event -- which the
     // host runs only while its setting net.allow_player_cheats is on and the sender holds the right
@@ -2628,6 +2635,19 @@ struct BucketIntentPayload {
     BucketRow bucket;      // 16 -- the bucket; op 0 carries its level and count after the verb
 };
 static_assert(sizeof(BucketIntentPayload) == 24, "BucketIntentPayload must be 24 bytes");
+
+// KerfurColorState. An actor by host element id and its `hsv` (H in degrees, S, V), as the game's RGBToHSV left it.
+struct KerfurColorPayload {
+    uint32_t eid;     // 4
+    float    hsv[3];  // 12
+};
+static_assert(sizeof(KerfurColorPayload) == 16, "KerfurColorPayload must be 16 bytes");
+// KerfurColorIntent. A prop by host element id and the picker's linear colour (R, G, B, A).
+struct KerfurColorIntentPayload {
+    uint32_t eid;       // 4
+    float    color[4];  // 16
+};
+static_assert(sizeof(KerfurColorIntentPayload) == 20, "KerfurColorIntentPayload must be 20 bytes");
 
 // CaveRockState. The spawner (antibreatherSPawner_C, placed in the level) by its object name.
 struct CaveRockPayload {

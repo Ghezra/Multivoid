@@ -634,6 +634,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_vidcam_drop.cpp
     src/harness/autotest/autotest_backrooms_probe.cpp
     src/coop/creatures/kerfur_camera.cpp
+    src/coop/creatures/kerfur_color_sync.cpp
     src/coop/creatures/kerfur_dress_sync.cpp
     src/coop/interactables/atv_passenger.cpp
     src/coop/interactables/generator_sync.cpp

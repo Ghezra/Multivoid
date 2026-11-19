@@ -49,6 +49,7 @@
 #include "coop/interactables/turbine_sync.h"
 #include "coop/interactables/generator_sync.h"
 #include "coop/world/flood_sync.h"
+#include "coop/creatures/kerfur_color_sync.h"
 #include "coop/creatures/kerfur_dress_sync.h"
 #include "coop/world/arir_ship_sync.h"
 #include "coop/world/cave_rock_sync.h"
@@ -159,6 +160,7 @@ void ConnectReplayForSlot(int slot) {
     coop::generator_sync::SendJoin(slot);                        // and every portable generator
     coop::flood_sync::SendJoin(slot);                            // and the basement's pipes and flood
     coop::kerfur_dress_sync::SendJoin(slot);                     // and every Omega's outfit
+    coop::kerfur_color_sync::SendJoin(slot);                     // and every custom-colour kerfur's colour
     coop::arir_ship_sync::SendJoin(slot);                        // and the Ariral ship, while it is up
     coop::cave_rock_sync::SendJoin(slot);                        // and the Antibreather cave's entrance
     coop::chair_seat::SendJoin(slot);                            // and who sits on which chair
