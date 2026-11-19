@@ -79,6 +79,11 @@ bool IsActorDrivenByOtherThan(void* actor, int slot);
 // excludes none). Game thread.
 int DrivingSlotOf(void* actor, int except = -1);
 
+// Whether `slot` carries, by its grab's drive here, a prop of the class named `base` or of one that descends from it: a
+// heavy prop (a big gas can) goes no hotbar hand and is carried by the grab alone, so a host judging what a client pours
+// with asks this beside hand_item::HeldClassIsA. Game thread only.
+bool CarriesClassA(int slot, const wchar_t* base);
+
 // Whether the drive of `slot` itself moves `actor` (the question DrivingSlotOf cannot answer when two slots drive one).
 // Game thread.
 bool IsDrivenBy(void* actor, int slot);

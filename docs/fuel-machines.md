@@ -32,7 +32,12 @@ now the machine (`coop/interactables/woodchipper_sync`, `coop/interactables/wood
   and runs `checkActive`, or runs the game's own press with the sender's puppet as the player, inside the requester
   feedback scope, and answers a refused intent with the state, to the sender alone, whenever it can name the chipper (a
   key that names none has no state to send). A client can refill a chipper to full on demand, at the intent budget of
-  four a second; it cannot overfill it, and no gas can drains but the one in the client's own hand `[?]`.
+  four a second; it cannot overfill it, and no gas can drains but the one in the client's own hand `[?]`. A gas can is
+  any class of the can's line (`prop_gascan_C` and its big, full, mini and funny cans, which the game's own fuelling
+  casts take), in the hotbar hand or carried by the grab, as a big can is: the chipper's, the generator's and the ATV's
+  judges ask both (`hand_item::HeldClassIsA`, `remote_prop::CarriesClassA`) `[V]` (`coop/dev/genp_probe`,
+  `VOTVCOOP_GENP_GRAB=prop_gascan_big_full_C`: a client's pour from a carried big can was refused as "no gas can in the
+  hand"; now the host added its 100 and the generator ran on both).
 - At a joiner's ready edge the host sends which chippers are on; their fuel comes with the prop records, and the prop a
   chipper took or left is the ordinary prop state, no flip pending. A mid-chip chipper shows no chip animation or sound `[?]`.
 
