@@ -92,6 +92,16 @@ void SetReplayProbe(bool (*inReplay)());
 // not loaded.
 std::vector<std::wstring> RegistryClassNames(const wchar_t* prefix);
 
+// Every Blueprint under /Game/objects/ as (class name with `_C`, its ParentClass tag lower case, `/Script/` native or
+// not), loaded or not: the game's class tree for a reader that must know a class's subclasses. Empty when the registry
+// is unreachable. Game thread.
+struct RegistryParent {
+    std::wstring cls;
+    std::wstring parent;
+    bool native = false;
+};
+std::vector<RegistryParent> RegistryParents();
+
 // A drill's red arm: false turns the registry step off, so ResolveClass is the object index alone. Never set by
 // shipping code.
 void SetRegistryStep(bool on);

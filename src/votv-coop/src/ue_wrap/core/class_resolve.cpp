@@ -450,6 +450,16 @@ uint64_t LoadsRun() { return g_s.loadsRun; }
 uint64_t LoadsDuringReplay() { return g_s.loadsDuringReplay; }
 void SetReplayProbe(bool (*inReplay)()) { g_s.inReplay = inReplay; }
 
+std::vector<RegistryParent> RegistryParents() {
+    std::vector<RegistryParent> out;
+    if (game_thread::IsDefinitelyOffGameThread() || !EnsureMap()) return out;
+    for (const auto& kv : g_s.assetOf) {
+        const size_t dot = kv.second.path.rfind(L'.');
+        out.push_back({kv.second.path.substr(dot + 1) + L"_C", kv.second.parent, kv.second.parentNative});
+    }
+    return out;
+}
+
 std::vector<std::wstring> RegistryClassNames(const wchar_t* prefix) {
     std::vector<std::wstring> out;
     if (!prefix || game_thread::IsDefinitelyOffGameThread() || !EnsureMap()) return out;

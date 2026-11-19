@@ -9,6 +9,7 @@
 
 #include "coop/config/config.h"
 #include "ue_wrap/core/asset_load.h"
+#include "ue_wrap/core/class_resolve.h"
 #include "ue_wrap/core/game_thread.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
@@ -105,6 +106,39 @@ DWORD WINAPI ClassDumpThread(LPVOID /*arg*/) {
             UE_LOGI("class_dump: script of %ls written (class %hs)", w.c_str(), cls ? "found" : "NOT loaded");
             d.store(1);
         });
+    }
+    // The game's class tree from the asset registry, loaded or not: VOTVCOOP_CLASS_TREE names the file, one
+    // `class<TAB>parent<TAB>native` line per Blueprint under /Game/objects/.
+    const std::string treeOut = coop::config::ReadEnv("VOTVCOOP_CLASS_TREE");
+    if (!treeOut.empty()) {
+        ue_wrap::game_thread::RunAndWait([&](std::atomic<int>& d) {
+            std::wofstream out(treeOut, std::ios::trunc);
+            const auto rows = ue_wrap::class_resolve::RegistryParents();
+            for (const auto& r : rows) out << r.cls << L"\t" << r.parent << L"\t" << (r.native ? 1 : 0) << L"\n";
+            UE_LOGI("class_dump: the class tree written, %zu Blueprint(s)", rows.size());
+            d.store(1);
+        });
+    }
+    // Every loaded Blueprint class's functions as text, one file per class, into VOTVCOOP_CLASS_SCRIPT_ALL (a folder):
+    // the way to find which class calls a function or names a class, by a text search over the lot.
+    const std::string allDir = coop::config::ReadEnv("VOTVCOOP_CLASS_SCRIPT_ALL");
+    if (!allDir.empty()) {
+        size_t n = 0;
+        for (void* cls : R::FindObjectsByClass(L"BlueprintGeneratedClass")) {
+            ue_wrap::game_thread::RunAndWait([&](std::atomic<int>& d) {
+                const std::wstring name = R::ToString(R::NameOf(cls));
+                std::ofstream out(allDir + "/" + std::string(name.begin(), name.end()) + ".txt",
+                                  std::ios::binary | std::ios::trunc);
+                for (const R::ObjectRef& o : R::ChildObjectsOf(cls)) {
+                    if (o.className != L"Function") continue;
+                    const ue_wrap::script_fingerprint::Result r = ue_wrap::script_fingerprint::Of(o.object);
+                    out << "=== " << std::string(o.name.begin(), o.name.end()) << '\n' << r.text << '\n';
+                }
+                ++n;
+                d.store(1);
+            });
+        }
+        UE_LOGI("class_dump: every loaded Blueprint class's script written, %zu class(es)", n);
     }
     // The same text for classes nothing has loaded yet, in one launch: VOTVCOOP_CLASS_SCRIPT_PATHS lists object paths,
     // comma separated, and each lands as <VOTVCOOP_CLASS_SCRIPT_DIR>/<class>_script.txt.
