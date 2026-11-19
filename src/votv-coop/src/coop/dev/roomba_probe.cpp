@@ -13,6 +13,7 @@
 #include "coop/net/session.h"
 #include "coop/player/players_registry.h"
 #include "ue_wrap/core/call.h"
+#include "ue_wrap/core/asset_load.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
@@ -40,13 +41,27 @@ bool On() {
     return on;
 }
 
+// VOTVCOOP_ROOMBA_CLASS: the cleaner the host drops, prop_roomba_C by default; another (prop_roomba_mx_C) is loaded by
+// its path under /Game/objects/.
+std::wstring CleanerClassName() {
+    const std::string v = coop::config::ReadEnv("VOTVCOOP_ROOMBA_CLASS");
+    return v.empty() ? std::wstring(L"prop_roomba_C") : std::wstring(v.begin(), v.end());
+}
+void* CleanerClass() {
+    const std::wstring n = CleanerClassName();
+    if (void* c = OI::ClassByName(n.c_str())) return c;
+    const std::wstring asset = n.substr(0, n.size() - 2);
+    return ue_wrap::asset_load::LoadObjectByPath((L"/Game/objects/" + asset + L"." + n).c_str());
+}
+
 std::vector<void*> Roombas() {
     std::vector<void*> out;
-    if (void* cls = OI::ClassByName(L"prop_roomba_C"))
-        OI::ForEachInstance(cls, [](void* ctx, void* obj, int32_t) {
-            if (obj && R::IsLive(obj) && !R::NameStartsWith(R::NameOf(obj), L"Default__"))
-                static_cast<std::vector<void*>*>(ctx)->push_back(obj);
-        }, &out);
+    for (const wchar_t* name : {L"prop_roomba_C", L"prop_roomba_mx_C"})
+        if (void* cls = OI::ClassByName(name))
+            OI::ForEachInstance(cls, [](void* ctx, void* obj, int32_t) {
+                if (obj && R::IsLive(obj) && !R::NameStartsWith(R::NameOf(obj), L"Default__"))
+                    static_cast<std::vector<void*>*>(ctx)->push_back(obj);
+            }, &out);
     return out;
 }
 
@@ -58,7 +73,7 @@ bool Active(void* roomba) {
 }
 
 bool PressSwitch(void* roomba) {
-    ue_wrap::ParamFrame f(R::FindFunction(R::ClassOf(roomba), L"actionOptionIndex"));
+    ue_wrap::ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(roomba), L"actionOptionIndex"));
     if (!f.valid()) return false;
     f.Set<uint8_t>(L"action", 5);
     return ue_wrap::Call(roomba, f);
@@ -71,14 +86,14 @@ void* g_mine = nullptr;
 void StepHost() {
     if (g_step == 0) {
         void* const me = coop::players::Registry::Get().Local();
-        void* const cls = OI::ClassByName(L"prop_roomba_C");
+        void* const cls = CleanerClass();
         ue_wrap::FVector at{};
         if (!me || !cls || !E::TryGetActorLocation(me, at)) return;
         const ue_wrap::FVector fwd = E::GetActorForwardVector(me);
         void* r = nullptr;
         const auto d = coop::dev::drill_props::DropOnFloor(me, cls, nullptr, at.X + fwd.X * 300.f, at.Y + fwd.Y * 300.f,
                                                            at.Z, 400.f, 50.f, 20.f, &r);
-        UE_LOGI("[RMB] host: dropped a cleaner (%d) %p", static_cast<int>(d), r);
+        UE_LOGI("[RMB] host: dropped a cleaner %ls (%d) %p", CleanerClassName().c_str(), static_cast<int>(d), r);
         g_mine = r;
         g_onAt = Now() + 3000;
         g_step = 1;
