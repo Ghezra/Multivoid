@@ -594,5 +594,6 @@ prop resolves.
 | notebook sync | `coop/interactables/notebook_sync`, `coop/props/prop_save_data`, `ue_wrap/actors/notebook` |
 | the pocket blip | `coop/items/inventory_pickup_sync` |
 | the join | `coop/props/prop_snapshot`, `coop/props/snapshot_census`, `coop/props/join_membership_sweep`, `coop/props/unresolved_pose_ledger` |
+| the 3D printer and its printed objects | `coop/props/printer_sync`, `coop/props/printer_models`; [kitchen-and-media.md](kitchen-and-media.md) |
 | the spawners a client must not run | `coop/world/spawn_authority` |
 | tests | `harness/autotest/autotest_grab.cpp` |

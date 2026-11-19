@@ -3,7 +3,7 @@
 ## Purpose
 
 The microwave, the mini oven and the grill, the placed radios and TVs with the ATV's radio, the GPU mining rig and the
-fire extinguisher's foam: who owns each one's state and how a peer's press or pick reaches the others.
+fire extinguisher's foam, and the 3D printer and what it prints: who owns each one's state and how a peer's press or pick reaches the others.
 The other keyed devices around the base are in [devices.md](devices.md).
 
 ## How it works
@@ -73,6 +73,46 @@ runs, never above the hand's word, and sends it twice a second and at the end; t
 take it, so its drop carries the host's count `[V]` (`coop/dev/item_trip_probe`, `VOTVCOOP_ITEM_TRIP_ITEM=ext`: six
 seconds' spray from 1.000 read 0.900 in the hand, on the host and on both copies after the drop, either player spraying).
 
+### The 3D printer
+
+The printer (`3dPrinterAnim_C`, a prop) reads a model from the player's own disc: the folder
+`<asset folder>\meshes\printer\<name>`, its `<name>.obj` and what sits beside it, where the asset folder is the
+gamemode's `assetFolder` or `%LOCALAPPDATA%\VotV\Assets`. At its print's end it spawns a `printedObject_C`, gives it the
+model's folder name and hands it the mesh it loaded; the object's save record keeps the name, and its `load` reads the
+model from that player's disc again, destroying the object with a hint when the file is missing. `printedObject_C` is
+no `prop_C`, so no prop lane carried it: a print stood on its printer's machine alone, and a client saw it only after a
+save brought it, never moving with the host's after that (VOTV-MP/Multivoid#49).
+
+A print is the host's, and runs only when every connected player holds the same model (`coop/props/printer_sync`). A
+model is named by a hash of its whole folder, each file's path inside it and its bytes (`coop/props/printer_models`).
+A client's `print` is refused on its copy of the printer and asked of the host (`PrintAsk`), which judges the reach
+(8 m), selects the model on its own printer and checks it; the host's own `print` is held for the same check while a
+client is connected. The host asks every connected client for its hash (`PrintCheck`, `PrintCheckReply`) and waits up
+to 5 s; it prints when every hash equals its own, and otherwise refuses: a chat line on the host, the asker and each
+player lacking the model names who lacks it or holds another copy, and which (`PrintNotice`).
+
+The host gives each printed object a keyless prop element, as the trash clump has, and mints its save key with the
+object's own `GetKey`. The element lets the held-prop stream carry it while a player holds it, which needs nothing else
+of a prop. The host sends the object (`PrintedState`): its element id, key, model and the model's hash, light and bites,
+and where it rests, at its print, when its light or bites change, once it comes to rest moved (over 2 cm or 3
+degrees), every one to a joiner, and its end. Between rests each peer's own physics carries it, as a thrown prop. A
+client spawns it, or adopts the copy its save loaded by key, and builds it from its own file when its hash matches
+the host's. A client without that copy keeps a placeholder, hidden, with no collision and no physics, so the object's
+identity stays and nothing of another model stands in its place; it tells the host (`PrintedIntent`), which puts the
+chat line on the host and that player once per model. The game's own `load` of a save-loaded printed object is refused
+on a client without the model, which would otherwise destroy it. A client's light toggle is asked of the host; its bite
+is its own player's food and is told to the host, which counts the bites and ends the object at the last.
+
+`[V]` on the rig, three peers (`coop/dev/kprint_probe`): a client's print went through the host's check and printed on
+the host; both clients built the object from their file at its element id; a lift on the host moved both clients'
+copies to the host's rest, and its light reached both; a client joining after the print adopted its save-loaded copy
+by key. With one client reading as lacking the model (`VOTVCOOP_PRINTER_MODEL_FAKE=missing`, the rig's copies sharing one
+asset folder): joined before the print, the host refused it and the chat line stood on all three; joined after, the
+game's load of its save-loaded copy was refused, the copy was adopted as a placeholder and the line stood on the host and
+that client. Not measured: a player's own hold and throw of a printed object, a client's light toggle and bite, a copy
+with another hash (`differs`), and the printer's run on a client's copy, which does not animate there (the print runs on
+the host's printer alone).
+
 ## Wire messages
 
 | Message | Direction | Carries |
@@ -81,10 +121,13 @@ seconds' spray from 1.000 read 0.900 in the hand, on the host and on both copies
 | `MinerState`, `MinerIntent` | the host to all, an answer to its asker alone; a client to the host | a rig's GPUs, slots, coolers, points and heat; a client's use of an item or its claim |
 | `FireExtState`, `FireExtIntent` | the host to all; a client to the host | a world extinguisher's thrust and charge, a player's spray; a client's spray on or off |
 | `MediaDeviceState` | the host to all; a client to the host | a device's track (a hash of its catalog link), time, play state and mode, and a TV's channel and picture; a client's change through its interface |
+| `PrintAsk`, `PrintCheck`, `PrintCheckReply`, `PrintNotice` | a client to the host; the host to each client; each client to the host; the host to a client | a client's print, by the printer's element id and the model; the host's question of a model; the client's hash of its folder, 0 for none; a chat line naming who lacks which model |
+| `PrintedState`, `PrintedIntent` | the host to all; a client to the host | a printed object's element id, key, model and hash, light, bites and rest, or its end; a client's light toggle, its bite, or that it lacks the model |
 
 ## Late join
 
-Every radio and TV again at the joiner's ready edge, and every kitchen machine that is off its defaults.
+Every radio and TV again at the joiner's ready edge, every kitchen machine that is off its defaults, and every printed
+object (a save-loaded copy adopted by its key).
 
 ## Known limits
 
@@ -100,3 +143,4 @@ Every radio and TV again at the joiner's ready edge, and every kitchen machine t
 | a placed radio or TV | `coop/world/media_device_sync`, `ue_wrap/world/media_device` |
 | the GPU mining rig | `coop/props/miner_sync`; `coop/dev/miner_probe` |
 | the fire extinguisher's foam | `coop/props/fireext_sync`; `coop/dev/foam_probe` |
+| the 3D printer and its printed objects | `coop/props/printer_sync`, `coop/props/printer_models`; `coop/dev/kprint_probe` |

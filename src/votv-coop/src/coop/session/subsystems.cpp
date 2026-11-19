@@ -153,6 +153,7 @@
 #include "coop/interactables/generator_sync.h"   // a portable generator's fuel and on/off, the host's
 #include "coop/world/flood_sync.h"   // the basement flood, the host's
 #include "coop/creatures/kerfur_color_sync.h"   // a custom-colour kerfur's colour
+#include "coop/props/printer_sync.h"            // a 3D print and its printed object
 #include "coop/creatures/kerfur_dress_sync.h"   // an Omega's outfit and its pat
 #include "coop/creatures/kerfur_camera.h"   // a client's Omega camera on its laptop list
 #include "coop/world/arir_ship_sync.h"   // the Ariral ship in the sky
@@ -315,6 +316,7 @@ void Install(coop::net::Session& session) {
     coop::flood_sync::Install(&session);        // the basement's burst pipes and flood
     coop::kerfur_dress_sync::Install(&session);  // an Omega's outfit and its pat
     coop::kerfur_color_sync::Install(&session);  // a custom-colour kerfur's colour: the host's
+    coop::printer_sync::Install(&session);  // a 3D print, the host's, and the object it prints
     coop::arir_ship_sync::Install(&session);  // the Ariral ship in the sky
     coop::cave_rock_sync::Install(&session);  // the Antibreather cave's entrance
     coop::chair_seat::Install(&session);  // a player sitting on a chair
@@ -623,6 +625,7 @@ DisconnectStats DisconnectAll() {
     coop::flood_sync::OnDisconnect();
     coop::kerfur_dress_sync::OnDisconnect();
     coop::kerfur_color_sync::OnDisconnect();
+    coop::printer_sync::OnDisconnect();
     coop::cave_rock_sync::OnDisconnect();
     coop::chair_seat::OnDisconnect();
     coop::glowstick_sync::OnDisconnect();
@@ -750,6 +753,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     coop::vent_crawler_sync::Tick();  // a client's crawl sounds as their times come
     coop::kerfur_convert::PaintGamerCopies();  // a client's gamer Omega copy gets the rainbow its own tick paints
     coop::kerfur_color_sync::Tick();  // the picker's watches, a client's asks and the colours it parked
+    coop::printer_sync::Tick();  // the print checks, and the host's printed objects and where they rest
     coop::bucket_sync::Tick();  // the host's rows of the buckets that changed, a client's asks
     coop::props::prop_can_state::Tick();  // the init watch's names resolve until it is live
     coop::props::prop_food_sync::Tick();  // the host's poll, the client's wait list

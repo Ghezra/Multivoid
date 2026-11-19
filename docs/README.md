@@ -66,7 +66,7 @@ messages, the late-join answer, the known limits with their evidence, and the co
 | [signals.md](signals.md) | The signal workstation: occupancy, the desk, the download simulation, the catch and the dishes, the deck, drives and racks, the laptop, the database, and the upgrades |
 | [devices.md](devices.md) | Doors, keypads, lights, the power panel, the turbine, windows and grime, the drone, the signal servers |
 | [fuel-machines.md](fuel-machines.md) | The woodchipper and the portable generator: fuel, on/off, a client's pour and press |
-| [kitchen-and-media.md](kitchen-and-media.md) | The microwave, the mini oven and the grill, the placed radios and TVs, and the ATV's radio |
+| [kitchen-and-media.md](kitchen-and-media.md) | The microwave, the mini oven and the grill, the placed radios and TVs, the ATV's radio, and the 3D printer and what it prints |
 | [base-computer.md](base-computer.md) | The base laptop and the economy: the balance, upgrades, the laptop's tab and inbox, shop orders, the coin gun, the floppy slot |
 | [vehicles.md](vehicles.md) | The ATV: a mirror that runs the vehicle's physics natively and is steered, the two authority predicates, the condition that travels |
 | [ui.md](ui.md) | The native screens, the F1 overlay, the HUD, and the game's notifications |
