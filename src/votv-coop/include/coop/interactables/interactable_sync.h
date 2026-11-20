@@ -6,12 +6,12 @@
 //   - ApplianceState (35):   the save-actor appliance family
 //   - LockerDoorState (50):  lockers and the drone-console box (level-export name)
 //   - LightGroupState (129): light groups   (runTrigger on the root, host-authoritative)
-//   - OvenRepairState (151): the kitchen oven's repair (its fix(), one way)
+//   - OvenRepairState (151): the kitchen oven's repair (its fix(), one way; the host's, on a grant of a client's ask)
 //   - CameraActiveState (181), CameraLightState (182): a security camera's two bits (host-authoritative)
 //   - CrematorState, CargoLiftState: the cremator's lever run, the cargo lift's direction (both host-authoritative)
 // Gameplay/network layer (principle 7): the wire protocol, the senders, the receiver apply, the key index, the
 // deferred-apply retry and the connect snapshot; the engine only through ue_wrap. Every channel is sent at the verbs
-// that write its state, on the authority (the host for doors, light groups, cameras, cremators and the cargo lift, the peer that ran
+// that write its state, on the authority (the host for doors, light groups, cameras, cremators, the cargo lift and a repaired oven, the peer that ran
 // it for the rest); a save's load reaches a joiner in the connect snapshot. The model: docs/devices.md.
 
 #pragma once
@@ -102,6 +102,16 @@ std::wstring GarageKey(void* g);
 std::wstring DoorBoxKey(void* box);
 std::wstring ContainerKey(void* swinger);
 std::wstring OvenKey(void* oven);
+
+// The live oven the oven lane indexes under `key` (the key OvenKey gives), or null. Game thread.
+void* OvenActor(const std::wstring& key);
+
+// The oven lane's live indexed ovens, key and actor, appended to `out` (empty with a stale index). Game thread.
+void LiveOvens(std::vector<std::pair<std::wstring, void*>>& out);
+
+// `fn` runs after each rebuild of the oven index, the point a new oven first has a key (one callback; game thread).
+// For the oven repair-step lane, which keeps what it cannot place until its oven is indexed.
+void SetOvenIndexedListener(void (*fn)());
 
 // The live swinger the container lane indexes under `key` (the key ContainerKey gives: the portable `mv_` one where
 // the swinger has an identity, else its game key), or null. The held-item receiver's answer for a dragged lid,

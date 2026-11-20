@@ -93,6 +93,7 @@ set(VOTVCOOP_SOURCES_UE_WRAP_2
     src/ue_wrap/devices/lightswitch.cpp
     src/ue_wrap/devices/garage.cpp
     src/ue_wrap/devices/appliance.cpp
+    src/ue_wrap/devices/oven_screen.cpp
     src/ue_wrap/devices/coffee.cpp
     src/ue_wrap/devices/cremator.cpp
     src/ue_wrap/devices/power_control.cpp
@@ -102,6 +103,7 @@ set(VOTVCOOP_SOURCES_UE_WRAP_2
     src/ue_wrap/devices/atv_passenger_seat.cpp
     src/ue_wrap/devices/cargo_lift.cpp
     src/ue_wrap/devices/atv_condition.cpp
+    src/ue_wrap/devices/atv_parts.cpp
     src/ue_wrap/devices/drone.cpp
     src/ue_wrap/devices/drone_console.cpp
     src/ue_wrap/devices/windturbine.cpp
@@ -110,6 +112,7 @@ set(VOTVCOOP_SOURCES_UE_WRAP_2
     src/ue_wrap/devices/radio_tower.cpp
     src/ue_wrap/desk/device_screen.cpp
     src/ue_wrap/desk/space_renderer.cpp
+    src/ue_wrap/desk/analog_desk.cpp
     src/ue_wrap/desk/console_desk.cpp
     src/ue_wrap/desk/desk_short.cpp
     src/ue_wrap/desk/comp_pane.cpp
@@ -141,6 +144,7 @@ set(VOTVCOOP_SOURCES_UE_WRAP_2
     src/ue_wrap/actors/swinger.cpp
     src/ue_wrap/actors/broom.cpp
     src/ue_wrap/actors/fire_extinguisher.cpp
+    src/ue_wrap/actors/miner.cpp
     src/ue_wrap/actors/woodchipper.cpp
     src/ue_wrap/actors/chip_pile.cpp
     src/ue_wrap/engine/engine_pawn.cpp
@@ -184,6 +188,7 @@ set(VOTVCOOP_SOURCES_UE_WRAP_2
     src/ue_wrap/actors/prop_gather.cpp
     src/ue_wrap/actors/spawner_stamp.cpp
     src/ue_wrap/actors/prop_events.cpp
+    src/ue_wrap/actors/prop_pry.cpp
     src/ue_wrap/actors/prop_use.cpp
     src/ue_wrap/actors/snack.cpp
     src/ue_wrap/actors/prop_fire.cpp

@@ -304,3 +304,34 @@ One contributor's code, from the [credit ledger](../credits.md#the-ledger).
   and every other copy follows that player's stream to the same rest. Kept as written: the claim of a body push and its
   watch around a player. On top: the host's own push flown by the host, a push's end left asleep at its pose only once
   the body sleeps, the watch reading only the player's own body, and a drill with a red for each mechanism.
+
+- **The desk's back plates and a station's door** ([#135](https://github.com/VOTV-MP/Multivoid/pull/135)): a back plate's
+  unbolt, take-off, put-back and bolt on the signal desk, and a transformer station's door, happened for one player only.
+  Now the host judges each and every peer sees the result. Kept as written: the asks, the host's judge, the plates and
+  doors sent on change and to a joiner. On top: an unbolt asks for the state it wants, every ask is answered with its
+  reason and a refused one shows the game's hint, a put-back is judged on the sender's reach and hold, a client's desk
+  never eats a plate the host handed back, the plates and doors are sent on the game's own updates instead of a poll,
+  and a drill with a red for each judge. Handing the taken-off plate into the asker's hand is a package of its own.
+
+- **An extinguisher's foam on every peer** ([#134](https://github.com/VOTV-MP/Multivoid/pull/134)): a spray from the hand and a runaway's
+  thrust showed only on the machine that ran them. Now every peer shows each player's spray on its copy of that hand and the
+  thrust on its copy of the extinguisher, a joiner is told both, and the charge is the host's count. Kept as written: the spray
+  told to the host and every peer, the host's count of the charge. On top: every peer casts the game's ray from its copy of the
+  sprayer's hand, so each player's own fire still goes out; a client's damage to its copy asks the host, which judges it and
+  sets its own copy off; a hand change ends a spray at once; and drills with a red for each half.
+- **The sky after a backrooms visit** ([#171](https://github.com/VOTV-MP/Multivoid/pull/171)): a visit hid every sun, sky light and
+  fog and showed them all at its end, the night's sun included. Kept as written: only what was shown is hidden. On top: during a
+  visit the day cycle's own sky writes are held and applied at its end (the once-a-second re-hide went), and a drill with a red.
+- **The desk's cursor beep** ([#182](https://github.com/VOTV-MP/Multivoid/pull/182)): the coordinate cursor's loop had no falloff, so
+  every peer heard it at full volume map-wide. Kept as written: the loop takes the desk's own attenuation. On top: it is marked
+  done only once the attenuation took, and the probe says PASS or FAIL with a red.
+- **A crouched player's steps** ([#168](https://github.com/VOTV-MP/Multivoid/pull/168), [#169](https://github.com/VOTV-MP/Multivoid/pull/169)):
+  a crawling player stepped at the standing stride on every other screen. Kept as written: the pose carries a crouch bit and both
+  strides follow it; the ground read on each step. On top: the ground line is a dev read, and the crawl is a drill with a red.
+
+- **A GPU mining rig** ([#133](https://github.com/VOTV-MP/Multivoid/pull/133)): a rig's slots, GPUs, coolers, mined points and its claim ran on one machine each.
+  Now the host's rig is the one rig: a client's use of an item on it and its claim are asked of the host, and every peer shows the
+  host's counts, points, heat and power, a joiner included. Kept as written: the two kinds, the host running its own rig, the client
+  refusing its own tick and fire debris. On top: the host checks the client's hand before a use and gives back an item it refused,
+  budgets uses, claims and refunds, refuses a rig record a client did not just drop, sends state on the rig's own events instead of a
+  scan, and drills with a red for each judge.

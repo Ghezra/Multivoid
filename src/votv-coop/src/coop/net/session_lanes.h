@@ -129,7 +129,8 @@ constexpr bool IsClientRelayableReliableKind(ReliableKind k) {
     case ReliableKind::ContainerState:
     case ReliableKind::GarageDoorState:   // symmetric
     case ReliableKind::ApplianceState:    // symmetric
-    case ReliableKind::OvenRepairState:   // symmetric, one way
+    // OvenRepairState and OvenProgressState are not relayable: a client's repair and its steps are asks the host judges
+    // (oven_repair_judge), and the host sends the state itself.
     case ReliableKind::LockerDoorState:   // symmetric
     // DeskState is not relayable: adopt-only, host to joiner; live desk input rides DeskInput.
     case ReliableKind::DeskInput:         // presser-authored deltas

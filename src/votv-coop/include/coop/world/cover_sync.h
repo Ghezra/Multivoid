@@ -25,10 +25,13 @@ struct CoverPayload;
 
 namespace coop::cover_sync {
 
-// Keep the session and register the watches on the desk's plates and the stations' door press. Idempotent.
+// Keep the session and register the watches: the desk's plates and the stations' door press, and the game's announcements
+// of a plate change (updPanels) and a door's end (doorAnim_TL__FinishedFunc). Idempotent.
 void Install(coop::net::Session* session);
 
-// HOST: judge the queued asks, send each change. CLIENT: apply the host's states. Settles the watches. Per frame.
+// HOST: judge the queued asks and tend a fresh plate prop. CLIENT: look for a put-back's lid touch while a plate is off.
+// Settles the watches. Per frame. The plates and the doors are not read here: the game's updPanels and its door timeline's
+// end send them (HOST) and keep them (CLIENT).
 void Tick();
 
 // HOST, at a joiner's world-ready edge: the desk's plates and every station's door, to that slot.
@@ -39,6 +42,21 @@ void OnIntent(int senderSlot, const coop::net::CoverPayload& p);
 
 // CLIENT: the host's state or answer, its length checked by the dispatcher.
 void OnState(const coop::net::CoverPayload& p);
+
+// [dev] The cover drill's reads and its one raw ask. AnswersSeen: the op 5 answers this client has had with that
+// CoverReason (the byte of N::CoverReason); LastTakeOffEid: the plate prop's element id of the last granted take-off,
+// 0 before one; DrillAsk: an ask sent as the lane's own verbs send it, for a stale or out-of-reach ask the verbs cannot
+// make; false when it was not sent.
+uint32_t AnswersSeen(uint8_t reason);
+uint32_t LastTakeOffEid();
+uint32_t DeskStatesApplied();  // the host's plate states written into this client's desk
+bool PlateArmed(uint8_t plate);  // the lane has seen plate `plate`'s prop in this player's hand, off its lid: a touch asks the put-back
+bool DrillAsk(uint8_t op, uint8_t what, uint8_t index, uint8_t bits, uint32_t eid);
+
+// [dev] A client's broadcast of an actor's destroy (prop_destroy_seam), counted when the actor is a plate prop: a client
+// authors none, so any is a plate prop the desk destroyed on its own copy. ClientPlateDestroys is the count.
+void NoteBroadcastDestroy(void* actor);
+uint32_t ClientPlateDestroys();
 
 // Session end: the records are cleared.
 void OnDisconnect();

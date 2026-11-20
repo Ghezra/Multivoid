@@ -39,5 +39,11 @@ bool CallExtinguish(void* prop);
 // Shows `state` on the prop: lit by prop_C's own ignite when it was not burning, so no subclass's ignite runs (a salt
 // rocket's would fly), then the fuel and speed written on the flame; or put out. False when a step fails. Game thread.
 bool ApplyPropFire(void* prop, const FireState& state);
+// The health of the prop's `physicsImpact` component, the figure its fire damage and its impacts take from before the
+// component destroys the prop (comp_physicsImpact_C: the burning prop's `fireDamage` subtracts 4 to 5 each hit). Read, and
+// written in place with no call and none of the component's own side effects. False, nothing written, when the prop has no
+// live component or the component declares no `health`. Game thread.
+bool ReadImpactHealth(void* prop, float& out);
+bool WriteImpactHealth(void* prop, float health);
 
 }  // namespace ue_wrap::prop

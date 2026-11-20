@@ -41,9 +41,11 @@ is off, so the mod reproduces the game's stride accumulator and dispatches the g
 function, which does the ground trace, the per-material cue and the world reactions. The pose's
 crouch bit (`kStateBitCrouched`) doubles the stride as the game's own does for a crouch, so a player
 crawling a vent steps every 75 cm on every peer; the body itself stays standing, since the game has
-no crouched pose for it. A step whose trace finds no ground is silent and is logged (`puppet_footsteps:`).
-`[V]` (`coop/dev/vent_probe`: a crouched host crawling the vent knocker's duct stepped 26 times in
-17 s on the client, every step on its ground.)
+no crouched pose for it.
+`[?]` (the drill `coop/dev/vent_probe`, row `vent_crawl_drill`: the client counts the host puppet's steps over the
+distance a crouched host walks and says `rig: VERDICT vent-crawl`; its red is `crouch_bit_off`. The earlier probe
+measured 26 steps in 17 s on the client for a crouched host crawling the vent knocker's duct; the row `step_ground_log`
+makes the puppet say whether each step found ground.)
 
 A relayed packet names its sender's occupancy of the slot: the host numbers each occupancy and
 stamps the number into everything it relays, and a client refuses an older occupancy's packets and
@@ -68,17 +70,12 @@ the puppet stays attached as the anchor for the nameplate and the recovery hand-
 
 ### Sitting on a chair
 
-The game's sit (`mainPlayer_C::sit`, from a chair's `sitBox_C`) attaches the sitter to the chair at the box's `sitting`
-location; its unsit stands it up. Each peer reads its own player's `sittingOn` for those edges. The host files its own
-sit and judges a client's `ChairSeatIntent`: within 5 m, the chair free and in no other player's hand. It tells every
-peer who sits where (`ChairSeatState`), and each other peer attaches the sitter's body to its own copy of the chair, in
-the riding pose an ATV passenger shows, 145 cm under the sitter's capsule and 80 cm ahead along the seat's facing, so it
-moves with the chair. A sitter's own copy of its chair is frozen while it sits, as the game freezes the laptop's seat,
-so its own body cannot push that copy over where no other copy feels it. When another player takes the chair in hand,
-or the host refuses the sit, the host tells the sitter to get up (`coop/player/chair_seat`). Until the seat arrives, a
-state bit in the pose shows the pose at the sitter's own place (`coop/player/remote_player`). `[V]`
-(`coop/dev/sit_probe`, `VOTVCOOP_SIT_PROBE=1`: a client sat on an office chair and a folding chair, the host saw it
-seated on its copy; the host's grab of the chair stood the client up.)
+The game's sit (`mainPlayer_C::sit`, from a chair's `sitBox_C`) attaches the sitter to the chair; each peer reads its own
+player's `sittingOn` for the edges. The host judges a client's `ChairSeatIntent` (within 5 m, the chair free and in no
+hand) and tells every peer who sits where (`ChairSeatState`); each other peer attaches the sitter's body to its own copy
+of the chair in the ATV passenger's riding pose. A sitter's own copy of its chair is frozen while it sits. A grab of the
+chair or a refusal makes the host tell the sitter to get up (`coop/player/chair_seat`); a pose bit shows the pose in
+place until the seat arrives. `[V]` (`coop/dev/sit_probe`: the host saw a client seated; its grab stood the client up.)
 
 ### What the player holds and toggles
 
@@ -88,20 +85,7 @@ class and name on change, and every peer keeps a display-only mirror, physics an
 attached to the puppet's weapon component at the native hold transform
 (`coop/player/hand_item`). The flashlight rides the item-activation kind: the receiver toggles
 the puppet's own light and plays a positional click (`coop/player/item_activate`,
-`coop/player/flashlight_click_sound`). An empty battery switches the light off in the game's
-`ReceiveTick` with no function call to observe, so each tick the sender compares the game's flashlight
-bool with what it last sent, and the other peer's puppet goes dark too `[V]`
-`harness/autotest/autotest_flash_battery.cpp`, each peer's battery drained in turn. The cone hangs on a spring arm off the player's camera, whose
-rotation lag the game leaves on at speed 0, which UE's interpolation takes as no lag; a puppet's arm
-is set from the streamed view with each applied pose (`coop/player/remote_player`). The host's cone
-follows the interpolated streamed aim exactly, frame for frame, through a client's sine sweep of its
-view at about 33 fps on both peers: no frame stood still mid-sweep, its speed changed about 1.6 times
-as much from frame to frame as the client's own commanded view, a turn in place of the body leaked
-nothing into it, and the same held over a link with 40 ms of lag and 15 ms of jitter `[V]`
-(`harness/autotest/autotest_beam_sweep.cpp`). One sweep in seven, a wide one, caught a hitch in the stream
-itself, upstream of the cone: 18 frames standing still and one 41 degree step in the interpolated
-aim, not repeated on the next run `[V]`. The cone
-starts inside the head, so a body casting shadows from it cuts its own silhouette out of the beam,
+`coop/player/flashlight_click_sound`). The cone starts inside the head, so a body casting shadows from it cuts its own silhouette out of the beam,
 which flickers as the body animates. The game leaves a real player's two body meshes
 (`CharacterMesh0`, `mesh_playerVisible`) casting no shadow; a puppet kept the class's casting default
 and drew that silhouette on every other peer's screen, so its spawn switches both off
@@ -133,6 +117,39 @@ writes it into its mirror through the item's own `loadData`, the leaf state only
 record names to load, inside the per-tick budget), and again when the mirror is made anew (`coop/player/hand_record_sync`) `[?]` (a state changed in the hand of another class, an
 extinguisher's charge, is not announced and shows the record of the hold). The two-peer drill is
 `coop/dev/hand_record_drill` (`hand_record_drill=can|hand|joiner|forge|hostile|keyless|oversize|bounds|nonfinite|box`, the host's one verdict, three red arms).
+
+A fire extinguisher (`prop_fireExt_C`) sprays from the hand: its `fire`, the hand's LMB press and
+release, turns its spray effect and sound on, and its tick aims the spray along that machine's camera,
+drains the charge and casts the game's `extinguishRay`, which puts out what it touches. Hit hard or
+burnt in the world, its `shoot` sends it thrusting with its own foam and rays until the charge is
+gone. Each ran on the one machine, so the other players saw no foam. Every peer now shows it: a
+player's spray goes to the host (`FireExtIntent`), which spends one of the sender's spray tokens,
+checks the sender's hand holds an extinguisher, shows the spray on its mirror of that hand and tells
+every peer (`FireExtState`), each showing it on its mirror of that hand. Every peer casts the game's
+extinguishing ray from its mirror of the sprayer's hand, from the puppet's synced eye along its
+synced aim, each frame the spray is on, and the sprayer's own tick casts its own, so the fire in a
+peer's own world goes out when that peer's ray reaches it. Each peer rolls its own scatter and aims
+along the puppet's interpolated aim, a frame or more behind the sprayer's camera, so a fire at the
+edge of the reach can go out on one machine and burn on another. That is transitional: fire runs on
+every peer separately until fire itself is synced, and a peer's own ray is the only way its fire goes
+out; once fire is the host's, the host's ray becomes the only one. A hand's let-go and this player's own hold change end the spray
+as events, and the host's count of a client's charge starts afresh with each new hold.
+The runaway thrust is the host's: a client's copy never runs its `shoot` (a client's own held
+extinguisher is refused too, and its damage reaches nobody), and a client's damage to a world copy
+asks the host (`FireExtIntent` op 3), which judges the sender's ask budget, its reach and the copy
+and runs the game's own verb on its copy. The host says each thrust and its charge to every peer
+(`FireExtState` op 0), when it begins, twice a second while it runs and when it ends, and a client's
+copy shows the thrust's foam and sound (`coop/props/fireext_sync`, `coop/props/fireext_thrust_sync`)
+`[V]` (`coop/dev/fireext_drill`'s spray, spray_join and runaway arms each PASS on the rig and each
+red arm FAILs). A joiner is told, at its ready edge, every spray under way (the host's own, read off
+its hand, and each client's) and every extinguisher that thrusts or has lost charge; a client's ask in
+flight is a one-shot and is not replayed. A thrust is shown, not re-cast: a client's copy casts none
+of the thrust's rays, and a thrust of an extinguisher in the host's own hand is shown to nobody, until
+fire itself is synced and a held prop's thrust has a lane. The charge in a client's hand is the host's count: the spray's
+start and end carry the hand's charge, the host drains its own count at the game's rate while it runs,
+never above the hand's word, and sends it twice a second and at the end, so the hand, every mirror of
+it and a drop carry it `[V]` (`VOTVCOOP_ITEM_TRIP_ITEM=ext` of the item trip probe: six seconds' spray
+read 0.900 in the hand, on the host and on both copies after the drop, either player spraying).
 
 ### Name, colour and nameplate
 
@@ -326,10 +343,14 @@ of it. The map's placed player takes the machine's controller as its level begin
 controller goes back to the visitor, and the placed player and the black screen it puts up are
 removed. The world's sky reaches that far down without bound: its height fog covered the map in its
 colour, and its sun, sky light and post process lit a maze the game leaves dark but for the
-lantern. What of it is shown is hidden on the visitor's machine while it is there, and only that is shown again
-after: the day-night cycle keeps some of it hidden itself (the sun at night), and showing those too lit the world as
-if by day once the visit ended (Ghezra/Multivoid#39) `[V]` (a daytime visit hides 6 of the 8 suns and sky lights, the
-2 the cycle had off staying off). The visitor's own clip check sees the view jump into the map and back
+lantern. The visit hides what of it is shown on the visitor's machine and holds every part of it against the
+day-night cycle's own writes (a pre hook on `SetVisibility`, armed only during the visit): a write the cycle makes
+on a held part is refused and its value kept, and at the visit's end each part takes the value the cycle last asked
+for, or the one it had before the visit. So the sun the cycle keeps off at night stays off, a moon light it turns on
+at dusk does not light the maze, and the world comes back as the cycle would have it (Ghezra/Multivoid#39) `[?]`
+(a daytime visit hid 6 of the 8 suns and sky lights, the 2 the cycle had off staying off; the new hold is not yet
+run on the rig). The level-visit drill reads each held part back once the visitor is home and says `level-visit: ARM
+sky`; its red is `visit_sky_all` `[?]`. The visitor's own clip check sees the view jump into the map and back
 out: the game's check (`mainGamemode_C::canBackrooms`, which the player's tick asks before every
 clip) is answered no for the visit and five seconds after it, and a trip asked while seated or
 driving is refused, as the game's own check refuses it. What a map's script
@@ -496,7 +517,6 @@ is mirrored by the balance lane; an event is broadcast by the event watch.
 
 | State | Owner | Shape |
 |---|---|---|
-| a prop's nametag | the host | a client's tag is a request by the prop's key; the host applies it and tells every client |
 | pose, vitals, ragdoll | that peer | a sender-authored stream, never gated on receive |
 | who sits on which chair | the host | a client's sit is a request it judges; each peer seats the body on its own copy |
 | the display name | the host | assigned for uniqueness; every peer adopts it |
@@ -513,7 +533,6 @@ is mirrored by the balance lane; an event is broadcast by the event watch.
 
 | Kind | Direction | Carries |
 |---|---|---|
-| `PropSaveData`, `PropSaveDataIntent`, body 2 | the host to all; a client to the host | a prop's nametag: the prop's key, the slot whose tag it was and the tag; a client's tag on a prop |
 | `PoseSnapshot` (stream) | each peer | position, yaw, pitch, head delta, speed, state bits, three vitals |
 | `ChairSeatIntent`, `ChairSeatState` | a client to the host; the host to all | a sit on or a stand from a chair, by its element id; who sits where, and the word to get up |
 | `RagdollPose` (stream) | each peer, while ragdolled | pelvis transform and velocity |
@@ -521,11 +540,13 @@ is mirrored by the balance lane; an event is broadcast by the event watch.
 | `SkinChange`, `NameplateChange`, `NickColorChange` | each peer, relayed | the three preferences |
 | `HandRecord` | each peer to the host; the host to all | a held item's own save record, chunked, for its hand mirrors |
 | `HandItem`, `ItemActivate` | each peer, relayed | the held item's class, its actor's name and its hold slot's item name (the key of the game's item tables); the flashlight state |
+| `FireExtState`, `FireExtIntent` | the host to all; a client to the host | a world extinguisher's thrust and charge, a player's spray; a client's spray on or off, and its damage to a copy asked of the host |
 | `PlayerHit` | host to the hit peer | a parked creature's hit on the peer's puppet: the verb (addDamage or punch) to run on its own player |
 | `SleepState` | a client to the host; the host to all | a rest state with its bed (awake, resting, dreaming); the host's sleeping flag; one peer's rest state relayed |
 | `PlayerInventoryBlob` | both | the per-player profile (items, vitals, standing spot), pre-world |
 | `TeleportClient` | host to one peer | a placement; the administration action, not the join |
 | `CheatRequest`, `CheatResult` | a client to the host; the host to that client | one cheat a player asks for (spawn props, change the points, fire an event) and what the host did with it |
+| `AtvPartIntent` | a client to the host | one piece of work on an ATV's wheels or spare, which the host judges and runs on its copy ([vehicles.md](vehicles.md)) |
 
 ## Late join
 
@@ -535,8 +556,7 @@ choice made during the load is not lost. Hand items and item states are replayed
 at its ready edge. A joiner is sent the host's sleeping flag and the rest state of every peer
 that is not awake. A joiner that rests before the host holds its world ready has that report refused, and repeats
 it each time the host's sleeping flag reaches it, which the host sends once it holds the joiner ready. The inventory is seeded before the world. A peer's death state is not seeded; a joiner sees a
-dead peer through the ragdoll bit of its next pose. A prop's nametag comes with the save and with its spawn row.
-A joiner is sent every chair seat.
+dead peer through the ragdoll bit of its next pose. A joiner is sent every chair seat.
 
 ## Known limits
 
@@ -553,21 +573,14 @@ A joiner is sent every chair seat.
 
 ## Other levels
 
-Six sites send a player to a level of their own: the puddle, the biotoilet, the shake, the well, the skull zone and the insomniac
-(the level-placed triggers can name more). A session holds one world, and a travel out of it ended the client's own session, or
-everyone's when the host took it. `coop/player/run_end_travel` refuses any travel from the main world to another level while a
-session runs, on both roles, and tells the player. It clears the site's black screen and pause and puts back the slot name two of
-the sites blank. A save or a teleport the site made before its travel stands, and the shake's ragdoll is a death, answered by the
-usual revive. The puddle and the insomniac came for the player, and the level change would have ended them: a puddle left
-standing sinks the player again until a fall under the floor kills them, so the refusal ends either with its trip. Those levels
-cannot be visited in a session. Every site above and the two placed triggers were fired in a session on the rig. The
-three maps a clip through the world sends a player to are not refused: they are visited in place (Another map, above).
+Six sites send a player to a level of its own. A session holds one world, so `coop/player/run_end_travel` refuses
+any travel from it to another level, tells the player, and clears the site's black screen, pause and blanked slot
+name; each site was fired on the rig. A clip's three maps are visited in place (above).
 
 ## Code map
 
 | Concept | Files |
 |---|---|
-| a prop's nametag | `coop/props/prop_nametag`, `ue_wrap/actors/nametag` |
 | the remote player and its engine actor | `coop/player/remote_player`, `coop/player/remote_player_ragdoll`, `ue_wrap/actors/puppet` |
 | the per-slot puppet lifecycle and drive | `coop/player/puppet_drive`, `coop/player/puppet_body_yaw`, `coop/player/puppet_footsteps`, `coop/player/puppet_carry_drive` |
 | the local player's outbound streams | `coop/player/local_streams`, `coop/player/movement_ledger` |
@@ -576,6 +589,7 @@ three maps a clip through the world sends a player to are not refused: they are 
 | skins | `coop/player/client_model`, `coop/player/skin_registry`, `coop/player/skin_effects`, `coop/player/local_body`, `coop/player/skin_preview`, `ui/skins_panel`, `assets/paks/` |
 | held and toggled items | `coop/player/hand_item`, `coop/player/item_activate`, `coop/player/flashlight_click_sound` |
 | a held item's record on its mirrors | `coop/player/hand_record_sync` |
+| an extinguisher's foam | `coop/props/fireext_sync`, `coop/props/fireext_thrust_sync`, `coop/props/fireext_runaway_ask` |
 | damage and death | `coop/player/player_damage`, `coop/player/death_revive`, `coop/player/run_end_travel`, `coop/player/ragdoll_gate` |
 | no trip to another level | `coop/player/run_end_travel`, `harness/autotest/autotest_level_travel.cpp` (the drill) |
 | leaving during an event | `coop/player/leave_in_event` |

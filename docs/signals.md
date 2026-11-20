@@ -157,8 +157,11 @@ state and are re-sent to a joiner from the components' ground truth. Each plays 
 heard from the desk with the component's falloff, the game's `att_default` (full within 5 m, fading over 150 m). The
 cursor's loop (`corrds_loop`) is the one the game gives none: it plays only under the player at the desk in single
 player, but another player's replay of it played at full volume across the whole map, so each peer gives it the
-ping loop's falloff once per desk `[V]` (`coop/dev/deskaudio_probe`, `VOTVCOOP_DESKAUDIO_PROBE=1`: every component
-read `att_default` but that loop, which read none; after the change it reads `att_default` too).
+ping loop's falloff once per desk `[V]` (`coop/dev/deskaudio_probe`, row `deskaudio_probe`: every component
+read `att_default` but that loop, which read none; after the change it reads `att_default` too). The probe now
+says `rig: VERDICT deskaudio PASS` when the loop holds the ping loop's settings and `FAIL` when it holds none, once
+the lane has tried the loop's falloff for the desk; its red is `deskaudio_att_off` `[?]`. That the fade is heard
+with distance stays for a listener's ears `[?]`.
 
 A liquid on the desk shorts it: a thrown liquid's projectile (`grimeProjectile_C`) that strikes it and a sponge
 bucket's pour that overlaps it call the desk's own `shortCircuit`, which sparks for about ten seconds and then puts
@@ -258,9 +261,10 @@ plate is the host's prop, spawned where the plate was for the asker to grab; no 
 until it has been held off its lid, and a client's desk never sets a plate back itself (it asks)
 once the plate it holds has left its lid and comes back to it. The host sends the plates on change and to a joiner (`CoverState`),
 and a client writes them and repaints through the desk's own `updPanels`; the same lane carries a
-transformer station's door (`coop/world/cover_sync`) `[V]` (`coop/dev/cover_probe`,
-`VOTVCOOP_COVER_PROBE=1`: a client's unbolt, take-off, set-back and bolt each ran on the host and
-showed on both desks, and the host's own unbolt reached the client). The tape caddy's reel slots are presser-authored edges, and
+transformer station's door, swung through the station's own `openDoor` (`coop/world/cover_sync`)
+`[?]` (read from the log-only probe the cover drill replaced (`harness/autotest/autotest_cover`, `cover_drill=run`), until the drill's run says it: a client's unbolt, take-off, set-back and
+bolt each ran on the host and showed on both desks, a client's door press swung both doors, and the
+host's own unbolt and door reached the client). The tape caddy's reel slots are presser-authored edges, and
 its accrual is deterministic and clamped, so instead of a park the host re-snaps it once a second
 (`coop/interactables/tape_caddy_sync`). The stationary PC's power is a presser edge
 (`coop/interactables/laptop_sync`); its disc slot is the host's like a server box's, a peer's
@@ -418,4 +422,4 @@ are sent at the joiner's ready edge, since its save was taken at the handshake.
 | the join seeds | `coop/session/join_seed` |
 | tests and instruments | `coop/dev/drive_selftest`, `coop/dev/drive_drill`, `coop/dev/download_drill`, `coop/dev/desk_diag`, `coop/dev/sat_console_drill`, `coop/dev/calib_drill`, `coop/dev/desk_ping_drill`, `harness/autotest/autotest_seeddrill.cpp`, `harness/autotest/autotest_driveslot.cpp` (a drive taken out on one peer is out and carried on the other) |
 | the desk's short circuit | `coop/interactables/desk_short_sync`, `ue_wrap/desk/desk_short` |
-| the desk's back plates and the stations' doors | `coop/world/cover_sync`; `coop/dev/cover_probe` |
+| the desk's back plates and the stations' doors | `coop/world/cover_sync`; `harness/autotest/autotest_cover` |

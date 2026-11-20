@@ -7,7 +7,7 @@ of a container: how it is named across peers, where the mod catches its birth an
 owns it at rest and in a hand, and what happens to a prop whose own Blueprint keeps changing
 it. Trash piles and clumps are a family of their own on [piles.md](piles.md); the item in a
 player's hand is on [players.md](players.md); the tools that leave a persistent actor behind, the
-grappling hook and rope among them, are on [deployables.md](deployables.md); a nametag put on a prop is on [players.md](players.md).
+grappling hook and rope among them, are on [deployables.md](deployables.md).
 
 ## How it works
 
@@ -243,6 +243,7 @@ and the destroy binding are the game's (`coop/props/prop_stick_sync`). The unsti
 since a crowbar's pry frees a pryable sign with nobody holding it: the script gate watches the
 component's unstick on every route, the unsticking peer broadcasts the prop's pose and velocity, and
 a receiver runs the same unstick with the tool and lets its copy go. A glowstick's stick, a physics constraint its own save record holds, crosses with that record: the player's stick is published once its constraint is complete, a landing remakes it through the game's own restore (`processKeys`), and a grab frees every peer's copy at the hold's begin (`coop/props/glowstick_sync`).
+A crowbar's pry ends in the pried object's own `crowbarOpen`: a wall-attach component's owner (a banister, a sign) frees itself there through the component's unstick, which is this lane's, and a door's pry is the door lane's ([devices.md](devices.md)). The other pryable props change themselves in that body with no component to watch: a plank (`prop_pryablePlank_C` and its edges-only child) clears its static and frozen through its own `setPropProps`, takes the crowbar's kick (its right vector times 150 deg/s) and plays its material's `damaged` cue, and a radiator (`radiator_C`, with the placed `radiator_base1_C` and `radiator_base2_C` below it) and the security TV (`securityTv_C`) run `breakingSequence`: the flags clear, `break()` plays, then a shuffle of the four `PhysicsConstraint`s, and for each in that order a `BreakConstraint`, a random spin of the body and a wait of 1.5 to 3 s. Each peer's shuffle and spin differ, so the copies broke in different orders and rested 13 cm apart `[V]` (rig run, measure arm). The pry has ONE sender, the host (`coop/props/prop_pry_sync`, `prop_pry_host`): the script gate watches `crowbarOpen` by name, and on a client the body is cancelled (the minigame's `end()` still drops the crowbar) and `PryAsk` (278) names the prop and the crowbar's right vector. The host judges it from its queue, a bounded rate for each sender (4, at most 8 waiting): the key names a pryable prop, the sender is within the door lane's reach, its hand held a crowbar last (the prying crowbar destroys the held one, so the hand is empty by now), the key is not pried in the host's record and its copy is still static or frozen (a reload clears the record, not the flags). A refusal is counted and said once per sender per 10 s with no answer, since the asker's copy never moved; a client's kick is only a direction, renormalised, never a magnitude. A grant frees the plank on the host's copy with that kick, or runs a radiator's or TV's own `crowbarOpen` there. Whoever pried (the host's own pry has no ask), the host records the key and sends `PryState` (279), the whole state each time: pried, and which joints its own `BreakConstraint` has broken. A client applies the state, never the verb: `setPropProps`, the plank's sound or the radiator's `break()`, then exactly the masked joints with their sound, and never the shuffle or `SetConstrainedComponents`, so a broken joint is never revived. The freed body is the host's coast (`CoastLetGo`, and `Coast` at each break, since the sequence outlasts one row): every copy parks on the host's first pose and snaps to its rest at the drive's end, so no peer simulates the fall. A second `crowbarOpen` of a pried key is cancelled on either role (a minigame that ends after the host granted another's pry). Late join: a joiner's prop row carries the pry as `physFlags` bit 0x80 and, in the row's spare byte, the joints broken so far (`pryMask`); the joiner records the prop as pried and breaks them silently where the row converges its copy, a save-loaded one or a freshly spawned one, taking only the host's own row. A radiator's save holds all four joints intact, so a joiner that took no row would see it hang `[V]`; a plank's save carries it freed at the host's pose `[V]`, so for a plank the row keeps the record; a copy still static or frozen when its row arrives (its blob was cut before the pry) is freed, silently, and a later `PryState` plays the cue the row left out. What breaks after the row reaches the joiner as `PryState`; one for a key the joiner has no copy of yet is counted and dropped (the row built after it carries the state). A prop with no key cannot be named to the host: its pry is cancelled on a client, said once for each class, and the host's own keyless pry runs as the host's act. `[?]` Nothing here is proven on a rig yet: `coop/dev/pried_drill` (`VOTVCOOP_PRIED_DRILL=host|tv|client|far|twice|join|midjoin`, both peers) judges each arm at its event (the copies rest within 1 cm and 1 degree after the host's last drive End; the joints the engine's `BreakConstraint` broke equal the host's), with a red lever for each mechanism.
 
 ### A nametag
 
@@ -316,47 +317,42 @@ record and crosses on the record lane above with no message of its own. `coop/in
 that lane cannot know, the editor.
 
 - **One editor at a time.** The open editor claims the notebook, a claim keyed by the prop
-  (`coop/interactables/device_occupancy`); a second peer pressing E on it is denied.
-- **What the editor wrote.** The editing peer publishes the notebook's record when it closes the
-editor and, while it holds the claim, at the editor's own commit (focus leaving the box, or the game's commit) when
-`text` differs from the last text published or applied, at most once every
-  2 s; a change the gate held back goes with the next commit or the close. Live text crosses at a
-commit and at the close, not per keystroke: the widget writes `text` only then, and the lane reads that array, never the
-box. The host's own edit publishes the canonical the same way.
-- **Who the host believes.** The host takes a client's record for a notebook from the slot that
-holds its claim, or from any slot while nobody holds it: a free notebook is anyone's to change, which a torn page added
-to it is. A record from another slot while a peer holds it is refused and logged. The rule is judged where the record
-lands, so a record that parked first (the host did not index the notebook yet) is judged by it too, and is republished
-to the other peers only when it lands, never at arrival. It is registered with `coop/props/prop_record_gates`; the
-record lane names no class.
-- **The close reaches the host while its sender holds.** A client keeps the claim after it closes
-the editor until the host's republish of its last publish comes back (the lane's acknowledgement: the canonical record
-for that notebook's Key arriving after its publish), and lets go anyway after 10 s, logged. Opening an editor while that
-wait is pending ends it: the old claim goes, then the new open is handled. A host's own close needs no wait: it is the
-canonical.
-- **No echo onto the editor.** A peer that holds the claim and has published the notebook in this
-claim applies no record for it, whether it arrives live or from the park: its own edit is the newer state. Before its
-first publish it has nothing newer to protect, so the previous editor's close, which the host sent before the grant and
-the grant overtook, is applied, and the open editor's page is reloaded from the notebook's `text` through the widget's
-own page load (`init`), so the box shows what was applied and the lane measures later edits from it. Text typed in the
-box and not yet committed at that instant is dropped by the reload; the window is the round trip after the grant. If the
-reload does not dispatch, a warning says so once. The mark, the wait and the baseline reset when the claim ends, by
-whatever route: a release, a lost race, the world going down, the session ending.
-- **A page added outside the editor.** Using a torn sheet on a notebook (`playerUsedOn`) appends the
-sheet's text to the notebook's and destroys the sheet, with no editor open and no claim. The verb's end publishes the
-notebook's record when its page count grew, from whichever peer ran it; the host's rule takes it while nobody holds the
-notebook. While another peer has the notebook open the verb is cancelled at its start on the peer that ran it, when the
-hand holds a torn sheet: the sheet stays in the player's hand and a notice names the holder, because the game cannot
-merge two writers and the open editor's close would overwrite the page on every peer. Any other use of a held notebook
-runs as the game has it. One window remains: a page added before this peer has heard the other peer's claim (about one
-round trip after that peer opened the editor) stays on this peer and is overwritten at that holder's close. The root
-fix, the host running the page add on behalf of the peer that pressed it, is a recorded follow-up and not built.
-- **Forced exits.** Ragdoll, a faint and death leave the interface without `quit`, as in the
-  single-player game, so the box's uncommitted text is lost there and nothing is published.
-- **Late join.** A joiner is handed every prop's record in the snapshot, the notebook's last
-published text included, and the claim table, so it reads the text as last published and is denied the editor while
-another peer holds it; the close then reaches it as an ordinary record.
-- **The ceiling.** A record over 56,092 bytes (`coop/props/disc_record_ceiling.h`) is refused and stays on its peer.
+(`coop/interactables/device_occupancy`); a second peer pressing E on it is denied. - **What the editor wrote.** The
+editing peer publishes the notebook's record when it closes the editor and, while it holds the claim, at the editor's
+own commit (focus leaving the box, or the game's commit) when `text` differs from the last text published or applied, at
+most once every 2 s; a change the gate held back goes with the next commit or the close. Live text crosses at a commit
+and at the close, not per keystroke: the widget writes `text` only then, and the lane reads that array, never the box.
+The host's own edit publishes the canonical the same way. - **Who the host believes.** The host takes a client's record
+for a notebook from the slot that holds its claim, or from any slot while nobody holds it: a free notebook is anyone's
+to change, which a torn page added to it is. A record from another slot while a peer holds it is refused and logged. The
+rule is judged where the record lands, so a record that parked first (the host did not index the notebook yet) is judged
+by it too, and is republished to the other peers only when it lands, never at arrival. It is registered with
+`coop/props/prop_record_gates`; the record lane names no class. - **The close reaches the host while its sender holds.**
+A client keeps the claim after it closes the editor until the host's republish of its last publish comes back (the
+lane's acknowledgement: the canonical record for that notebook's Key arriving after its publish), and lets go anyway
+after 10 s, logged. Opening an editor while that wait is pending ends it: the old claim goes, then the new open is
+handled. A host's own close needs no wait: it is the canonical. - **No echo onto the editor.** A peer that holds the
+claim and has published the notebook in this claim applies no record for it, whether it arrives live or from the park:
+its own edit is the newer state. Before its first publish it has nothing newer to protect, so the previous editor's
+close, which the host sent before the grant and the grant overtook, is applied, and the open editor's page is reloaded
+from the notebook's `text` through the widget's own page load (`init`), so the box shows what was applied and the lane
+measures later edits from it. Text typed in the box and not yet committed at that instant is dropped by the reload; the
+window is the round trip after the grant. If the reload does not dispatch, a warning says so once. The mark, the wait
+and the baseline reset when the claim ends, by whatever route: a release, a lost race, the world going down, the session
+ending. - **A page added outside the editor.** Using a torn sheet on a notebook (`playerUsedOn`) appends the sheet's
+text to the notebook's and destroys the sheet, with no editor open and no claim. The verb's end publishes the notebook's
+record when its page count grew, from whichever peer ran it; the host's rule takes it while nobody holds the notebook.
+While another peer has the notebook open the verb is cancelled at its start on the peer that ran it, when the hand holds
+a torn sheet: the sheet stays in the player's hand and a notice names the holder, because the game cannot merge two
+writers and the open editor's close would overwrite the page on every peer. Any other use of a held notebook runs as the
+game has it. One window remains: a page added before this peer has heard the other peer's claim (about one round trip
+after that peer opened the editor) stays on this peer and is overwritten at that holder's close. The root fix, the host
+running the page add on behalf of the peer that pressed it, is a recorded follow-up and not built. - **Forced exits.**
+Ragdoll, a faint and death leave the interface without `quit`, as in the single-player game, so the box's uncommitted
+text is lost there and nothing is published. - **Late join.** A joiner is handed every prop's record in the snapshot,
+the notebook's last published text included, and the claim table, so it reads the text as last published and is denied
+the editor while another peer holds it; the close then reaches it as an ordinary record. - **The ceiling.** A record
+over 56,092 bytes (`coop/props/disc_record_ceiling.h`) is refused and stays on its peer.
 
 A page torn out of a notebook is `prop_notebook_paper_C`, born by a client's prop birth route
 (`coop/props/prop_drop_intent`). The drawn pixels of `prop_paper_drawable_C` are in no save record and do not cross;
@@ -492,7 +488,7 @@ a client's fill read 35 there and 0 elsewhere; now every step matches on all thr
 | container contents | the host | slices of its object array; an extraction is an intent |
 | a container's break | the host | a client's lethal hit on one it authors is a request; the host's copy breaks and spills |
 | a prop's nametag | the host | a client's tag is a request by the prop's key; the host applies it and tells every client |
-| a stuck prop, and its unstick | the peer that sticks or frees it; every peer runs the component's own verb | one reliable message |
+| a stuck prop, and its unstick; a pried plank, radiator or security TV | the peer that sticks, frees or pries it; every peer runs the component's or the prop's own verb | one reliable message |
 | a self-changing prop's progression | the host | park, corrector or anchor, per prop |
 | notebook editor occupancy | the host arbitrates | a claim keyed by the owning prop |
 | notebook page text | the editing peer; the host takes it from the claim's holder, or from anyone while it is free | the notebook's own save record on the record lane, at the editor's commit and at the close |
@@ -520,6 +516,8 @@ a client's fill read 35 there and 0 elsewhere; now every step matches on all thr
 | `PropDropIntent`, `ReelEjectIntent` | a client to the host | a place, a throw or an unavoidable birth, for the host to author, with the placed root's velocity and the throw sequence |
 | `PropNametag` | a client to the host (op 1); the host to all (op 2), or to the requester alone (op 3) | a prop's nametag: the prop's key and the tag; the slot whose item it was; a refusal |
 | `PropStickState` | the peer that sticks or frees it, to all | frozen or static, the commit pose and the hold the stick ended; or an unstick, with the pose and velocity |
+| `PryAsk` | a client to the host | a client's crowbar pry of a plank, a radiator or a security TV, asked instead of run: the prop's key and the crowbar's right vector (the host renormalises it); never relayed |
+| `PryState` | the host to all clients | a pried prop's whole state each time: pried, and which of a radiator's or TV's four joints the host has broken; never relayed; a joiner's prop row carries the same two values |
 | `PropSnapPos` | the host to one joiner | a position correction for a save-authoritative prop moved in the join window, with a keyed prop's frozen and sleep; it carries the host's drive context for the prop (claim generation and open), the client drops one older than a drive END still on its copy, and a prop a hand held after its correction went out gets a follow-up after the release `[?]` |
 | `ContainerState`, `ContainerContents`, `ContainerBreakRequest` | the presser; the host; a client to the host (op 1) and the host to the requester (op 2 refusal, op 3 grant of a cut) | open or closed; one slice of the host's object array, its nested containers' contents in its tail; a break the host makes for a client, its refusal with a reason, or the grant of a saw's cut |
 | `InventoryPickup` | each peer, relayed | the pocket blip, so others hear a pickup |
@@ -582,7 +580,7 @@ prop resolves.
 | one holder per prop | `coop/props/prop_hold_claim`, `coop/props/prop_hold` (who holds a prop on the host) |
 | the prop-properties tool | `coop/props/prop_tool_flags`; the toolgun's sight and limits, shared with the remover: `coop/props/toolgun_sight`, `coop/props/toolgun_limits` |
 | a client's intents | `coop/props/prop_drop_intent`; a thrown prop: `coop/props/prop_throw`, `coop/net/throw_bounds` |
-| the stick | `coop/props/prop_stick_sync` |
+| the stick, and a pry of a prop with no wall-attach component | `coop/props/prop_stick_sync`; `coop/props/prop_pry_sync`, `coop/props/prop_pry_host`, `ue_wrap/actors/prop_pry` |
 | a prop's nametag | `coop/props/prop_nametag`, `ue_wrap/actors/nametag` |
 | a prop under a hook's drive or a broom's push | `coop/props/prop_drive_host` (the host's set and stream), `coop/props/prop_drive_stream` (the receiver), `coop/items/hook_prop_claim` (the hook lane feeding it), `coop/items/hook_constraint` (the tie itself, host-only), `coop/items/broom_push` (the broom's push feeding it) |
 | the robot cleaner | `coop/props/roomba_sync`; `harness/autotest/autotest_roomba.cpp` (`roomba_drill`) |

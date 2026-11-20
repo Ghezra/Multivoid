@@ -225,7 +225,10 @@ void ApplyPayload(coop::atv_sync::AtvEntry& e, const coop::net::AtvStatePayload&
     if (!fromHost || fromSyncer) {
         auto c01  = [](float& v) { if (v < 0.f) v = 0.f; else if (v > 1.f)   v = 1.f; };
         auto c100 = [](float& v) { if (v < 0.f) v = 0.f; else if (v > 100.f) v = 100.f; };
-        for (int i = 0; i < 4; ++i) { c100(in.dur[i]); c01(in.dirt[i]); }
+        for (int i = 0; i < 4; ++i) {
+            c100(in.dur[i]); c01(in.dirt[i]);
+            if (in.fixes[i] < -1) in.fixes[i] = -1; else if (in.fixes[i] > 3) in.fixes[i] = 3;  // the game's own range, as the part lane bounds it
+        }
         c01(in.bodyDirt); c100(in.spareDur); c01(in.spareDirt); c100(in.fuel);
         if (in.health < -1.f) in.health = -1.f; else if (in.health > 100.f) in.health = 100.f;
     }
@@ -249,14 +252,14 @@ void ApplyPayload(coop::atv_sync::AtvEntry& e, const coop::net::AtvStatePayload&
     const bool groupHealth = std::fabs(in.health - ex.health) > kHealthEps;
 
     if (!applyPresence && presenceDiffers) {
-        // The KNOWN-BROKEN direction, counted and visible (CRUTCHES row; (b2) asserts it):
-        // a client syncer's presence claim is not consumed -- its paired wheel-prop birth
-        // cannot travel, so consuming the mask would persist an item loss on the host.
+        // Counted and visible: a client syncer's presence claim is not consumed. A wheel its copy
+        // lost to damage has no prop the host could carry, and a wheel it unbolts is asked of the
+        // host instead (atv_part_intent), so consuming the mask would persist an item loss.
         const auto n = g_presenceSkipped.fetch_add(1, std::memory_order_relaxed) + 1;
         if (n == 1 || n % 100 == 0)
             UE_LOGW("atv_condition: presence from a client syncer DIFFERS (mask %02X vs expressed %02X) "
-                    "-- skipped by the authority rule, x%llu (KNOWN divergence until the "
-                    "act-as-host tire-eject intent lane)",
+                    "-- skipped by the authority rule, x%llu (a wheel knocked off a client "
+                    "syncer's copy stays on the host's)",
                     p.tiresMask, ex.mask, n);
     }
 

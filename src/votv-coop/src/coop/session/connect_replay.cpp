@@ -8,6 +8,7 @@
 #include "coop/interactables/console_state_sync.h"
 #include "coop/interactables/desk_input_sync.h"
 #include "coop/interactables/physmods_sync.h"  // desk physical-modules lane
+#include "coop/interactables/oven_progress_sync.h"  // the oven's screws and lid
 #include "coop/items/order_queue_sync.h"  // the delivery order queue, the host's, mirrored
 #include "coop/interactables/drive_payload_sync.h"  // a drive's row, the host's
 #include "coop/interactables/drive_sync.h"  // the drive slots
@@ -86,6 +87,9 @@
 #include "coop/props/prop_snapshot.h"
 #include "coop/props/prop_nametag.h"  // the tags put on this session, again
 #include "coop/player/hand_record_sync.h"  // every held item's own record
+#include "coop/world/cover_sync.h"  // the desk's plates and every station's door
+#include "coop/props/fireext_sync.h"  // every spray, thrust and partly spent extinguisher
+#include "coop/props/miner_sync.h"   // every mining rig's counts and points
 #include "coop/world/alarm_sync.h"  // base radar alarm shared-world toggle
 #include "coop/interactables/serverbox_sync.h"  // host-authoritative signal-server sim state
 #include "coop/interactables/server_upgrade_sync.h"  // the servers' physical upgrades
@@ -179,6 +183,7 @@ void ConnectReplayForSlot(int slot) {
     coop::garbage_bin_sync::QueueConnectBroadcastForSlot(slot);  // every garbage container again
     coop::build_sync::QueueConnectBroadcastForSlot(slot);  // every nail and wall again
     coop::kitchen_sync::QueueConnectBroadcastForSlot(slot);  // the machines not at their defaults
+    coop::oven_progress_sync::QueueConnectBroadcastForSlot(slot);  // each oven's screws out and lid off
     coop::props::prop_food_sync::QueueConnectBroadcastForSlot(slot);  // every world food's condition again
     coop::plant_sync::QueueConnectBroadcastForSlot(slot);  // every plant again
     coop::drive_sync::QueueConnectBroadcastForSlot(slot);  // slot lines
@@ -229,9 +234,12 @@ void ConnectReplayForSlot(int slot) {
     coop::ufo_sync::SendJoinSnapshotForSlot(slot);
     // Every robot cleaner's switch; one that runs is followed through the drive stream.
     coop::roomba_sync::SendJoinSnapshotForSlot(slot);
-    coop::miner_sync::SendJoinSnapshotForSlot(slot);
-    coop::fireext_sync::SendJoinSnapshotForSlot(slot);
+    // The desk's back plates and every transformer station's door.
     coop::cover_sync::SendJoinSnapshotForSlot(slot);
+    // Every spray, every thrusting extinguisher and every partly spent charge.
+    coop::fireext_sync::SendJoinSnapshotForSlot(slot);
+    // Every GPU mining rig's counts, points and heat.
+    coop::miner_sync::SendJoinSnapshotForSlot(slot);
     // The alarm lane's late-join answer: the current alarm state, unconditionally, so a mid-alarm
     // joiner starts its klaxon on arrival.
     coop::alarm_sync::QueueConnectBroadcastForSlot(slot);

@@ -135,6 +135,9 @@ public:
 
     void* actor() const { return actor_; }
 
+    // The stride's lib_C::step calls so far, for a drill that counts a player's steps (coop/dev/vent_probe).
+    uint32_t StepsPlayed() const { return stepsPlayed_; }
+
     // The body's seat on an ATV ended (coop/player/puppet_seat): the presentation yaw is re-based on the wire's and the
     // stream places the body again at the next apply. Game thread.
     void OnSeatReleased();
@@ -188,7 +191,7 @@ private:
     // The peer slot this body is, set at the end of a successful Spawn; kPeerIdUnknown for a puppet no session owns.
     // The ragdoll stops and the pose guard name the seat owner's slot by it.
     uint8_t slot_ = players::kPeerIdUnknown;
-    uint32_t stepsPlayed_ = 0, stepMisses_ = 0;   // the stride's lib_C::step calls, and those that found no ground
+    uint32_t stepsPlayed_ = 0, stepMisses_ = 0;   // the stride's lib_C::step calls; those that found no ground (counted under step_ground_log)
 
     // The GUObjectArray InternalIndex of actor_, captured in Spawn's before-finish callback while the
     // puppet was known live; valid() checks IsLiveByIndex, never plain IsLive. A mass GC purge can free the puppet without

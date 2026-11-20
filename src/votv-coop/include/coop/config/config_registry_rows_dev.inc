@@ -396,6 +396,8 @@ CFG_ENUM(pry_drill, "pry_drill", "dev", "off", "off|host|client|join",
     "print every pryable they have and every change of one.")
 // The crowbar pry drill and its red arm: their own file, one concept, included as _dev_port.inc is above.
 #include "coop/config/config_registry_rows_dev_crowbarpry.inc"
+// The oven repair drill's row: its own file, one concept, included as _dev_crowbarpry.inc is above.
+#include "coop/config/config_registry_rows_dev_fixtures.inc"
 CFG_FLAG(recycled_slot_drill, "recycled_slot_drill", "dev", false, "VOTVCOOP_RECYCLED_SLOT_DRILL",
     "Drill (either peer): once the local pawn and the object index are up, stage an object slot the "
     "engine recycled on the pawn's root component -- a queued birth naming the slot's old class, and a "
@@ -616,8 +618,8 @@ CFG_STRING(toggle_drill, "toggle_drill", "dev", "", "VOTVCOOP_TOGGLE_DRILL", fal
     "Drill (BOTH peers), by kind: garage, tap (a faucet or a sink), locker or lid. The device of that kind "
     "with the lowest key in its lane, toggled through its own verb by the client and toggled back by "
     "the host whenever it crossed; each peer logs every change of its state. Lines tagged "
-    "[TOGGLE-DRILL]; the client's DONE line ends it. One way: oven (the client repairs the oven, the "
-    "host reads it) and oven_host (the host repairs it once a client's world is ready); the host puts "
+    "[TOGGLE-DRILL]; the client's DONE line ends it. One way: oven_host (the host repairs the oven once a client's world is ready, the "
+    "client reads it; a client's own repair is an ask the host judges, drilled by oven_progress_drill=repair); the host puts "
     "back an oven its save had repaired before any client connects, and the reader's DONE line ends it.")
 // The swinger drill's row: its own file, one concept, included as _dev_nb.inc is below.
 #include "coop/config/config_registry_rows_dev_swinger.inc"
@@ -782,6 +784,8 @@ CFG_FLAG(class_resolve_lookup_only, "class_resolve_lookup_only", "dev", false, "
 #include "coop/config/config_registry_rows_dev_nightmare.inc"
 // The level-visit lane's drill and red arms: their own file, one concept.
 #include "coop/config/config_registry_rows_dev_level_visit.inc"
+// The cover drill's rows: their own file, one concept.
+#include "coop/config/config_registry_rows_dev_cover.inc"
 // The cargo lift drill's rows: their own file, one concept.
 #include "coop/config/config_registry_rows_dev_cargo_lift.inc"
 // The ambient UFOs' drill and red arm: their own file, one concept.
@@ -792,3 +796,5 @@ CFG_FLAG(class_resolve_lookup_only, "class_resolve_lookup_only", "dev", false, "
 #include "coop/config/config_registry_rows_dev_sky_tp.inc"
 // The robot cleaner's drill and red arms: their own file, one concept.
 #include "coop/config/config_registry_rows_dev_roomba.inc"
+// The remote player's footsteps: the ground line, the crouch drill and its red arm: their own file, one concept.
+#include "coop/config/config_registry_rows_dev_footsteps.inc"

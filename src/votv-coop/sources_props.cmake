@@ -21,6 +21,8 @@ set(VOTVCOOP_PROPS_SOURCES
     src/coop/props/remote_prop_destroy.cpp
     src/coop/props/roomba_sync.cpp
     src/coop/props/fireext_thrust_sync.cpp
+    src/coop/props/fireext_sync.cpp
+    src/coop/props/fireext_runaway_ask.cpp
     src/coop/props/grab_observer.cpp
     src/coop/props/prop_sound.cpp
     src/coop/props/prop_echo_suppress.cpp
@@ -40,6 +42,10 @@ set(VOTVCOOP_PROPS_SOURCES
     src/coop/props/hacksaw_cut.cpp
     src/coop/props/body_push.cpp
     src/coop/props/prop_food_sync.cpp
+    src/coop/props/miner_sync.cpp
+    src/coop/props/miner_state.cpp
+    src/coop/props/miner_judge.cpp
+    src/coop/props/miner_record.cpp
     src/coop/props/food_tick_gate.cpp
     src/coop/props/prop_record_refresh.cpp
     src/coop/props/prop_record_wire.cpp
@@ -63,6 +69,8 @@ set(VOTVCOOP_PROPS_SOURCES
     src/coop/props/glowstick_struck.cpp
     src/coop/props/glowstick_sync.cpp
     src/coop/props/prop_stick_sync.cpp
+    src/coop/props/prop_pry_sync.cpp
+    src/coop/props/prop_pry_host.cpp
     src/coop/props/prop_synth_key.cpp
     src/coop/props/prop_fresh_spawn.cpp
     src/coop/props/prop_wire_parity.cpp

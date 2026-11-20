@@ -1,9 +1,11 @@
 // harness/autotest/autotest_level_visit.cpp -- TEST-ONLY: a clip's trip to another map is the clipping player's alone,
 // and comes back as a death does (coop/player/level_visit). The level_visit_drill row names the arm and its sibling rows
-// shape the visit; the red arms are level_visit_hide_off and backrooms_close_off.
+// shape the visit; the red arms are level_visit_hide_off, backrooms_close_off and visit_sky_all.
 // client / host: the visitor takes the trip, stays until the watcher has judged its copy of the visitor hidden by the
 // poses it applies, ends the visit and comes back; the watcher judges the copy hidden at the first pose below the visit
-// floor and shown at the first pose back above it. close: the host closes the backrooms, the client's clip check is answered no, and after
+// floor and shown at the first pose back above it. The visitor reads each held sky component back once it is home,
+// against the value the world meant for it (`ARM sky`); the day-night cycle's own writes in the visit are held and meant.
+// close: the host closes the backrooms, the client's clip check is answered no, and after
 // the host opens them again it takes a trip. join: the host takes the trip and stays; a client that joins later must
 // find the host's copy hidden at the first pose it applies.
 // Every step ends on the other peer's signal (peer_signal) or on the state it waits for, never a clock. A check's
@@ -18,6 +20,7 @@
 #include "coop/config/config_registry.h"
 #include "coop/net/protocol.h"
 #include "coop/player/level_visit.h"
+#include "coop/player/level_visit_sky.h"
 #include "coop/player/players_registry.h"
 #include "coop/player/puppet_events.h"
 #include "coop/player/remote_player.h"
@@ -46,6 +49,7 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace harness::autotest {
 namespace {
@@ -55,6 +59,7 @@ namespace R    = ue_wrap::reflection;
 namespace E    = ue_wrap::engine;
 namespace OI   = ue_wrap::object_index;
 namespace LV   = coop::level_visit;
+namespace LVS  = coop::level_visit_sky;
 namespace RV   = coop::rig_verdict;
 using disc_drill::OnGameThread;
 
@@ -567,6 +572,37 @@ bool Return(const Plan& p, const Now& before) {
     return Emit("back", Res::Pass, "back in the world with what it carried, its view its own throughout");
 }
 
+// ---- the world's sky across the visit ---------------------------------------------------------------------------------
+// The visit holds every world sky component against the day-night cycle's own writes and, at its end, gives each the value
+// the cycle last asked for, or the one it had before the visit (coop/player/level_visit_sky). Back in the world, each held
+// component must read as that intended value. A component that cannot be read is Invalid, not hidden, and a run in which
+// none was meant to be hidden has nothing a wrongly shown sky could show in (Invalid).
+bool SkyBack() {
+    int held = 0, intendedHidden = 0, wrong = 0, unreadable = 0, cycleMoved = 0;
+    OnGameThread([&] {
+        unreadable = LVS::LastVisitUnreadable();
+        for (const LVS::SkyEnd& e : LVS::LastVisitEnd()) {
+            bool shown = false;
+            if (!R::IsLive(e.comp)) continue;
+            ++held;
+            if (e.intended != e.before) ++cycleMoved;
+            if (!LVS::ReadShown(e.comp, &shown)) { ++unreadable; continue; }
+            if (!e.intended) ++intendedHidden;
+            if (shown != e.intended) ++wrong;
+        }
+    });
+    char why[220];
+    std::snprintf(why, sizeof(why), "%d sky components held, %d meant hidden, %d changed by the day-night cycle during the "
+                  "visit, %d read other than meant, %d unreadable", held, intendedHidden, cycleMoved, wrong, unreadable);
+    UE_LOGI("level-visit: %hs sky %hs", Who(), why);
+    if (unreadable > 0) return Emit("sky", Res::Invalid, std::string("a sky component's visibility did not read: ") + why);
+    if (held == 0) return Emit("sky", Res::Invalid, std::string("the visit held no sky component: ") + why);
+    if (wrong > 0) return Emit("sky", Res::Fail, std::string("the visit left a sky component other than meant: ") + why);
+    if (intendedHidden == 0)
+        return Emit("sky", Res::Invalid, std::string("no sky component was meant to be hidden: ") + why);
+    return Emit("sky", Res::Pass, std::string("the sky is put back as the world meant it: ") + why);
+}
+
 // VOTVCOOP_LEVEL_VISIT_HOOK names a hook class (prop_hook_erie_C, a prop_hook_C subclass) the visitor spawns where it
 // stands in the map: untitled_untitled's own hook check ends a visit with a hook in the map.
 void SpawnHookHere() {
@@ -583,7 +619,7 @@ void SpawnHookHere() {
     });
 }
 
-// The visitor's half of a pair: the trip, the stay until the watcher has judged its copy hidden, the end, the return.
+// The visitor's half of a pair: the trip, the stay until the watcher has judged its copy hidden, the end, the return, the sky.
 bool Visit(const Plan& p) {
     if (p.camera && !TakeCamera()) return false;
     const Now before = Read();
@@ -596,7 +632,8 @@ bool Visit(const Plan& p) {
     if (!Heard("hid")) return false;
     SpawnHookHere();
     EndVisit(p.end);
-    return Return(p, before);
+    if (!Return(p, before)) return false;
+    return SkyBack();
 }
 
 // ---- the watcher ---------------------------------------------------------------------------------------------------
@@ -639,13 +676,14 @@ void RunPair(const std::string& arm) {
     }
     // The host judges: what the client alone could see reaches it as its signals.
     const bool ok = visitor ? (p.start == "none" || Heard("shown"))
-                            : ((p.start == "none" || Heard("arrived")) && Heard("back"));
+                            : ((p.start == "none" || Heard("arrived")) && Heard("back") &&
+                               (p.start == "none" || Heard("sky")));
     if (!ok) return;
     UE_LOGI("level-visit: DONE host");
     RV::Say(kTag, RV::Outcome::Pass,
             p.start == "none" ? "a death in the world, revived (the control)"
                               : "the visitor's copy hidden by its pose while it was away and shown after, the visitor back "
-                                "with what it carried, its view its own throughout");
+                                "with what it carried, its view its own throughout, and the world's sky put back as it was");
 }
 
 // A clip while the host has the backrooms closed is answered no, and after the host opens them it takes a trip. The

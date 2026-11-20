@@ -26,6 +26,10 @@ namespace coop::desk_snd_fx {
 
 void Install(coop::net::Session* session);
 
+// The desk whose cursor loop's falloff Tick has tried for (it took, or the dev red row left it without, or the attempt
+// failed and is repeated), null before any and after a session ends. For the desk audio probe, which judges at that event.
+void* CursorLoopDesk();
+
 // Per net-pump tick (GT): lazy hook install (latched), instance-cache
 // refresh, ring flush -> wire, pending loop-apply retry, fires/sec counters
 // log (60 s cadence, only when nonzero).

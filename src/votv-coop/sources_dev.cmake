@@ -311,6 +311,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/lookat_aim_drill.cpp
     src/coop/dev/fireext_drill.cpp
     src/coop/dev/fireext_drill_runaway.cpp
+    src/coop/dev/fireext_drill_foam.cpp
     src/coop/dev/level_ground.cpp
     src/coop/dev/body_push_drill.cpp
     src/coop/dev/body_push_drill_client.cpp
@@ -321,6 +322,10 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/coast_drill.cpp
     src/coop/dev/rest_compare.cpp
     src/coop/dev/drill_ground.cpp
+    src/coop/dev/oven_progress_drill.cpp
+    src/coop/dev/oven_judge_drill.cpp
+    src/coop/dev/pried_drill.cpp
+    src/coop/dev/pried_drill_fixture.cpp
     src/coop/dev/pry_drill.cpp
     src/coop/dev/recycled_slot_drill.cpp
     src/coop/dev/rehost_rejoin.cpp
@@ -358,6 +363,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/atv_riders_drill_drive.cpp
     src/coop/dev/atv_riders_drill_seat_offset.cpp
     src/coop/dev/atv_riders_join_hold.cpp
+    src/coop/dev/atv_part_drill.cpp
     src/coop/dev/atv_probe.cpp
     src/coop/dev/atv_seat.cpp
     src/coop/dev/atv_tire_probe.cpp
@@ -463,6 +469,13 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/hand_record_drill_wire.cpp
     src/coop/dev/sleep_speedup_drill.cpp
     src/coop/dev/crowbarpry_drill.cpp
+    src/coop/dev/miner_drill.cpp
+    src/coop/dev/miner_drill_rig.cpp
+    src/coop/dev/miner_drill_use.cpp
+    src/coop/dev/miner_drill_claim.cpp
+    src/coop/dev/miner_drill_record.cpp
+    src/coop/dev/miner_drill_join.cpp
+    src/coop/dev/cleanup_trace.cpp
 )
 # Per-developer local sources: a gitignored file on this box may append its own entries to
 # VOTVCOOP_DEV_SOURCES and add its own include root. Absent from the public tree; a no-op without it.

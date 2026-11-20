@@ -1,6 +1,6 @@
 // coop/config/config_registry_rows_dev_atv.inc -- the [dev] rows of the ATV lane: its rig probe, the corrector's
 // control arm, the spawn drill and its park, the health drill and its red arm, the eject drill and its red arm, the gate
-// probe and its drill.
+// probe and its drill, the riders drill and the part drill.
 // Included by config_registry_rows_dev.inc after the fire rows, before the PI and NB rows, which stay the last ones,
 // so each row keeps its place in every expansion of the list. The entry forms are config_registry_rows.inc's.
 // The drill's arms: sit, grab, occupied, synced, silent, gate, owner, trap; the red arm's values: back, occupied,
@@ -120,3 +120,20 @@ CFG_ENUM(atv_riders_drill, "atv_riders_drill", "dev", "off",
     "unseat_latch_off (an unseated mirror keeps its row's latch, so its pose stays frozen, 6), "
     "ragdoll_restore_off (a ragdoll's stop restores no seat, 8), exit_seat_off (an ATV's end announces no change, 9). "
     "MUTATES the ATV.")
+CFG_ENUM(atv_part_drill, "atv_part_drill", "dev", "off", "off|wheel",
+    "VOTVCOOP_ATV_PART_DRILL",
+    "Drill, a client's work on an ATV's wheel; set on BOTH peers and run with join_at_host=1. The host spawns an ATV "
+    "beside the players and names it. wheel: five legs, each decided by an event (the host's hand and counter lines, "
+    "the peers' said states), never a clock: an unbolt with an empty hand (the host must refuse, the wheel stays), an "
+    "unbolt of two wheels with a wrench and the fit of a held wheel (the host must run each, both peers must show the "
+    "same tyre mask and wheel props), and a second fit forged on the same hold (the host must refuse it and give "
+    "nothing back). Either peer's FAIL or INVALID is told to the other; each peer ends on one `rig: VERDICT atv-part "
+    "PASS|FAIL|INVALID` line, the host's PASS after its own counters (ran 3, refused 2, refunded 0). A time bound "
+    "says INVALID only. Reds: atv_part_red=cancel_off (CLIENT) and atv_part_red=tool_judge_off (HOST), and "
+    "hand_spend_drill=hand_spend_no_latch (HOST), each of which must FAIL at its own leg.")
+CFG_ENUM(atv_part_red, "atv_part_red", "dev", "off", "off|cancel_off|tool_judge_off",
+    "VOTVCOOP_ATV_PART_RED",
+    "Developer red arm: never set. cancel_off (CLIENT): the four ATV_C watches ask nothing and cancel nothing, so a "
+    "wrench's last step runs on the client's own copy and the part drill's first leg must FAIL (no ask was made). "
+    "tool_judge_off (HOST): an unbolt is not judged against the tool the sender's hand holds, so the drill's "
+    "empty-hand unbolt must FAIL (the host ran it).")

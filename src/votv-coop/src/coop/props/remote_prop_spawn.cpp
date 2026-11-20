@@ -38,6 +38,7 @@
 #include "coop/props/prop_fresh_spawn.h"   // the deferred-spawn materialiser
 #include "coop/props/prop_lifecycle.h"
 #include "coop/props/prop_stick_sync.h"    // ConvergeStuck, a wall-attach copy's stuck state
+#include "coop/props/prop_pry_sync.h"      // ConvergePried: a pried radiator's broken joints, from the host's row
 #include "coop/props/prop_throw.h"         // SeqFor: the actor this peer just threw or swung is not converged
 #include "coop/props/prop_wire_parity.h"   // the shared physics and collision helpers
 #include "coop/props/remote_prop.h"
@@ -183,6 +184,7 @@ void AdoptByPosition(const coop::net::PropSpawnPayload& payload, int senderSlot,
     ue_wrap::engine::SetActorRotation(fuzzy,
         ue_wrap::FRotator{payload.rotPitch, payload.rotYaw, payload.rotRoll});
     coop::prop_stick_sync::ConvergeStuck(fuzzy, payload.physFlags);
+    coop::prop_pry_sync::ConvergePried(fuzzy, payload.physFlags, payload.pryMask, senderSlot);
     ConvergeFrozenSleep(fuzzy, payload.physFlags);
     RestoreSpParityPhysicsAfterConverge(fuzzy, payload.physFlags);
     // Rekey the matched actor to the wire Key: it otherwise keeps its client-local Key while
@@ -395,6 +397,9 @@ void OnSpawn(const coop::net::PropSpawnPayload& payload, int senderSlot,
         // The claim: the host snapshot accounts for this pre-existing client actor, so the
         // unclaimed sweep at SnapshotComplete spares it; it covers the early returns below.
         coop::join_membership_sweep::RecordClaimIfTracking(existing);
+        // The host's pry of this prop, before any early return below: a copy the stream parks, a hand holds or a throw owns
+        // still takes the pry from its row. It touches no pose.
+        coop::prop_pry_sync::ConvergePried(existing, payload.physFlags, payload.pryMask, senderSlot);
         // The read-only join-window trace: a keyed prop the host expresses onto our pre-existing
         // copy, with the host position, whether the host held it and an order stamp; no work when
         // disabled.

@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 342;
+inline constexpr uint16_t kProtocolVersion = 343;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -727,12 +727,39 @@ enum class ReliableKind : uint16_t {
     // stood at its cut, and its connect replay sends it, alone, an op 2 for each prop whose tag this session published,
     // ahead of the snapshot's props: a copy the save loaded takes it, a prop the snapshot births waits for it by key.
     PropNametag = 261,
+    // HOST->ALL: a cover's state (coop/world/cover_sync), when it changes and to a joiner at its ready edge. The signal
+    // desk's four back plates: which are on and which are unbolted, written into the desk and shown through its own
+    // updPanels. A transformer station's (generator_C) maintenance door: open or shut, shown through its own openDoor.
+    // Op 5, HOST->that client: its ask was answered, with a CoverReason (a granted take-off carries the prop's element
+    // id). Never relayed; not pre-world. CoverPayload.
+    CoverState = 266,
+    // CLIENT->HOST: this client's player unbolted or bolted a back plate (op 1, the state it wants), took one off (op 2),
+    // set one back (op 3, the plate prop's element id), or pressed a transformer station's door (op 4, the state it
+    // wants). The host judges the sender's reach and its own desk's or station's state, runs the change on its copy, and
+    // CoverState answers.
+    // Never relayed. CoverPayload.
+    CoverIntent = 267,
     // A player's held item's own save record (coop/player/hand_record_sync), chunked (BlobChunkPayload) as
     // [u8 slot][the record]: its owner's, when the item or its record changes, a client's to the host, which decodes it,
     // checks the sender's applied hand holds that class, stores its own copy and sends that on to every peer but the
     // sender, the host's own to everyone, and every hand's to a joiner at its ready edge. Each peer writes it into its
     // mirror of that hand through the item's own loadData.
     HandRecord = 268,
+    // HOST->ALL: a fire extinguisher's foam (coop/props/fireext_sync). Op 0, sent by the thrust lane
+    // (coop/props/fireext_thrust_sync): a world extinguisher's runaway thrust (its `active` with charge left) and its charge,
+    // when it begins, twice a second while it runs, when it ends, and to a joiner at its ready edge; a client's copy shows
+    // the thrust's foam and sound and never runs the thrust itself. Op 1: a player's spray from the extinguisher in its
+    // hand, on or off, with the host's count of its charge, sent twice a second while it runs: the sprayer's hand and every
+    // mirror of it take it. Never relayed; not pre-world. FireExtPayload.
+    FireExtState = 264,
+    // CLIENT->HOST: this client's player started or stopped spraying the extinguisher in its hand (op 2), with the hand's
+    // charge. The host judges the sender's spray budget and its hand, shows the spray on its mirror, drains its own count
+    // of the charge, never above the hand's word, and sends op 1 to every peer; every peer casts the game's own
+    // extinguishing ray from its mirror of that hand. Op 3: this client's copy of an extinguisher took damage that would
+    // start its runaway (`eid` names the copy): the host judges the sender's ask budget, its reach and the copy, and
+    // answers with the game's own verb on its copy, so the thrust reaches every peer as op 0; a refusal sends nothing.
+    // Never relayed. FireExtPayload.
+    FireExtIntent = 265,
 
     // A disc-holding device's slot, addressed by the device's index in its own kind's list. Host
     // to all with the canonical set; a peer to the host with the outcome of a slot its own game
@@ -918,11 +945,14 @@ enum class ReliableKind : uint16_t {
     // relayed. Late join: nothing to replay, as for DoorVerbIntent. KeypadIntentPayload.
     KeypadIntent = 150,
 
-    // Any peer, relayed by the host: the kitchen oven's repair, keyed as ApplianceState keys the
-    // oven. Its `fixed` goes false to true once, in its fix() (the repair widget's last step; loadData
-    // calls it for a saved repair), and nothing sets it back, so a receiver writes it and repaints on
-    // 1 and refuses 0. Late join: the transferred save carries `fixed`, and the connect snapshot says
-    // it again. KeyedTogglePayload.
+    // The kitchen oven's repair, keyed as ApplianceState keys the oven. Its `fixed` goes false to true
+    // once, in its fix() (the repair widget's last step; loadData calls it for a saved repair), and
+    // nothing sets it back. Host to all, and to an asker alone for an oven already fixed: the state,
+    // which a receiver writes and repaints on 1 and refuses 0. Client to host: an ask, action 1 alone,
+    // sent where the client's own fix() was cancelled; the host judges the oven, the sender's reach of
+    // its switch box and the lid in its record of the steps, runs its own fix() on a grant, and the
+    // state then reaches every peer. Never relayed. Late join: the transferred save carries `fixed`,
+    // and the connect snapshot says it again. KeyedTogglePayload.
     OvenRepairState = 151,
 
     // Host to all: the delivery order queue (saveSlot.orders), which a client mirrors and never
@@ -1293,12 +1323,12 @@ enum class ReliableKind : uint16_t {
     // ANY->ALL: this peer's player changed a microwave's or a mini oven's setting, started or stopped it, opened or
     // closed a microwave's door, or changed a grill's coals, fire
     // or lid; the host's burn of a grill's coals goes the same way. A client's copy is relayed. Not pre-world. Late join: every machine not at its defaults, at the ready edge. KitchenStatePayload.
-    KitchenState = 278,
+    KitchenState = 280,
     // HOST->ALL: a placed radio's or TV's track, time, play state and mode, and a TV's channel and picture, on a change and
     // every few seconds while it plays. A track is a hash a peer looks up in its own catalog. CLIENT->HOST: what this
     // client's player changed through its interface; never relayed, the host's next state answers. Not pre-world. Late join: every device again at
     // the ready edge. MediaDeviceStatePayload.
-    MediaDeviceState = 279,
+    MediaDeviceState = 281,
     // HOST->ALL: a plant's identity, place and values, at once on an edge a viewer sees and every few seconds while it changes,
     // or its end. Not relayed, not pre-world. Late join: every plant again at the ready edge. PlantStatePayload.
     PlantState = 224,
@@ -1310,26 +1340,26 @@ enum class ReliableKind : uint16_t {
     // HOST->ALL: a keyed prop of the host's burns, with its flame's fuel and speed, at the edge, on a refuel and every 2 s while
     // it burns, or it stopped. A client's copy shows that flame and burns nothing down. Not relayed, not pre-world. Late join:
     // every burning prop again at the ready edge. PropFirePayload.
-    PropFireState = 280,
+    PropFireState = 282,
     // CLIENT->HOST: this client's player lit a keyed prop with a lighter or a torch, with the fuel the light gives. Never relayed;
     // the host lights its own copy and its next PropFireState answers. PropFirePayload.
-    PropFireRequest = 281,
+    PropFireRequest = 283,
     // HOST->ALL: a finished garden hose of the host's, as its own save record, when it is new or changed, or its key once
     // when it went. A client lays it on its copy, tied to its faucet and sprinkler. Not relayed, not pre-world. Late
     // join: every hose again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
-    GroundHoseState = 282,
+    GroundHoseState = 284,
     // CLIENT->HOST: a hose this client's player finished laying or changed (op 1, its record), or took up (op 2). Never
     // relayed; the host lays or takes up its own and its next GroundHoseState answers. BlobChunkPayload, as above.
-    GroundHoseIntent = 283,
+    GroundHoseIntent = 285,
     // HOST->ALL: a piece of the host's a player built -- a nail, or a custom wall unfinished, wet or finished -- as its own
     // save record, when it is new or changed, or its key once when it went. A client makes it on its copy, or applies the
     // record to its piece of that key, a nail tied to the actors its keys name there. Not relayed, not pre-world. Late join:
     // every piece again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
-    BuildState = 284,
+    BuildState = 286,
     // CLIENT->HOST: a piece this client's player made (op 1, its record), took away (op 2), a wall it hit or repaired
     // (op 3, [f32] the health it lost, negative, or gained), or a nail its pull snapped (op 4). Never relayed; the host
     // makes, destroys, hits, repairs or snaps its own and its BuildState answers. BlobChunkPayload, as above.
-    BuildIntent = 285,
+    BuildIntent = 287,
     // CLIENT->HOST: this client's player pressed the toolgun's prop-properties tool on a keyed prop, with the tool's
     // own static, frozen, active and sleep, seen from this camera point at this hit point. The host judges the sender's
     // right, a toolgun in its hand, who holds the prop and the sight, applies the tool's values through the game's
@@ -1539,95 +1569,65 @@ enum class ReliableKind : uint16_t {
     // op 4: the granted cut ended without its destroy, and the host ends its record. Never relayed. Late join: none, a break
     // is an act. ContainerBreakPayload.
     ContainerBreakRequest = 263,
-    // HOST->ALL: a GPU mining rig's (prop_miner_C) GPUs, slots, coolers, points and heat (coop/props/miner_sync), when one
-    // changes (the points at most once a second) and to a joiner at its ready edge; a client's copy writes them and
-    // repaints through the rig's own `upd`. Op 1, HOST->that client: its ask was granted or refused. Never relayed; not
-    // pre-world. MinerPayload.
-    MinerState = 286,
-    // CLIENT->HOST: this client's player used a GPU, a cooler or scrap metal on a rig (op 2) or claimed its points
-    // (op 3). The host judges the sender's reach and pace and runs its own rig's `upgrade` or claim, whose hints go to
-    // the asker. Never relayed. MinerPayload.
-    MinerIntent = 287,
-    // HOST->ALL: a fire extinguisher's foam (coop/props/fireext_sync). Op 0: a world extinguisher's runaway thrust (its
-    // `active` with charge left) and its charge, when either changes and to a joiner at its ready edge; a client's copy
-    // shows the thrust's foam and sound, and never runs the thrust itself. Op 1: a player's spray from the extinguisher
-    // in its hand, on or off, with the host's count of its charge, sent twice a second while it runs: the sprayer's hand and
-    // every mirror of it take it. Never relayed; not pre-world. FireExtPayload.
-    FireExtState = 288,
-    // CLIENT->HOST: this client's player started or stopped spraying the extinguisher in its hand (op 2), with the hand's
-    // charge. The host checks the sender's hand holds one, sprays the game's own extinguishing ray along the sender's aim
-    // while it is on, drains its own count of the charge, never above the hand's word, and sends op 1 to every peer.
-    // Never relayed. FireExtPayload.
-    FireExtIntent = 289,
-    // HOST->ALL: a cover's state (coop/world/cover_sync), when it changes and to a joiner at its ready edge. The signal
-    // desk's four back plates: which are on and which are unbolted, written into the desk and shown through its own
-    // updPanels. A transformer station's (generator_C) maintenance door: open or shut, shown through its own openDoor.
-    // Op 5, HOST->that client: its take-off was granted or refused. Never relayed; not pre-world. CoverPayload.
-    CoverState = 290,
-    // CLIENT->HOST: this client's player unbolted or bolted a back plate (op 1), took one off (op 2), set one back (op 3,
-    // the plate prop's element id), or pressed a transformer station's door (op 4, the state it wants). The host judges
-    // the sender's reach and its own desk's or station's state, runs the change on its copy, and CoverState answers.
-    // Never relayed. CoverPayload.
-    CoverIntent = 291,
     // A wall builder's aiming preview (coop/items/wall_preview_sync): its holder's, when it changes (at most ten a
     // second) and once as it ends, a client's to the host, which checks its mirror of that hand is a wall builder and
     // sends it on, the host's own to everyone. Each peer shows it on its mirror of that hand. Not pre-world.
     // WallPreviewPayload.
-    WallPreview = 292,
+    WallPreview = 288,
     // The dingus found (coop/props/dingus_sync): a client's report of one it found, to the host (op 0), and the host's
     // word that one is found, to every client and to a joiner (op 1); each peer marks its copies under the key found and
     // turns their music off. Not pre-world. DingusFoundPayload.
-    DingusFound = 293,
+    DingusFound = 289,
     // A portable generator's fuel and on/off (coop/interactables/generator_sync): the host's, to every client when one
     // changes, once a second while one runs, and to a joiner (GeneratorState); a client's pour or start/stop press, to the
     // host, which judges it and runs it on its copy (GeneratorIntent). Not pre-world. GeneratorPayload.
-    GeneratorState = 294,
-    GeneratorIntent = 295,
+    GeneratorState = 290,
+    GeneratorIntent = 291,
     // The basement flood (coop/world/flood_sync): a burst pipe's state and a flood volume's level, the host's, to every
     // client when one changes and to a joiner (FloodState); a client's repair of a pipe, to the host, which judges it and
     // mends its copy (FloodIntent). Not pre-world. FloodPayload.
-    FloodState = 296,
-    FloodIntent = 297,
+    FloodState = 292,
+    FloodIntent = 293,
     // A sound the game played at a place on one machine alone (coop/world/sound_relay): a melee hit's impact sound. Its
     // player's machine sends it; the host plays a client's and relays it to the other clients. Not pre-world.
     // SoundAtPayload.
-    SoundAt = 298,
+    SoundAt = 294,
     // An Omega's outfit and its pat (coop/creatures/kerfur_dress_sync). HOST->ALL: an Omega's `drip` rows when they change
     // and every one to a joiner (op 0), and a pat to show (op 3, sent on past its patter). CLIENT->HOST: its player put an
     // item on (op 1) or took one off (op 2) an Omega, or patted one (op 3); the host judges and runs it on its copy. Not
     // pre-world. KerfurDressPayload.
-    KerfurDressState = 299,
-    KerfurDressIntent = 300,
+    KerfurDressState = 295,
+    KerfurDressIntent = 296,
     // HOST->ALL: the Antibreather cave's entrance rock shut or open (coop/world/cave_rock_sync), when it changes and to a
     // joiner. Not pre-world. CaveRockPayload.
-    CaveRockState = 301,
+    CaveRockState = 297,
     // A chair a player sits on (coop/player/chair_seat). HOST->ALL: who sits on which chair, when it changes and every
     // seat to a joiner (op 0 sit, op 1 stand), and the word to a sitter to get up (op 2), when another player takes its
     // chair or the host refused its sit. CLIENT->HOST: this client's player sat down on a chair (op 0) or got up (op 1);
     // the host judges the reach, the chair free and not held, and files it. Not pre-world. ChairSeatPayload.
-    ChairSeatState = 302,
-    ChairSeatIntent = 303,
+    ChairSeatState = 298,
+    ChairSeatIntent = 299,
     // Where a keyed prop rests (coop/props/prop_rest_sync). CLIENT->HOST: the host element ids of props this client's
     // own copy moved with no stream on, now at rest; the host answers the sender alone. Never relayed. Not pre-world.
     // PropRestQueryPayload. HOST->CLIENT: the host's own pose of each asked prop it holds at rest, in no hand and under
     // no row, and 30 s after a joiner's world is ready every keyed prop at rest, paced; the client puts a resting copy
     // off by over 2 cm or 3 degrees there. To one client. Trust: from the host alone. PropRestPosePayload.
-    PropRestQuery = 304,
-    PropRestPose = 305,
+    PropRestQuery = 300,
+    PropRestPose = 301,
     // A mop bucket's water and a concrete bucket's concrete (coop/props/bucket_sync). HOST->ALL: rows of the host's buckets
     // and cement bags that changed, and every one to a joiner at its world-ready. Not pre-world. BucketStatePayload. CLIENT->HOST: this
     // client's player changed a mop bucket's water (op 0, the bucket's water and soap after the verb), mixed cement into
     // one (op 1) or took concrete out with the trowel (op 2); the host judges the reach and the items and runs it on its
     // own, and its BucketState answers. Never relayed. Not pre-world. BucketIntentPayload.
-    BucketState = 306,
-    BucketIntent = 307,
+    BucketState = 302,
+    BucketIntent = 303,
     // A custom-colour Kerfur Omega's or Kerfus's colour, its `hsv` (coop/creatures/kerfur_color_sync). HOST->ALL: an
     // actor's colour when the host's picker applied one, when a kerfur changed form, and every one to a joiner; a client
     // writes it and repaints. Not pre-world. KerfurColorPayload. CLIENT->HOST: this client's player picked a colour for
     // one (the picker's colour, as the game's intComs_applyColor takes it); the host judges the reach and applies it on
     // its own copy, and its KerfurColorState answers. Never relayed. Not pre-world. KerfurColorIntentPayload.
-    KerfurColorState = 308,
-    KerfurColorIntent = 309,
+    KerfurColorState = 304,
+    KerfurColorIntent = 305,
     // A 3D printer's print and the object it prints (coop/props/printer_sync), VOTV-MP/Multivoid#49. A print is the
     // host's, and runs only when every connected player holds the same model folder. CLIENT->HOST: this client's player
     // asked its copy of a printer to print a model (PrintAsk); the host judges the reach and checks the model. HOST->
@@ -1639,16 +1639,32 @@ enum class ReliableKind : uint16_t {
     // object rides the held-prop stream by its element id.
     // Never relayed. Not pre-world. PrintAskPayload, PrintCheckPayload, PrintCheckReplyPayload, PrintNoticePayload,
     // PrintedStatePayload, PrintedIntentPayload.
-    PrintAsk = 310,
-    PrintCheck = 311,
-    PrintCheckReply = 312,
-    PrintNotice = 313,
-    PrintedState = 314,
-    PrintedIntent = 315,
+    PrintAsk = 306,
+    PrintCheck = 307,
+    PrintCheckReply = 308,
+    PrintNotice = 309,
+    PrintedState = 310,
+    PrintedIntent = 311,
     // HOST->ALL: a printer began printing a model, or its print ended (PrinterState); a client's copy runs the game's own
     // print between the two, and its own object at the end is refused. To a joiner, each printer printing. Not
     // pre-world. PrinterStatePayload.
-    PrinterState = 316,
+    PrinterState = 312,
+
+    // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
+    // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
+    // (world ready, the ATV known and synced by the host, within reach, the tool or the part in its hand, the ATV's own
+    // state) and runs the change on its copy, so the part's birth and the presence in AtvState cross as the host's. A
+    // refused fit or stow is refunded as a prop beside the sender. Never relayed; not pre-world. Late join: none, a
+    // request is an act. AtvPartIntentPayload.
+    AtvPartIntent = 274,
+
+    // Host to the clients, and to a joiner at its connect replay: the steps of one kitchen oven's repair that come
+    // before its wiring, as a mask of the four screws out and the lid off. The bits are never cleared, so a receiver
+    // raises on its own repair screen every bit it lacks. Client to host: the steps the client's screen holds, an ask:
+    // the host judges the oven, the sender's reach of its switch box and the game's order (the lid needs four
+    // screws), records what it grants and sends the record to every client but the asker. Never relayed.
+    // OvenProgressStatePayload.
+    OvenProgressState = 275,
 
     // Client to host: one cheat a player asks for -- spawn items, add or remove points, fire a game event -- which the
     // host runs only while its setting net.allow_player_cheats is on and the sender holds the right
@@ -1662,6 +1678,33 @@ enum class ReliableKind : uint16_t {
     // Host to one client: what the host did with its CheatRequest (CheatReason). Never relayed. Late join: none. Trust:
     // from the host alone. CheatResultPayload.
     CheatResult = 277,
+
+    // Client to host: this client's crowbar pry of a plank, a radiator or a security TV, asked instead of run (its own
+    // crowbarOpen is cancelled). The host judges the sender (reach, a crowbar last held, the prop's class and whether it
+    // is still stuck), runs the pry on its copy and tells everyone with PryState; a refused ask is counted and said on
+    // the host and gets no answer, since the asker's copy never moved. Never relayed; not pre-world. Late join: none, a
+    // request carries no state. PryAskPayload.
+    PryAsk = 278,
+
+    // Host to all clients: a pried prop's state, the whole of it each time -- whether it is pried and which of a hanging
+    // prop's four joints the host has broken. A receiver applies the difference to its own copy. Never relayed; from
+    // the host alone. Late join: a joiner's prop row carries the same two values (PropSpawnPayload physFlags kPried
+    // and pryMask), and PryState follows for what breaks after. PryStatePayload.
+    PryState = 279,
+
+    // HOST->ALL: a GPU mining rig's (prop_miner_C) GPUs, slots, coolers, points, heat and whether it is powered
+    // (coop/props/miner_sync), when one changes (the points and heat alone at most once a second) and to a joiner at its
+    // ready edge; a client's copy writes them and repaints through the rig's own `upd` and `plugged`. Op 1, HOST->the
+    // asking client: the host's answer to its ask, with the reason in `pad` (kMinerReason*; an ask dropped for its budget
+    // gets none); a refused ask is followed by the host's op 0 for that rig, which overwrites what the client's copy did.
+    // Never relayed; not pre-world.
+    // MinerPayload.
+    MinerState = 247,
+    // CLIENT->HOST: this client's player used a GPU, a cooler or scrap metal on a rig (op 2, spent on the client's copy
+    // first) or claimed its points (op 3). The host judges the sender's hand, budget, body and reach and runs its own
+    // rig's `upgrade` or claim, whose hints go to the asker; a use it refuses gives the item back beside the sender. A
+    // rig's record from a client is judged by the record lane's own gate (miner_sync). Never relayed. MinerPayload.
+    MinerIntent = 248,
 };
 
 #pragma pack(push, 1)
@@ -1734,7 +1777,8 @@ inline uint32_t NowStateTimeMs24() {
 //   stateBits    -- bit 0 in air (the source's movement mode is falling; clears the puppet's foot
 //                   IK), bit 1 ragdolled and not dead (every ragdoll cause; the receiver toggles
 //                   ragdollMode and forceGetUp on the edges), bit 2 burning (the source's burningTime
-//                   runs; the receiver shows the flame and nothing else), bits 3..7 reserved.
+//                   runs; the receiver shows the flame and nothing else), bit 3 crouched (ACharacter::bIsCrouched; the
+//                   puppet's stride doubles), bits 4..7 reserved.
 struct PoseSnapshot {
     float   x, y, z;
     float   yaw;
@@ -2062,6 +2106,30 @@ struct PropStickStatePayload {
     float angVelX, angVelY, angVelZ;  // deg/s, an unstick's; zero on a stick
 };
 static_assert(sizeof(PropStickStatePayload) == 88, "PropStickStatePayload must be 88 bytes");
+
+// A client's pry of a prop (PryAsk): the prop by key, and the prying crowbar's right vector as the client read it, which
+// a plank's pry turns into its angular kick (x150, the game's own formula). The host renormalises it: a client's kick
+// is a direction, never a magnitude.
+struct PryAskPayload {
+    WireKey key;                   // 32 -- the pried prop's key
+    float   kickX, kickY, kickZ;   // 12 -- the crowbar's right vector, finite
+};
+static_assert(sizeof(PryAskPayload) == 44, "PryAskPayload must be 44 bytes");
+static_assert(sizeof(PryAskPayload) <= 256 - 20 - 8, "PryAskPayload must fit in one reliable datagram");
+
+// A pried prop's state (PryState). `flags` bit 0 is pried; `brokenMask` bit N-1 is set once PhysicsConstraintN of a
+// radiator or a security TV is broken (a plank has none). A nonzero mask implies pried.
+namespace pry_flags {
+inline constexpr uint8_t kPried = 0x01;
+}  // namespace pry_flags
+struct PryStatePayload {
+    WireKey key;           // 32
+    uint8_t flags;         // 1  -- pry_flags
+    uint8_t brokenMask;    // 1  -- bits 0..3
+    uint8_t _pad[2];       // 2  -- zero
+};
+static_assert(sizeof(PryStatePayload) == 36, "PryStatePayload must be 36 bytes");
+static_assert(sizeof(PryStatePayload) <= 256 - 20 - 8, "PryStatePayload must fit in one reliable datagram");
 
 // A kerfur conversion request (KerfurConvertRequest): the element id of the form whose verb the
 // client's gate refused (a character when toProp is 1, a prop when 0). The host resolves it,
@@ -2493,50 +2561,6 @@ struct RoombaPayload {
     uint8_t  pad[3];  // zero
 };
 static_assert(sizeof(RoombaPayload) == 8, "RoombaPayload must be 8 bytes");
-
-// A GPU mining rig (MinerState, MinerIntent).
-inline constexpr uint8_t kMinerOpState = 0, kMinerOpAnswer = 1, kMinerOpAdd = 2, kMinerOpClaim = 3;
-inline constexpr uint8_t kMinerItemSlot = 0, kMinerItemGpu = 1, kMinerItemFan = 2;  // scrap_metal, miner_gpu, miner_fan
-struct MinerPayload {
-    uint32_t eid;       // the rig's prop element id
-    uint8_t  op;        // kMinerOp*
-    uint8_t  item;      // ops 1, 2: kMinerItem*
-    uint8_t  granted;   // op 1: 1 the host's rig took it
-    uint8_t  pad;       // zero
-    int32_t  gpus;      // op 0: upg_gpu
-    int32_t  slots;     // op 0: upg_slots
-    int32_t  fans;      // op 0: upg_fans
-    int32_t  points;    // op 0: accumulatedPoints
-    float    overheat;  // op 0
-};
-static_assert(sizeof(MinerPayload) == 28, "MinerPayload must be 28 bytes");
-
-// A fire extinguisher's foam (FireExtState, FireExtIntent).
-inline constexpr uint8_t kFireExtOpThrust = 0, kFireExtOpSpray = 1, kFireExtOpSprayAsk = 2;
-struct FireExtPayload {
-    uint32_t eid;   // op 0: the extinguisher's prop element id; ops 1, 2: zero
-    uint8_t  op;    // kFireExtOp*
-    uint8_t  slot;  // op 1: the sprayer's slot
-    uint8_t  on;    // 1 the thrust or the spray runs
-    uint8_t  charged;  // ops 1, 2: 1 when `life` is the hand's charge (op 1: the host's count of it)
-    float    life;  // op 0: the charge, 0..1; ops 1, 2: the hand's charge
-};
-static_assert(sizeof(FireExtPayload) == 12, "FireExtPayload must be 12 bytes");
-
-// A cover (CoverState, CoverIntent).
-inline constexpr uint8_t kCoverOpState = 0, kCoverOpUnscrew = 1, kCoverOpTakeOff = 2, kCoverOpPutBack = 3,
-                         kCoverOpDoor = 4, kCoverOpAnswer = 5;
-inline constexpr uint8_t kCoverDesk = 0, kCoverStation = 1;
-inline constexpr uint8_t kCoverDeskPanels = 4;  // the desk's back plates: top left, bottom left, top right, bottom right
-struct CoverPayload {
-    uint8_t  op;     // kCoverOp*
-    uint8_t  what;   // kCoverDesk, kCoverStation
-    uint8_t  index;  // ops 1-3, 5: the plate; a station: its place in the gamemode's list
-    uint8_t  bits;   // op 0 desk: plates on in bits 0-3, unbolted in bits 4-7; op 0 station and op 4: bit 0 open;
-                     // op 5: bit 0 granted
-    uint32_t eid;    // op 3: the plate prop's element id; op 5: the plate the host spawned, 0 when refused
-};
-static_assert(sizeof(CoverPayload) == 8, "CoverPayload must be 8 bytes");
 
 // A wall builder's aiming preview (WallPreview): the tool's own components, in world space.
 struct WallPreviewPayload {
@@ -2991,7 +3015,8 @@ struct PropSpawnPayload {
     uint8_t       chipType;         // 1  -- the trash variant (enum_chipPileType); 0 for other props
     uint8_t       hasMatchPos;      // 1  -- match_form: matchX/Y/Z carry this trash entity's save-time position,
                                     //       and the value is the FORM the joiner loaded there
-    uint8_t       _pad;             // 1
+    uint8_t       pryMask;          // 1  -- a pried radiator's or security TV's broken joints (bit N-1 for
+                                    //       PhysicsConstraintN); valid with propspawn_flags::kPried, else 0
     float         initLinVelX, initLinVelY, initLinVelZ;  // 12 -- initial velocity (cm/s), usually zero
     float         initAngVelX, initAngVelY, initAngVelZ;  // 12
     // The prop's element id in the sender's range (host range from the host, peer range from a
@@ -3026,6 +3051,9 @@ inline constexpr uint8_t kRemoveWOrespawn = 0x20;  // Aprop_C.removeWOrespawn
 // the sender's live Aprop_C instead (PhysFlagsOf), and only then does a receiver make an existing
 // copy's frozen and sleep match them (the join-window correction also makes static match).
 inline constexpr uint8_t kLiveState       = 0x40;
+// The host has this prop pried (coop/props/prop_pry_sync): the row's pryMask says which joints it has broken. A joiner
+// records it and breaks them, as PryState would have told it. Read from the host's own rows only.
+inline constexpr uint8_t kPried           = 0x80;
 }  // namespace propspawn_flags
 
 // A prop death (PropDestroy): the key, and the sender's element id for the mirror binding. The
@@ -3113,6 +3141,32 @@ struct KeyedTogglePayload {
 static_assert(sizeof(KeyedTogglePayload) == 40, "KeyedTogglePayload must be 40 bytes");
 static_assert(sizeof(KeyedTogglePayload) <= 256 - 20 - 8,
               "KeyedTogglePayload must fit in one reliable datagram");
+
+// A GPU mining rig (MinerState, MinerIntent).
+inline constexpr uint8_t kMinerOpState = 0, kMinerOpAnswer = 1, kMinerOpAdd = 2, kMinerOpClaim = 3;
+inline constexpr uint8_t kMinerItemSlot = 0, kMinerItemGpu = 1, kMinerItemFan = 2;  // scrap_metal, miner_gpu, miner_fan
+inline constexpr uint8_t kMinerItemClaim = 3;  // op 1 only: the answer is to a claim
+// Op 1's reason, in `pad`: why the host did or did not run an ask. 0 is granted; 3 is no rig (no row, a stale or dead
+// element, not a prop_miner_C); 6 is the game's own refusal (`upgrade` said no, or the claim paid nothing: the rig is
+// unpowered or holds no points). 7 is the host's own count of a budget drop, which is never sent: a 7 on the wire is
+// malformed.
+inline constexpr uint8_t kMinerReasonGranted = 0, kMinerReasonNoHold = 1, kMinerReasonNotReady = 2, kMinerReasonNoRig = 3,
+                         kMinerReasonNoBody = 4, kMinerReasonOutOfReach = 5, kMinerReasonGameRefused = 6,
+                         kMinerReasonBudget = 7;
+inline constexpr uint8_t kMinerReasons = 8;
+struct MinerPayload {
+    uint32_t eid;       // the rig's prop element id
+    uint8_t  op;        // kMinerOp*
+    uint8_t  item;      // ops 1, 2: kMinerItem* (op 1 answers a claim with kMinerItemClaim)
+    uint8_t  granted;   // op 1: 1 the host's rig took it (equal to pad == 0); zero otherwise
+    uint8_t  pad;       // op 0: the rig is powered (0 or 1). Op 1: the reason, kMinerReason*. Zero in an intent
+    int32_t  gpus;      // op 0: upg_gpu
+    int32_t  slots;     // op 0: upg_slots
+    int32_t  fans;      // op 0: upg_fans
+    int32_t  points;    // op 0: accumulatedPoints
+    float    overheat;  // op 0
+};
+static_assert(sizeof(MinerPayload) == 28, "MinerPayload must be 28 bytes");
 
 // Where an open swinger lid rests (SwingerRestPose): the container lane's key for the lid, as
 // KeyedTogglePayload carries it, and the lid actor's world location (cm) and rotation (deg).
@@ -4147,6 +4201,28 @@ struct AtvAnswerPayload {
 static_assert(sizeof(AtvAnswerPayload) == 40, "AtvAnswerPayload must be 40 bytes");
 static_assert(sizeof(AtvAnswerPayload) <= 256 - 20 - 8, "AtvAnswerPayload must fit in one reliable datagram");
 
+// A client's work on an ATV's wheels or spare (AtvPartIntent). The scalars are the wheel the sender's hand held, read
+// on its machine as it sent: a fitted or stowed wheel's three. The host clamps them to the game's domains. The
+// battery is not here: its fit and unscrew are AtvRequest's (atv_host_op::kBatteryIn, kBatteryOut).
+namespace atv_part {
+constexpr uint8_t kRemoveWheel = 0;    // the wrench's last step on a fitted wheel: `index`
+constexpr uint8_t kFitWheel = 1;       // the held wheel into the empty socket `index`
+constexpr uint8_t kStowSpare = 2;      // the held wheel into the spare box
+constexpr uint8_t kTakeSpare = 3;      // the spare out of its box
+constexpr uint8_t kOpCount = 4;
+}  // namespace atv_part
+struct AtvPartIntentPayload {
+    WireKey key;         // 32 -- the ATV's Key
+    uint8_t op;          // 1  -- an atv_part op; anything else is malformed
+    uint8_t index;       // 1  -- kRemoveWheel, kFitWheel: the wheel, 0..3; else 0
+    int8_t  fixes;       // 1  -- kFitWheel, kStowSpare: the wheel's repair countdown; else 0
+    uint8_t pad;         // 1  -- zero
+    float   durability;  // 4  -- kFitWheel, kStowSpare: the wheel's durability; else 0
+    float   dirt;        // 4  -- kFitWheel, kStowSpare: the wheel's dirt; else 0
+};
+static_assert(sizeof(AtvPartIntentPayload) == 44, "AtvPartIntentPayload must be 44 bytes");
+static_assert(sizeof(AtvPartIntentPayload) <= 256 - 20 - 8, "AtvPartIntentPayload must fit in one reliable datagram");
+
 // The drone's state (DroneState): transform, activity, effect bits and the dust anchor.
 struct DroneStatePayload {
     float   x, y, z;           // 12 -- root actor world location (cm)
@@ -5022,6 +5098,15 @@ struct PhysModsStatePayload {
 };
 static_assert(sizeof(PhysModsStatePayload) == 16, "PhysModsStatePayload must be 16 bytes");
 
+// The steps of an oven's repair before its wiring (OvenProgressState): the oven by key, and a mask with
+// bits 0..3 for the top-left, top-right, bottom-left and bottom-right screws out and bit 4 for the lid off.
+struct OvenProgressStatePayload {
+    WireKey key;      // 32 -- the oven's key
+    uint8_t mask;     // 1  -- the steps done
+    uint8_t _pad[3];  // 3  -- zero
+};
+static_assert(sizeof(OvenProgressStatePayload) == 36, "OvenProgressStatePayload must be 36 bytes");
+
 // One drive-slot state line (DriveSlotState). role: 0 the desk play slot, 1 the desk comp slot,
 // 2 the eraser slot. occupied 1 names the slotted drive; 0 means empty, with driveEid the last
 // occupant for the latch completion.
@@ -5512,6 +5597,43 @@ struct VentCrawlStatePayload {
 static_assert(sizeof(VentCrawlStatePayload) == 32, "VentCrawlStatePayload must be 32 bytes");
 static_assert(sizeof(VentCrawlStatePayload) <= 256 - 20 - 8,
               "VentCrawlStatePayload must fit in one reliable datagram");
+
+// A cover (CoverState, CoverIntent).
+inline constexpr uint8_t kCoverOpState = 0, kCoverOpUnscrew = 1, kCoverOpTakeOff = 2, kCoverOpPutBack = 3,
+                         kCoverOpDoor = 4, kCoverOpAnswer = 5;
+inline constexpr uint8_t kCoverDesk = 0, kCoverStation = 1;
+inline constexpr uint8_t kCoverDeskPanels = 4;  // the desk's back plates: top left, bottom left, top right, bottom right
+// Op 5's answer to an ask, the host's verdict in `bits`.
+enum class CoverReason : uint8_t {
+    Ok = 0,          // the ask was taken
+    OutOfReach = 1,  // the sender's body is not near enough, or not here
+    Busy = 2,        // the desk or station is mid-move, or refuses the change
+    Already = 3,     // the plate or door is already in the wanted state
+    NotHeld = 4,     // a put-back of a plate prop the sender does not hold
+    NoStation = 5,   // the desk or the station named is not here
+    Rate = 6,        // the sender asked faster than the host answers
+};
+struct CoverPayload {
+    uint8_t  op;     // kCoverOp*
+    uint8_t  what;   // kCoverDesk, kCoverStation
+    uint8_t  index;  // ops 1-3, 5: the plate; a station: its place in the gamemode's list
+    uint8_t  bits;   // op 0 desk: plates on in bits 0-3, unbolted in bits 4-7; op 0 station and op 4: bit 0 open;
+                     // op 1: bit 0 the plate unbolted, as the sender wants it; op 5: a CoverReason
+    uint32_t eid;    // op 3: the plate prop's element id; op 5: the plate the host spawned, 0 when refused
+};
+static_assert(sizeof(CoverPayload) == 8, "CoverPayload must be 8 bytes");
+// A fire extinguisher's foam (FireExtState, FireExtIntent).
+inline constexpr uint8_t kFireExtOpThrust = 0, kFireExtOpSpray = 1, kFireExtOpSprayAsk = 2, kFireExtOpRunawayAsk = 3;
+struct FireExtPayload {
+    uint32_t eid;   // ops 0, 3: the extinguisher's prop element id; ops 1, 2: zero
+    uint8_t  op;    // kFireExtOp*
+    uint8_t  slot;  // op 1: the sprayer's slot; op 3: zero
+    uint8_t  on;    // 1 the thrust or the spray runs; op 3: zero
+    uint8_t  charged;  // ops 1, 2: 1 when `life` is the hand's charge (op 1: the host's count of it); op 0: 1 when `life` is the
+                       // charge, 0 only for the end of a thrust whose extinguisher is gone; op 3: zero
+    float    life;  // op 0: the charge, 0..1; ops 1, 2: the hand's charge; op 3: zero
+};
+static_assert(sizeof(FireExtPayload) == 12, "FireExtPayload must be 12 bytes");
 
 #pragma pack(pop)
 

@@ -1,8 +1,9 @@
 // coop/dispatch/event_dispatch_prop_drive.cpp -- the driven prop's reliable kinds: PropDriveEnd (the
 // close of a prop's stream, the host's to all or a syncing client's to the host) and the prop
 // syncer's pair, PropSyncClaim (client to host) and PropSyncAnswer (host to one client), the host's refusal of
-// a second hold of one prop (PropHoldRefused, host to every client), a garbage container's state (GarbageBinState, host to all) and a container's
-// break or a saw's cut asked of the host (ContainerBreakRequest), and the developer
+// a second hold of one prop (PropHoldRefused, host to every client), a garbage container's state (GarbageBinState, host
+// to all), a container's break or a saw's cut asked of the host (ContainerBreakRequest), a plank's, radiator's or
+// security TV's pry asked of the host (PryAsk) and its state back to every client (PryState), and the developer
 // filler DevLoadFiller (host to one client), DevParityReport (a joiner's pose report to the host) and
 // DevContainerParity (a joiner's container content report to the host). Each case
 // validates at the trust boundary and hands off to its module. The switch below is the family's
@@ -49,8 +50,15 @@
 #include "coop/interactables/atv_host_judge.h"
 #include "coop/interactables/atv_host_sync.h"
 #include "coop/props/prop_drive_stream.h"  // the driven-prop end edge
-#include "coop/props/prop_food_sync.h"     // a world food's condition and a client's bite
 #include "coop/props/prop_hold_claim.h"    // the client's receiver of a refused hold
+#include "coop/props/miner_bounds.h"  // what a mining rig can hold
+#include "coop/props/miner_sync.h"   // a GPU mining rig's counts and points, the host's
+#include "coop/props/prop_food_sync.h"     // a world food's condition and a client's bite
+#include "coop/props/prop_pry_host.h"      // a client's pry ask, judged by the host
+#include "coop/props/prop_pry_sync.h"      // the host's pried-prop state, applied by a client
+#include "coop/player/hand_record_sync.h"  // a held item's own record on its hand mirrors
+#include "coop/world/cover_sync.h"  // the desk's back plates and the stations' doors
+#include "coop/props/fireext_sync.h"  // an extinguisher's thrust and a player's spray
 #include "coop/props/prop_syncer.h"        // the client's answer receiver
 #include "coop/props/prop_syncer_host.h"   // the host's claim judge and a client's End
 
@@ -62,6 +70,59 @@
 #include <cstring>
 
 namespace coop::event_feed {
+
+namespace {
+
+// An extinguisher message's fields, checked before any lane sees them. A State is op 0 (a thrust) or op 1 (a spray); an
+// Intent is op 2 (a spray's start or stop, with the hand's charge) or op 3 (a runaway ask: only `eid` is set).
+bool FireExtWellFormed(bool intent, const net::FireExtPayload& p) {
+    if (!std::isfinite(p.life) || p.life < -0.01f || p.life > 1.01f) return false;
+    if (!intent) return p.op <= net::kFireExtOpSpray && p.on <= 1 && p.charged <= 1 && p.slot < net::kMaxPeers;
+    if (p.op == net::kFireExtOpSprayAsk) return p.on <= 1;
+    return p.op == net::kFireExtOpRunawayAsk && p.slot == 0 && p.on == 0 && p.charged == 0 && p.life == 0.f;
+}
+
+// A mining rig message's fields, checked before any lane sees them. A State is op 0 (a rig's numbers, `pad` its powered flag) or
+// op 1 (the answer to an ask: `pad` the reason, `granted` equal to it being 0, the numbers unset, the item 0..3). An Intent is
+// op 2 (a use: the item 0..2) or op 3 (a claim: no item); an intent carries nothing else.
+bool MinerWellFormed(bool intent, const net::MinerPayload& p) {
+    if (intent) {
+        const bool numbersUnset = p.gpus == 0 && p.slots == 0 && p.fans == 0 && p.points == 0 && p.overheat == 0.f;
+        if (!numbersUnset || p.granted != 0 || p.pad != 0) return false;
+        if (p.op == net::kMinerOpAdd) return p.item <= net::kMinerItemFan;
+        return p.op == net::kMinerOpClaim && p.item == 0;
+    }
+    if (p.op == net::kMinerOpState)
+        return p.item == 0 && p.granted == 0 && p.pad <= 1 &&
+               ::coop::miner_sync::InBounds(p.gpus, p.slots, p.fans, p.points, p.overheat);
+    if (p.op != net::kMinerOpAnswer) return false;
+    const bool numbersUnset = p.gpus == 0 && p.slots == 0 && p.fans == 0 && p.points == 0 && p.overheat == 0.f;
+    return numbersUnset && p.item <= net::kMinerItemClaim && p.pad < net::kMinerReasonBudget &&
+           p.granted == (p.pad == net::kMinerReasonGranted ? 1 : 0);
+}
+
+// Every mining rig message the dispatcher drops (the wrong way, the wrong length or out of range) is counted on one counter,
+// logged at the first and each power of two.
+void DropMiner(const net::Session::ReliableMessage& msg) {
+    static uint64_t s_dropped = 0;
+    const uint64_t n = ++s_dropped;
+    if ((n & (n - 1)) == 0)
+        UE_LOGW("event_feed: a mining rig message dropped (the wrong way, of %zu bytes or out of range), from slot %d: %llu so far",
+                static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot, static_cast<unsigned long long>(n));
+}
+
+// Every extinguisher message the dispatcher drops (the wrong way, the wrong length or out of range) is counted on one
+// counter, logged at the first and each power of two.
+void DropFireExt(const net::Session::ReliableMessage& msg) {
+    static uint64_t s_dropped = 0;
+    const uint64_t n = ++s_dropped;
+    if ((n & (n - 1)) == 0)
+        UE_LOGW("event_feed: an extinguisher message dropped (the wrong way, of %zu bytes or out of range), from slot %d: "
+                "%llu so far", static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot,
+                static_cast<unsigned long long>(n));
+}
+
+}  // namespace
 
 bool HandlePropDriveEvent(net::Session& session,
                           const net::Session::ReliableMessage& msg) {
@@ -313,6 +374,57 @@ bool HandlePropDriveEvent(net::Session& session,
         ::coop::hand_record_sync::OnChunk(c, static_cast<uint8_t>(msg.senderPeerSlot));
         break;
     }
+    case net::ReliableKind::CoverState:
+    case net::ReliableKind::CoverIntent: {
+        // CoverState HOST->ALL (op 5 to one asker), CoverIntent CLIENT->HOST (coop/world/cover_sync). Exact length.
+        const bool intent = msg.kind == net::ReliableKind::CoverIntent;
+        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != sizeof(net::CoverPayload)) {
+            UE_LOGW("event_feed: a cover message the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        net::CoverPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (intent) ::coop::cover_sync::OnIntent(msg.senderPeerSlot, p);
+        else ::coop::cover_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::FireExtState:
+    case net::ReliableKind::FireExtIntent: {
+        // FireExtState HOST->ALL, FireExtIntent CLIENT->HOST (coop/props/fireext_sync). Exact length.
+        const bool intent = msg.kind == net::ReliableKind::FireExtIntent;
+        net::FireExtPayload p{};
+        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != sizeof(net::FireExtPayload)) {
+            DropFireExt(msg);
+            break;
+        }
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (!FireExtWellFormed(intent, p)) {
+            DropFireExt(msg);
+            break;
+        }
+        if (intent) ::coop::fireext_sync::OnIntent(msg.senderPeerSlot, p);
+        else ::coop::fireext_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::MinerState:
+    case net::ReliableKind::MinerIntent: {
+        // MinerState HOST->ALL (op 1 to one asker), MinerIntent CLIENT->HOST (coop/props/miner_sync). Exact length.
+        const bool intent = msg.kind == net::ReliableKind::MinerIntent;
+        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != sizeof(net::MinerPayload)) {
+            DropMiner(msg);
+            break;
+        }
+        net::MinerPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (!MinerWellFormed(intent, p)) {
+            DropMiner(msg);
+            break;
+        }
+        if (intent) ::coop::miner_sync::OnIntent(msg.senderPeerSlot, p);
+        else ::coop::miner_sync::OnState(p);
+        break;
+    }
     case net::ReliableKind::PlantState:
     case net::ReliableKind::PlantEdit: {
         // PlantState HOST->ALL, PlantEdit CLIENT->HOST.
@@ -357,66 +469,12 @@ bool HandlePropDriveEvent(net::Session& session,
         else ::coop::roomba_sync::OnState(p);
         break;
     }
-    case net::ReliableKind::MinerState:
-    case net::ReliableKind::MinerIntent: {
-        // MinerState HOST->ALL (op 1 to one asker), MinerIntent CLIENT->HOST (coop/props/miner_sync). Exact length.
-        const bool intent = msg.kind == net::ReliableKind::MinerIntent;
-        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != sizeof(net::MinerPayload)) {
-            UE_LOGW("event_feed: a mining rig message the wrong way or of %zu bytes from slot %d -- dropping",
-                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
-            break;
-        }
-        net::MinerPayload p{};
-        std::memcpy(&p, msg.payload, sizeof(p));
-        if (!std::isfinite(p.overheat) || p.gpus < 0 || p.gpus > 16 || p.slots < 0 || p.slots > 16 || p.fans < 0 ||
-            p.fans > 6 || p.points < 0) {
-            UE_LOGW("event_feed: a mining rig message malformed -- dropping");
-            break;
-        }
-        if (intent) ::coop::miner_sync::OnIntent(msg.senderPeerSlot, p);
-        else ::coop::miner_sync::OnState(p);
-        break;
-    }
-    case net::ReliableKind::FireExtState:
-    case net::ReliableKind::FireExtIntent: {
-        // FireExtState HOST->ALL, FireExtIntent CLIENT->HOST (coop/props/fireext_sync). Exact length.
-        const bool intent = msg.kind == net::ReliableKind::FireExtIntent;
-        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != sizeof(net::FireExtPayload)) {
-            UE_LOGW("event_feed: an extinguisher message the wrong way or of %zu bytes from slot %d -- dropping",
-                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
-            break;
-        }
-        net::FireExtPayload p{};
-        std::memcpy(&p, msg.payload, sizeof(p));
-        if (!std::isfinite(p.life) || p.life < -0.01f || p.life > 1.01f) {
-            UE_LOGW("event_feed: an extinguisher message malformed -- dropping");
-            break;
-        }
-        if (intent) ::coop::fireext_sync::OnIntent(msg.senderPeerSlot, p);
-        else ::coop::fireext_sync::OnState(p);
-        break;
-    }
     case net::ReliableKind::WallPreview: {
         // Any peer to the host, the host to all (coop/items/wall_preview_sync). Exact length.
         if (msg.payloadLen != sizeof(net::WallPreviewPayload)) break;
         net::WallPreviewPayload p{};
         std::memcpy(&p, msg.payload, sizeof(p));
         ::coop::wall_preview_sync::OnPreview(msg.senderPeerSlot, p);
-        break;
-    }
-    case net::ReliableKind::CoverState:
-    case net::ReliableKind::CoverIntent: {
-        // CoverState HOST->ALL (op 5 to one asker), CoverIntent CLIENT->HOST (coop/world/cover_sync). Exact length.
-        const bool intent = msg.kind == net::ReliableKind::CoverIntent;
-        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != sizeof(net::CoverPayload)) {
-            UE_LOGW("event_feed: a cover message the wrong way or of %zu bytes from slot %d -- dropping",
-                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
-            break;
-        }
-        net::CoverPayload p{};
-        std::memcpy(&p, msg.payload, sizeof(p));
-        if (intent) ::coop::cover_sync::OnIntent(msg.senderPeerSlot, p);
-        else ::coop::cover_sync::OnState(p);
         break;
     }
     case net::ReliableKind::PropFireState:
@@ -977,6 +1035,50 @@ bool HandlePropDriveEvent(net::Session& session,
         // CLIENT->HOST op 1, HOST->the requester op 2 or 3. The payload's exact size, the direction, the op and every
         // field are the module's to judge, counted there.
         ::coop::props::container_break::OnMessage(session, msg.senderPeerSlot, msg.payload, msg.payloadLen);
+        break;
+    }
+    case net::ReliableKind::PryAsk: {
+        // CLIENT->HOST: a client's crowbar pry of a plank, a radiator or a security TV, asked instead of run. Never
+        // relayed. The host's judge (reach, the crowbar last held, class, still stuck) is coop::prop_pry_host.
+        if (session.role() != net::Role::Host || msg.senderPeerSlot < 1 || msg.senderPeerSlot >= net::kMaxPeers) {
+            UE_LOGW("event_feed: PryAsk dropped (role or sender slot %d)", msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen != sizeof(net::PryAskPayload)) {
+            UE_LOGW("event_feed: PryAsk from slot %d dropped (length %zu)", msg.senderPeerSlot,
+                    static_cast<size_t>(msg.payloadLen));
+            break;
+        }
+        net::PryAskPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.key.len == 0 || p.key.len > sizeof(p.key.data) || !std::isfinite(p.kickX) || !std::isfinite(p.kickY) ||
+            !std::isfinite(p.kickZ)) {
+            UE_LOGW("event_feed: PryAsk from slot %d dropped (key length %u or a kick that is not a number)",
+                    msg.senderPeerSlot, static_cast<unsigned>(p.key.len));
+            break;
+        }
+        coop::prop_pry_host::OnAsk(session, p, static_cast<uint8_t>(msg.senderPeerSlot));
+        break;
+    }
+    case net::ReliableKind::PryState: {
+        // HOST->CLIENT: a pried prop's state. Never relayed; a host has no one to take it from. The receiver is
+        // coop::prop_pry_sync::OnState, which counts a key that resolves to no prop here.
+        if (session.role() != net::Role::Client) {
+            UE_LOGW("event_feed: PryState received on the host -- dropping");
+            break;
+        }
+        if (msg.payloadLen != sizeof(net::PryStatePayload)) {
+            UE_LOGW("event_feed: PryState dropped (length %zu)", static_cast<size_t>(msg.payloadLen));
+            break;
+        }
+        net::PryStatePayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.key.len == 0 || p.key.len > sizeof(p.key.data) || (p.brokenMask & ~0x0Fu) != 0) {
+            UE_LOGW("event_feed: PryState dropped (key length %u or a joint mask %02x past four joints)",
+                    static_cast<unsigned>(p.key.len), static_cast<unsigned>(p.brokenMask));
+            break;
+        }
+        coop::prop_pry_sync::OnState(p);
         break;
     }
     default:
