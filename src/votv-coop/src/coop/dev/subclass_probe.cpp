@@ -4,7 +4,8 @@
 //            then the rpg mode's shot at 95 s.
 //   rpg      both set the gamemode's unlockFungunsInStory; 70 s the client takes the rapid RPG and fires it.
 //   atvtape  60 s the host takes the first ATV to 40 health; the client stands by it with duct tape, runs toolboxFix.
-//   lamb     60 s the host spawns a killer lamb, no wisp in the world. walker: a prop_wAlien_C.
+//   lamb     60 s the host spawns a killer lamb, no wisp in the world. walker: a prop_wAlien_C. kwisp: a killer wisp
+//            15 m ahead, each peer's copy reported (tick, rendered, mesh visibility, sounds playing).
 //   trigger  60 s the host gives the world's counting box nearest the client a trigger_openLevel_C target; 64 s the
 //            client steps in. triggerhost: the host's own player into that box, its targets emptied.
 //   drive    (VOTVCOOP_RACK_DENY_TAKES=1 on the host) 60 s the host spawns a drive box holding a row; 80 s the client
@@ -31,12 +32,14 @@
 #include "ue_wrap/desk/drive_chain.h"
 #include "ue_wrap/devices/atv.h"
 #include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/engine_component.h"
 #include "ue_wrap/engine/engine_mainplayer.h"
 #include "ue_wrap/engine/engine_pawn.h"
 #include "ue_wrap/world/world_singleton.h"
 
 #include <windows.h>
 
+#include <cmath>
 #include <cstdint>
 #include <initializer_list>
 #include <string>
@@ -305,6 +308,43 @@ void TickTrigger(uint64_t t, bool host, void* me) {
     }
 }
 
+// ---- kwisp ----
+// A killer wisp's state on this peer: its actor tick, its own `rendered` and `avoidPlayer`, its mesh's visible and
+// hidden-in-game bits, and how many of its audio components play now.
+bool Bit(void* obj, const wchar_t* name, bool& out) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!obj || !R::FindBoolProperty(R::ClassOf(obj), name, off, mask)) return false;
+    out = (static_cast<const uint8_t*>(obj)[off] & mask) != 0;
+    return true;
+}
+void ReportWisps(const char* role) {
+    for (void* w : All(L"killerwisp_C")) {
+        bool rendered = false, avoid = false, vis = false, hidden = false;
+        const bool r1 = Bit(w, L"rendered", rendered), r2 = Bit(w, L"avoidPlayer", avoid);
+        void* mesh = nullptr;
+        const int32_t mo = R::FindPropertyOffset(R::ClassOf(w), L"Mesh");
+        if (mo >= 0) mesh = *reinterpret_cast<void**>(static_cast<uint8_t*>(w) + mo);
+        Bit(mesh, L"bVisible", vis);
+        Bit(mesh, L"bHiddenInGame", hidden);
+        int audio = 0, playing = 0;
+        for (const R::StructFieldInfo& f : R::EnumerateStructFields(R::ClassOf(w))) {
+            if (f.size != 8) continue;
+            void* const c = *reinterpret_cast<void**>(static_cast<uint8_t*>(w) + f.offset);
+            if (!c || !R::IsLive(c) || R::ClassNameOf(c).find(L"AudioComponent") == std::wstring::npos) continue;
+            ++audio;
+            if (E::IsAudioComponentPlaying(c)) ++playing;
+        }
+        FVector at{}, me{};
+        E::TryGetActorLocation(w, at);
+        E::TryGetActorLocation(coop::players::Registry::Get().Local(), me);
+        const float d = std::sqrt((at.X - me.X) * (at.X - me.X) + (at.Y - me.Y) * (at.Y - me.Y) + (at.Z - me.Z) * (at.Z - me.Z));
+        UE_LOGI("[SUBCLASS] %s killerwisp eid=%u tick=%d rendered=%d(%d) avoid=%d(%d) mesh visible=%d hidden=%d audio %d "
+                "playing %d dist=%.0f", role, Eid(w), E::IsActorTickEnabled(w) ? 1 : 0, rendered ? 1 : 0, r1 ? 1 : 0,
+                avoid ? 1 : 0, r2 ? 1 : 0, vis ? 1 : 0, hidden ? 1 : 0, audio, playing, d);
+    }
+}
+
 // ---- drive ----
 void* FirstRack() {
     for (void* r : All(L"prop_driveRack_C"))
@@ -381,6 +421,21 @@ void Tick(coop::net::Session* session) {
         Load(L"killerlamb_C");
         void* const lamb = coop::dev::spawn_npc::SpawnAt(L"killerlamb_C", {p.X, p.Y, p.Z + 50.f});
         UE_LOGI("[SUBCLASS] host: spawned a killer lamb %p (wisps in the world: %zu)", lamb, All(L"killerwisp_C").size());
+    } else if (m == "kwisp" && host && g_step == 0 && t >= 60000) {
+        // Far first (VOTVCOOP_SUBCLASS_KWISP_FAR=1: 300 m off, out of every player's 50 m), then 15 m ahead at 90 s.
+        g_step = 1;
+        static const bool farFirst = coop::config::ReadEnv("VOTVCOOP_SUBCLASS_KWISP_FAR") == "1";
+        const FVector p = Ahead(me, farFirst ? 30000.f : 1500.f);
+        Load(L"killerwisp_C");
+        UE_LOGI("[SUBCLASS] host: spawned a killer wisp %p %s",
+                coop::dev::spawn_npc::SpawnAt(L"killerwisp_C", {p.X, p.Y, p.Z + 50.f}), farFirst ? "300 m off" : "15 m ahead");
+    } else if (m == "kwisp" && host && g_step == 1 && t >= 90000 &&
+               coop::config::ReadEnv("VOTVCOOP_SUBCLASS_KWISP_FAR") == "1") {
+        g_step = 2;
+        const FVector p = Ahead(me, 1500.f);
+        for (void* w : All(L"killerwisp_C"))
+            UE_LOGI("[SUBCLASS] host: the killer wisp brought 15 m ahead (%d)",
+                    E::TeleportTo(w, {p.X, p.Y, p.Z + 50.f}, {}) ? 1 : 0);
     } else if (m == "walker" && host && g_step == 0 && t >= 60000) {
         g_step = 1;
         UE_LOGI("[SUBCLASS] host: spawned a prop_wAlien_C %p", Spawn(L"prop_wAlien_C", Ahead(me, 300.f)));
@@ -424,6 +479,7 @@ void Tick(coop::net::Session* session) {
     if (m == "1") Report(role, {L"prop_cookingFood_rawPatty_C", L"prop_cookingFood_rawSausage_C", L"prop_food_blueBrainCheese_C"});
     if (m == "1" || m == "rpg") Report(role, {L"prop_rocket_C"});
     if (m == "lamb") Report(role, {L"killerlamb_C", L"killerwisp_C"});
+    if (m == "kwisp") ReportWisps(role);
     if (m == "walker") Report(role, {L"prop_wAlien_C", L"prop_wMannequin_C"});
     if (m == "drive") Report(role, {L"prop_drive_explosive_C", L"prop_drive_C", L"prop_driveRack_C"});
     if (m == "trigger" && host)
