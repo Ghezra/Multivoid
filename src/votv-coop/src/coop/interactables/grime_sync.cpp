@@ -17,6 +17,7 @@
 #include "coop/config/config.h"
 #include "coop/element/death_seam.h"
 #include "coop/net/protocol.h"
+#include "coop/net/refusal_tally.h"
 #include "coop/net/session.h"
 #include "coop/net/wire_key_util.h"  // WireKeyFromString / StringFromWireKey / FnvKey (shared)
 #include "coop/player/players_registry.h"  // coop::players::kMaxPeers
@@ -30,6 +31,7 @@
 #include "ue_wrap/engine/world_identity.h"     // gen-stamped index (dead-world guard)
 #include "coop/element/object_scan_hub.h"      // the shared sliced scan pass
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -59,16 +61,30 @@ constexpr float kProcessEps = 0.0005f;
 // The position quantisation grid (cm). A decal's saved position is bit-identical across peers
 // (the same save, a static actor), so any deterministic quantisation yields the same key on
 // both; the grid has to be fine enough that distinct decals rarely share a cell. The rig's save puts
-// 1117 decals on 1087 keys: 30 stand in a cell another of their type holds, and the lane treats a
-// cell's decals as one -- the floor is kept per key, so a fall on one lowers its twins at the next full
-// pass.
+// 1116 decals on 1086 keys: 30 stand in a place another decal holds, nearly all of the same class, and
+// the lane treats a place's decals as one -- the floor is kept per key, so a fall on one lowers its twins
+// at the next full pass. That is by design: the game's clean acts on a place, so the place is the identity
+// (a class in the key would only have lengthened it toward the wire's limit). The census line of a world's
+// first full pass counts the places that are shared.
 constexpr double kPosGrid = 2.0;
+// The wire key holds this many characters and WireKeyFromString cuts a longer one; a longer key is refused, not cut.
+constexpr size_t kWireKeyChars = sizeof(coop::net::WireKey::data);
+size_t g_longestKey = 0;       // the longest key KeysOf ever made (GT-only)
+uint32_t g_keysRefused = 0;    // keys refused for their length (GT-only)
+uint32_t g_indexNowTwins = 0;  // spawn-time decals not indexed because a live twin holds their key (GT-only)
 bool ProbeLog() {
     static const bool s_enabled = ::coop::config::ResolveFlag(::coop::config_registry::rows::grime_log);
     return s_enabled;
 }
 
 std::atomic<coop::net::Session*> g_session{nullptr};
+
+// What the lane has done, for Tallies. Written on the game thread, read on any.
+std::atomic<uint32_t> g_replays{0}, g_passes{0}, g_lowered{0}, g_endsSent{0}, g_passGen{0};
+// A save replay's window: open from its begin until kReplayWindowPasses index passes have completed after it. The decals the
+// lane lowers inside it are the ones the replay's deletes can have floored (Tallies counts only those).
+std::atomic<bool> g_replayWindow{false};
+constexpr uint32_t kReplayWindowPasses = 3;
 
 // An indexed decal: the actor, its slot and the serial the slot held when a pass took it (the key cache's
 // own), so a new object the allocator put at the address in the same slot is never read as the decal.
@@ -123,6 +139,8 @@ struct WorldRegister {
 // brought, one that was not here when its value arrived) is lowered to it, every decal of the key's cell
 // alike, and the host's snapshot sends it for every key its index does not hold. A value only this peer
 // holds enters it only while no peer is connected, a solo host's falls, which the join snapshot sends.
+// A key is a place, and twins at one place share it by design: the game's clean acts on a place, so what is
+// cleaned or ended there is cleaned or ended for the decals standing in it, and every peer agrees on that.
 WorldRegister<std::wstring, float> g_floor;
 std::unordered_map<std::wstring, float>& Floor() { return g_floor.Get(); }
 
@@ -159,6 +177,17 @@ bool KeysOf(void* grime, std::wstring& key, ExactKey& exact) {
     key += std::to_wstring(q(loc.Y)); key += L'_';
     key += std::to_wstring(q(loc.Z)); key += L'_';
     key += std::to_wstring(type);
+    g_longestKey = std::max(g_longestKey, key.size());
+    if (key.size() > kWireKeyChars) {   // the wire would cut it, and no peer's floor would match: the decal stays local
+        static bool s_warned = false;
+        ++g_keysRefused;
+        if (!s_warned) {
+            s_warned = true;
+            UE_LOGW("grime: a decal's key is %zu characters, past the wire's %zu: it is not synced (the longest so far %zu)",
+                    key.size(), kWireKeyChars, g_longestKey);
+        }
+        return false;
+    }
     std::memcpy(&exact.x, &loc.X, sizeof(exact.x));
     std::memcpy(&exact.y, &loc.Y, sizeof(exact.y));
     std::memcpy(&exact.z, &loc.Z, sizeof(exact.z));
@@ -204,6 +233,7 @@ void ApplyResolved(void* actor, const std::wstring& key, float target, const cha
     if (target <= coop::net::kGrimeGone + kProcessEps) {
         coop::grime_sync::ForgetDecal(actor);
         const bool ok = E::DestroyActor(actor);
+        if (g_replayWindow.load(std::memory_order_relaxed)) g_lowered.fetch_add(1, std::memory_order_relaxed);
         UE_LOGI("grime: a decal another peer ended is destroyed here (%s) ok=%d key='%ls'", why, ok ? 1 : 0, key.c_str());
         return;
     }
@@ -211,6 +241,7 @@ void ApplyResolved(void* actor, const std::wstring& key, float target, const cha
     if (!G::ReadProcess(actor, cur) || std::fabs(target - cur) < kProcessEps) return;
     if (lowerOnly && cur < target) return;
     const bool ok = G::WriteProcessAndApply(actor, target);
+    if (g_replayWindow.load(std::memory_order_relaxed)) g_lowered.fetch_add(1, std::memory_order_relaxed);
     if (ProbeLog() || !ok)
         UE_LOGI("grime: applied process=%.3f (was %.3f, %s) ok=%d key='%ls'", target, cur, why, ok ? 1 : 0,
                 key.c_str());
@@ -231,6 +262,7 @@ struct CachedKey {
     ExactKey     exact;  // KeysOf's own name for the one decal
     int32_t      idx;
     int32_t      serial;
+    bool         provisional = false;   // made at the decal's spawn (IndexNow): the next pass makes it again
 };
 std::unordered_map<void*, CachedKey> g_posKeyByActor;   // actor -> cached keys (GT-only)
 std::unordered_map<void*, CachedKey> g_scanNextCache;   // pass scratch: full-pass cache rebuild
@@ -245,6 +277,26 @@ bool g_scanIsFull = false;                                  // pass context
 uint32_t g_replayEpoch = 0;
 uint32_t g_passEpoch = 0;
 
+// What the full pass found, by key: once per world, the places that more than one decal holds (twins share their
+// place's key by design, so this is a census and no fault), and the longest key against the wire's limit.
+void KeyCensus(uint32_t worldGen) {
+    static uint32_t s_gen = 0;
+    if (s_gen == worldGen || g_scanFound.empty()) return;
+    s_gen = worldGen;
+    std::unordered_map<std::wstring, int> byKey;
+    size_t longest = 0;
+    for (const auto& f : g_scanFound) {
+        ++byKey[f.key];
+        longest = std::max(longest, f.key.size());
+    }
+    size_t shared = 0, extra = 0;
+    for (const auto& kv : byKey) if (kv.second > 1) { ++shared; extra += static_cast<size_t>(kv.second - 1); }
+    UE_LOGI("grime: key census -- %zu decal(s) on %zu key(s): %zu place(s) hold more than one decal (%zu extra, twins "
+            "that share their place's key); the longest key is %zu of the wire's %zu characters (the longest ever made: "
+            "%zu; %u refused as too long, %u spawn-time twin(s) kept out)", g_scanFound.size(), byKey.size(), shared,
+            extra, longest, kWireKeyChars, g_longestKey, g_keysRefused, g_indexNowTwins);
+}
+
 void HubPassBegin(void*, bool isFull) {
     g_scanFound.clear();
     g_scanNextCache.clear();
@@ -258,7 +310,7 @@ void HubMatch(void*, void* obj) {
     const int32_t idx = R::InternalIndexOf(obj);
     auto cit = g_posKeyByActor.find(obj);
     CachedKey ck;
-    if (cit != g_posKeyByActor.end() && cit->second.idx == idx &&
+    if (cit != g_posKeyByActor.end() && !cit->second.provisional && cit->second.idx == idx &&
         R::SlotSerial(idx) == cit->second.serial) {
         ck = cit->second;
     } else {
@@ -279,6 +331,12 @@ size_t HubPassComplete(void*, bool isFull, uint32_t worldGen) {
         std::lock_guard<std::mutex> lk(g_indexMutex);
         return g_byKey.size();
     }
+    if (g_passGen.load(std::memory_order_relaxed) != worldGen) {   // a new world counts its passes from none
+        g_passGen.store(worldGen, std::memory_order_relaxed);
+        g_passes.store(0, std::memory_order_relaxed);
+    }
+    g_passes.fetch_add(1, std::memory_order_relaxed);
+    if (isFull) KeyCensus(worldGen);
     const size_t added = g_scanFound.size();
     if (isFull) g_posKeyByActor.swap(g_scanNextCache);  // keep live actors' cached keys, drop dead ones
     uint64_t posHash = 0;
@@ -334,6 +392,9 @@ size_t HubPassComplete(void*, bool isFull, uint32_t worldGen) {
     if (ProbeLog())
         for (auto& f : g_scanFound)
             UE_LOGI("grime[probe]: key='%ls' idx=%d actor=%p", f.key.c_str(), f.ref.idx, f.ref.actor);
+    // The replay's window closes with its kReplayWindowPasses-th pass, after that pass's own lowerings were counted.
+    if (g_passes.load(std::memory_order_relaxed) >= kReplayWindowPasses)
+        g_replayWindow.store(false, std::memory_order_relaxed);
     g_scanFound.clear();
     g_scanNextCache.clear();
     return total;
@@ -365,7 +426,17 @@ UE_FACT_FN(kRowLoadObjects, "grime_sync", L"mainGamemode_C", L"loadObjects", Dec
 constexpr int kTagGrimeReplay = 0x47524C4F;  // 'GRLO'
 bool g_replayWatched = false;
 
+// The rehost churn's red arm: the replay is counted but the lane forgets nothing, as before the watch.
+bool ReplayWatchOff() {
+    static const bool off = ::coop::config::ResolveFlag(::coop::config_registry::rows::grime_replay_watch_off);
+    return off;
+}
+
 sg::Verdict OnLoadObjectsPre(const sg::Call&) {
+    g_replays.fetch_add(1, std::memory_order_relaxed);
+    g_replayWindow.store(true, std::memory_order_relaxed);
+    g_passes.store(0, std::memory_order_relaxed);
+    if (ReplayWatchOff()) return sg::Verdict::Run;
     ++g_replayEpoch;
     size_t indexed = 0;
     {
@@ -450,6 +521,13 @@ void OnLowerPost(const sg::Call& call) {
     Send(key, cur);
 }
 
+// The clean drill's red arm: a decal's end goes out as a fall to zero, the way it did before kGrimeGone, which every other
+// peer's copy takes for a decal at no dirt and leaves standing.
+bool GoneOff() {
+    static const bool off = ::coop::config::ResolveFlag(::coop::config_registry::rows::grime_gone_off);
+    return off;
+}
+
 // A decal's end of play. A stream-out leaves the index and parks its process under its exact place,
 // for its stream-back; a destroy -- a clean or a repair past zero, leaves raked or expired, fuel burnt
 // out -- ends the decal on this peer, sent as a wipe (kGrimeGone, which ends it on every peer) and kept as the floor for a joiner's
@@ -474,11 +552,26 @@ void OnGrimeEnd(const DS::ActorEnd& end) {
         if (read) g_parked.Get().insert_or_assign(exact, Parked{key, at});
         return;
     }
-    Lower(key, coop::net::kGrimeGone);
-    Send(key, coop::net::kGrimeGone);
+    const float ended = GoneOff() ? 0.f : coop::net::kGrimeGone;
+    Lower(key, ended);
+    Send(key, ended);
+    g_endsSent.fetch_add(1, std::memory_order_relaxed);
 }
 
+// The values refused at the receive edge: the first after a quiet spell is said at once, the rest of a burst summed.
+coop::net::RefusalTally g_refusals{"grime_sync"};
+
 }  // namespace
+
+bool AdmitValue(float value, uint8_t senderPeerSlot) {
+    const char* why = nullptr;
+    if (!std::isfinite(value)) why = "a value that is not a number";
+    else if (value < 0.f && value != coop::net::kGrimeGone) why = "a value below the ended mark";
+    else if (value > coop::net::kGrimeDirtMax) why = "a value above the dirt the game holds";
+    if (!why) return true;
+    g_refusals.Note(senderPeerSlot, why, coop::net::RefusalTally::Clock::now());
+    return false;
+}
 
 void Install(coop::net::Session* session) {
     g_session.store(session, std::memory_order_release);
@@ -559,6 +652,7 @@ void QueueConnectBroadcastForSlot(int peerSlot) {
 }
 
 void Tick() {
+    g_refusals.Flush(coop::net::RefusalTally::Clock::now());
     if (!G::EnsureResolved()) return;
     RegisterWithScanHub();  // safety net for any order where Tick precedes Install
     // The two lowering verbs' watches and the decals' end of play, each asked again until it takes. A
@@ -570,18 +664,43 @@ void Tick() {
     sg::ResolvePendingNames();
 }
 
-void ForgetDecal(void* actor) {
-    if (!actor) return;
+void IndexNow(void* decal) {
+    // The spawn seam's hand-over: the decal is named and indexed as it is born, so its end is sent however soon it comes.
+    if (!decal || !G::IsGrime(decal) || !IndexCurrent()) return;
+    CachedKey ck;
+    if (!KeysOf(decal, ck.key, ck.exact)) return;
+    ck.idx = R::InternalIndexOf(decal);
+    ck.serial = R::AllocateSlotSerial(ck.idx);
+    ck.provisional = true;
     {
         std::lock_guard<std::mutex> lk(g_indexMutex);
-        for (auto it = g_byKey.begin(); it != g_byKey.end(); ++it)
-            if (it->second.actor == actor) {
-                g_byKey.erase(it);
-                break;
-            }
+        const auto twin = g_byKey.find(ck.key);
+        if (twin != g_byKey.end() && twin->second.actor != decal && Holds(twin->second)) {
+            ++g_indexNowTwins;   // a live twin holds the key: the first stays, as a pass keeps the last it finds
+            return;
+        }
+        g_byKey[ck.key] = Ref{decal, ck.idx, ck.serial};
+    }
+    if (g_scanIsFull) g_scanNextCache.insert_or_assign(decal, ck);   // a full pass in flight keeps it through its swap
+    g_posKeyByActor.insert_or_assign(decal, std::move(ck));
+}
+
+void ForgetDecal(void* actor) {
+    if (!actor) return;
+    // The index holds a decal under the key its cache entry names: no walk of the index.
+    const auto cached = g_posKeyByActor.find(actor);
+    if (cached != g_posKeyByActor.end()) {
+        std::lock_guard<std::mutex> lk(g_indexMutex);
+        const auto it = g_byKey.find(cached->second.key);
+        if (it != g_byKey.end() && it->second.actor == actor) g_byKey.erase(it);
     }
     g_posKeyByActor.erase(actor);
     g_scanNextCache.erase(actor);
+}
+
+Tally Tallies() {
+    return Tally{g_replays.load(std::memory_order_relaxed), g_passes.load(std::memory_order_relaxed),
+                 g_lowered.load(std::memory_order_relaxed), g_endsSent.load(std::memory_order_relaxed), g_passGen.load(std::memory_order_relaxed)};
 }
 
 std::wstring DebugPosKeyForActor(void* actor) {

@@ -7,6 +7,7 @@
 #include "coop/interactables/drive_rack_sync.h"
 
 #include "coop/config/config.h"
+#include "coop/config/config_registry.h"
 #include "coop/element/bind_wait.h"
 #include "coop/element/registry.h"
 #include "coop/interactables/desk_snd_fx.h"   // ScopedWireApply (the shared desk wire guard)
@@ -23,10 +24,12 @@
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/desk/drive_chain.h"
 #include "ue_wrap/engine/engine.h"            // SpawnActor + TryGetActorLocation (set-deny refund)
+#include "ue_wrap/engine/world_identity.h"   // the world-change listener: what belongs to one world is forgotten
 
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <iterator>
 #include <map>
 #include <set>
 #include <vector>
@@ -58,7 +61,14 @@ std::map<uint32_t, ue_wrap::CachedObjRef> g_rackActor;  // rack eid -> the actor
 // its take back out spawns a new one under the same key, born empty here: the drives are in no record this lane takes
 // (the class is this lane's, and a client's record of it is not trusted), so the host's empty rows went out as the
 // canonical and the box came back empty on every peer (VOTV-MP/Multivoid#192). The host keeps the rows it last held
-// and puts them back on the first sight of an empty box of that key. Never a client's rows: the host's own last copy.
+// and puts them back on the first sight of an empty box of that key that a client PLACED (the host spawned it from the
+// client's drop intent: a client's take out of its inventory, which parked the key at the pocket). A box that reuses the
+// key and no client placed is a new box and keeps its own rows. Never a client's rows: the host's own last copy.
+// Each table has its end: a gone box's rows by its key's return, the 64-key cap and the world (its box is in an
+// inventory that belongs to one world), a placed key by its box's first sight, 30 s and the world. A box seen at no
+// sweep before its pocket has no shadow and kept nothing, but then no peer ever read its rows either; one seen at any
+// sweep is kept from its last read, and the sweep that finds the pocket notes it before it takes a placed key of the
+// same sweep, so a pocket and a take-out inside one sweep keep the rows.
 std::map<uint32_t, std::wstring> g_rackKey;  // rack eid -> its save key, read at its sight
 struct GoneRack {
     std::vector<uint8_t> blob;   // its last canonical blob
@@ -66,6 +76,45 @@ struct GoneRack {
 };
 std::map<std::wstring, GoneRack> g_goneRacks;
 constexpr size_t kMaxGoneRacks = 64;
+// The keys of boxes the host spawned from a client's drop intent, until the box's first sight here (NoteClientPlaced).
+std::map<std::wstring, Clock::time_point> g_clientPlaced;
+constexpr size_t kMaxClientPlaced = 64;
+constexpr auto kPlacedTtl = std::chrono::seconds(30);   // a placed box meets the lane at the next sweep, a second away
+// CLIENT: canonicals applied since the session began, by rack eid (a drill waits on the one box's).
+std::map<uint32_t, uint64_t> g_appliedByEid;
+
+// The tables above that belong to one world and one session: forgotten at a world change, at the connect edge's prime and
+// at the session's end.
+void ForgetPocketed() {
+    g_rackKey.clear();
+    g_goneRacks.clear();
+    g_clientPlaced.clear();
+    g_appliedByEid.clear();
+}
+
+void OnWorldChange() noexcept { ForgetPocketed(); }
+
+// A placed key whose box never reached a sweep (it was destroyed first, or its key did not read) goes with its time.
+void PrunePlaced() {
+    const auto now = Clock::now();
+    for (auto it = g_clientPlaced.begin(); it != g_clientPlaced.end();)
+        it = now - it->second > kPlacedTtl ? g_clientPlaced.erase(it) : std::next(it);
+}
+
+// drive_box_placed_gate_off (the drive box drill's key-reuse red): a box is given a gone box's rows at its first sight
+// whether or not a client placed it, as the lane did before the placement was the event.
+bool PlacedGateOff() {
+    static const bool off = coop::config::ResolveFlag(coop::config_registry::rows::drive_box_placed_gate_off);
+    return off;
+}
+
+// True, once, for a key a client placed since the last first sight of a box of it.
+bool TakeClientPlaced(const std::wstring& key) {
+    const auto it = g_clientPlaced.find(key);
+    if (it == g_clientPlaced.end()) return false;
+    g_clientPlaced.erase(it);
+    return true;
+}
 std::set<uint32_t> g_wrongClassSaid;  // eids a canonical named that are no rack here (said once a session)
 
 bool g_primed = false;
@@ -237,8 +286,8 @@ void NoteGoneRacks(const std::vector<std::pair<uint32_t, void*>>& live) {
 // HOST: a box first seen here empty whose key went holding drives gets those rows back, through the rack's own rows and
 // gen(), before its canonical goes out. True when it put them back.
 bool RestoreReturnedRack(uint32_t eid, void* rack, const std::wstring& key, DC::RackRow rows[DC::kRackSlots]) {
-    // VOTVCOOP_RACK_RESTORE_OFF=1: the box comes back as the host spawned it, the item trip probe's red arm.
-    static const bool off = coop::config::ReadEnv("VOTVCOOP_RACK_RESTORE_OFF") == "1";
+    // drive_box_restore_off: the box comes back as the host spawned it, the drive box drill's red arm.
+    static const bool off = coop::config::ResolveFlag(coop::config_registry::rows::drive_box_restore_off);
     const auto g = g_goneRacks.find(key);
     if (off || key.empty() || g == g_goneRacks.end()) return false;
     for (int i = 0; i < DC::kRackSlots; ++i)
@@ -266,7 +315,10 @@ void SweepRacks(bool announce) {
     std::vector<std::pair<uint32_t, void*>> racks;
     SnapshotRacks(racks);
     const bool host = IsHost();
-    if (host) NoteGoneRacks(racks);
+    if (host) {
+        PrunePlaced();
+        NoteGoneRacks(racks);   // before the first sights below: a pocket and a take-out in this sweep keep the rows
+    }
     for (const auto& [eid, rack] : racks) {
         DC::RackRow rows[DC::kRackSlots];
         int n = 0;
@@ -281,7 +333,9 @@ void SweepRacks(bool announce) {
             if (host) {
                 const std::wstring key = ue_wrap::prop::GetInteractableKeyString(rack);
                 g_rackKey[eid] = key;
-                if (announce && RestoreReturnedRack(eid, rack, key, rows)) {
+                // The place is consumed at the box's first sight whether or not a gone box waits for its key.
+                const bool placed = announce && (TakeClientPlaced(key) || PlacedGateOff());
+                if (placed && RestoreReturnedRack(eid, rack, key, rows)) {
                     blob = RackCanonicalBlob(eid, rows);
                     g_rackBase[eid] = coop::blob_chunks::Fnv64(blob);
                     g_rackShadow[eid] = std::move(blob);
@@ -538,6 +592,7 @@ void ClientApplyRackBlob(const coop::net::RackStateHead& h, const std::vector<ui
         g_rackActor[h.rackEid].Set(rack);
     }
     ++g_cCanonApplied;
+    ++g_appliedByEid[h.rackEid];
     UE_LOGI("drive_rack: rack canonical adopted eid=%u", h.rackEid);
 }
 
@@ -549,6 +604,7 @@ void ReplayRack(const uint8_t* bytes, size_t n, int senderSlot) {
 }
 
 void PrimeRacks() {
+    ForgetPocketed();
     g_rackBase.clear();
     g_rackShadow.clear();
     g_rackActor.clear();
@@ -565,6 +621,12 @@ void Install(coop::net::Session* session) {
     // drive). Idempotent -- only a NEW claim does any work -- so a per-tick call is safe.
     coop::prop_save_data::DeclareClassOwnedElsewhere(L"prop_driveRack_C");
     g_session.store(session, std::memory_order_release);
+    static bool s_listening = false;
+    if (!s_listening) {
+        s_listening = true;
+        if (!ue_wrap::world_identity::AddWorldChangeListener(&OnWorldChange))
+            UE_LOGE("drive_rack: the world-change list is full -- the pocketed boxes' tables are forgotten at the session's end only");
+    }
     // Verb matchers live in drive_sync (one-callback-per-verb-name; putDriveIn
     // is shared slot/rack ctx) -- it forwards rack marks via MarkDirtyFromVerb.
 }
@@ -655,9 +717,28 @@ uint64_t HostCanonicalsSent() {
     return g_cRackCanon;
 }
 
+uint64_t CanonicalsAppliedFor(uint32_t rackEid) {
+    const auto it = g_appliedByEid.find(rackEid);
+    return it == g_appliedByEid.end() ? 0 : it->second;
+}
+
+bool HostKeepsRowsOf(const std::wstring& key) {
+    return g_goneRacks.count(key) != 0;
+}
+
+void NoteClientPlaced(void* actor, const std::wstring& key) {
+    if (!IsHost() || !actor || key.empty() || !DC::EnsureResolved() || !DC::IsRackClass(R::ClassOf(actor))) return;
+    if (g_clientPlaced.size() >= kMaxClientPlaced && !g_clientPlaced.count(key)) {
+        auto oldest = g_clientPlaced.begin();
+        for (auto p = g_clientPlaced.begin(); p != g_clientPlaced.end(); ++p)
+            if (p->second < oldest->second) oldest = p;
+        g_clientPlaced.erase(oldest);
+    }
+    g_clientPlaced[key] = Clock::now();
+}
+
 void OnDisconnect() {
-    g_rackKey.clear();
-    g_goneRacks.clear();
+    ForgetPocketed();
     g_wrongClassSaid.clear();
     g_rackDirty.store(false, std::memory_order_relaxed);
     g_rackBase.clear();

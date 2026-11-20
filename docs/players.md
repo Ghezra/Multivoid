@@ -115,8 +115,11 @@ to it); the host clears a
 record when the hand empties or changes class and sends an empty one, so the next item is not shown it. Each peer
 writes it into its mirror through the item's own `loadData`, the leaf state only (a client waits for a class the
 record names to load, inside the per-tick budget), and again when the mirror is made anew (`coop/player/hand_record_sync`) `[?]` (a state changed in the hand of another class, an
-extinguisher's charge, is not announced and shows the record of the hold). The two-peer drill is
-`coop/dev/hand_record_drill` (`hand_record_drill=can|hand|joiner|forge|hostile|keyless|oversize|bounds|nonfinite|box`, the host's one verdict, three red arms).
+extinguisher's charge, is not announced and shows the record of the hold). A prop's own `loadData` turns its physics back on, so
+each write leaves the mirror a display again (`hand_item::MakeDisplay`, the one definition the mirror's spawn uses too) `[V]`.
+The two-peer drill is `coop/dev/hand_record_drill`
+(`hand_record_drill=can|hand|joiner|forge|hostile|keyless|oversize|bounds|nonfinite|box|display`, the host's one verdict, four
+red arms: `display`'s is `hand_display_redo_off`).
 
 A fire extinguisher (`prop_fireExt_C`) sprays from the hand: its `fire`, the hand's LMB press and
 release, turns its spray effect and sound on, and its tick aims the spray along that machine's camera,
@@ -450,27 +453,23 @@ teleport. The host can deny itself a command the same way, in a file named by it
 your own row in the player list). A player whose permission file sets `multivoid.kick.exempt` (or
 `.ban.exempt`) cannot be kicked or banned by a friend, only by the host.
 
-`/cremate <who>` sends a player to the crematorium; the player list and the Administration panel
-have it as **Send to the crematorium**. The host opens the nearest cremator's door and orders the
-player to its firebox, the way `/tphere` moves a player. The cremator's burn volume taking the player
-in is the landing: the host then shuts the door and pulls the lever, unless the machine is already
-running. From there the game's own cremator does the rest, on the player's own screen, and the host
-reads the death from the player's health in the pose stream. A death counts as a cremation only when
-the player's pose showed it burning first; it tells whoever ran the command "<name> was cremated.",
-then ends the player's session with the code MV-H35, "You were sent to the crematorium." and the
-name of whoever sent them, and writes that kick to the moderation action log. **`/cremate` ends in a
-kick, and `multivoid.kick.exempt` is not consulted**: the command's own node protects, a player
-holding `multivoid.cremate.exempt` cannot be sent by a friend. Nothing is locked: no movement lock and
-no position lock, since the closed door and the game's burn replace them; the waits are bounded by
-counts of the player's own poses, not by a clock. The other outcomes are one line each and no kick:
-the player survived (the run ended while the player lived and had stopped burning, or kept burning
-past the bound), left, died before landing, died in the cremator but not by its fire, did not land
-(the order did not apply, or the burn volume never took them in; the door is left open and the order
-is never repeated), the cremator would not start, or the cremator is gone. The command needs the node
-`multivoid.cremate` for anyone but the host. It refuses the host, the caller itself, a player who is
-still joining or not alive, one already on the way, a cremator another player is in, and a cremator
-whose burn volume cannot be watched yet. Other admins holding `multivoid.cremate.notify` are told
-what was done and how it ended.
+`/cremate <who>` sends a player to the crematorium; the player list and the Administration panel have it as **Send to
+the crematorium**. The host opens the nearest cremator's door and orders the player to its firebox, the way `/tphere`
+moves a player. The cremator's burn volume taking the player in is the landing: the host then shuts the door and pulls
+the lever, unless the machine is already running. From there the game's own cremator does the rest, on the player's own
+screen, and the host reads the death from the player's health in the pose stream. A death counts as a cremation only
+when the player's pose showed it burning first; it tells whoever ran the command "<name> was cremated.", then ends the
+player's session with the code MV-H35, "You were sent to the crematorium." and the name of whoever sent them, and writes
+that kick to the moderation action log. **`/cremate` ends in a kick, and `multivoid.kick.exempt` is not consulted**: the
+command's own node protects, a player holding `multivoid.cremate.exempt` cannot be sent by a friend. Nothing is locked:
+no movement lock and no position lock, since the closed door and the game's burn replace them; the waits are bounded by
+counts of the player's own poses, not by a clock. The other outcomes are one line each and no kick: the player survived
+(the run ended while the player lived and had stopped burning, or kept burning past the bound), left, died before
+landing, died in the cremator but not by its fire, did not land (the order did not apply, or the burn volume never took
+them in; the door is left open and the order is never repeated), the cremator would not start, or the cremator is gone.
+The command needs the node `multivoid.cremate` for anyone but the host. It refuses the host, the caller itself, a player
+who is still joining or not alive, one already on the way, a cremator another player is in, and a cremator whose burn
+volume cannot be watched yet. Other admins holding `multivoid.cremate.notify` are told what was done and how it ended.
 
 The same files can be edited in game with `/mv`, in LuckPerms' `/lp` shape: `/mv user <who> permission set
 <node> [true|false]`, `/mv user <who> parent add <group>`, `/mv group <name> permission set ...`, `/mv creategroup

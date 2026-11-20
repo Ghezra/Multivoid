@@ -53,10 +53,7 @@ so each peer polls the player's active-interface field for the edge; the host ar
 first-wins claim table, a client claims optimistically and force-exits if the host answers that
 another slot holds the device, and a second peer's press is denied with the game's own denied
 sound (`coop/interactables/device_occupancy`). The claim engages only on the screen edge; the
-desk's physical buttons never set it, which is why the input lane below is claim-free. Nor are they denied: the
-desk is one actor for every console on it, and only its coordinates button enters the screen, so a press is refused
-only on that button, and the import and export, processing and analyzer buttons work while another player is in the
-coordinates view `[V]` (by hand, on the rig).
+desk's physical buttons never set it, which is why the input lane below is claim-free.
 While a peer's ping runs, the host keeps the desk claimed for that peer after it leaves, so no
 other aim moves the dots its machine is consuming. A pinger knocked down (a faint, a KO, a death)
 holds it no longer: its ragdoll left the desk as any exit does, and the next player can sit while the
@@ -78,27 +75,7 @@ Every input-class scalar (knob speeds, filter toggles, polarity direction, volum
 row, the target level, the unit power toggles) is polled four times a second and sent as a
 field-granular delta (`coop/interactables/desk_input_sync`); receivers apply it through the
 field's native side-effect path and prime their own poll baseline for that field, so nothing
-echoes. The frequency and polarity dials' speeds are read every frame instead, so a scroll leaves
-at once and a nudge shorter than the poll is not lost. While a peer turns a dial, and after it
-stops until the host's stream shows where it stopped (a second and a half at most), that peer keeps
-its own desk's offset and match for the dial rather than the stream's; at its stop it sends the
-offset, which the host takes, clamped to the range the desk's tick holds it to, and its stream
-carries on. The dial answers the turning hand without a round trip, and every peer settles where
-it stopped `[V]` (`coop/dev/dial_probe`, `VOTVCOOP_DIAL_PROBE=1`, three peers, each client
-turning a dial by wheel notches, then the second client the first's dial while the first turned the
-other; `dev.desk_dial_fast_off` is the before arm: the turner's display moved in 10 to 51 ms and
-did not move past its stop, against up to 523 ms past it before; the host moved in 33 to 66 ms,
-against 239 to 282; the other client in 120 to 180 ms, against 251 to 269; all three settled on
-the same offsets in both arms, and an earlier two-peer run lost a 150 ms nudge before. The cost
-is one delta per notch rather than four a second at most, and a stopped offset per stop: the four
-turns' DeskInput deltas, counted where received, went from 63 to 135). One player turns a dial at a time: a notch adds
-to the dial's one speed, so two players turning it at once left it spinning on every peer when both had turned back
-(speed 6 against 0, the dial still climbing 8 s on). The host gives a free dial to the first player whose speed reaches
-it and says so (`DeskInputField::DialHolder`); every peer then takes only the holder's speeds and stopped offset, and
-another player's own notch is put back on its desk at once, with the deny click and a line naming the holder. The holder
-lets go with its stopped offset, its leave, or 3 s stopped without one `[V]` (the dial probe's `VOTVCOOP_DIAL_SAME=1`
-step, three peers: both clients turning the frequency dial 40 ms apart, the second's turn inside the first's; the dial
-followed the first alone, the second's one raced notch refused by the host, and it stopped at speed 0 on every peer). The cooldown charge is detected as an upward jump, and the same jump classifies the
+echoes. The cooldown charge is detected as an upward jump, and the same jump classifies the
 quick-scan, whose accepted-branch effects the mirrors replay.
 
 The signal view's settings ride the same poll: the two bounds of `remapValue` and `visualizerMode`, graph or
@@ -240,12 +217,13 @@ the eraser's delete, pressed on a client, runs on the host, and every press and 
 eraser shows on each client's own eraser (`coop/interactables/eraser_press_intent`); the
 rack is presser index-operations the host terminates, a full canonical array back, and a deny
 ring for races (`coop/interactables/drive_rack_sync`). A box that goes holding drives (a pocket destroys it) leaves its
-rows with the host under its save key, and the box a take out of the inventory spawns under that key, empty, gets them
-back before its canonical goes, where the host's empty rows had emptied it on every peer (VOTV-MP/Multivoid#192) `[V]`
-(`coop/dev/item_trip_probe`, `VOTVCOOP_ITEM_TRIP_ITEM=rack`, `VOTVCOOP_ITEM_TRIP_ROUTE=inv`, red arm
-`VOTVCOOP_RACK_RESTORE_OFF=1`: a client's box of 12 came back out with 12 on its copy and 0 on both after the host's
-canonical; now 12 on both). A box's record carries its 16 rows as signals, past the hand lane's old bound of 8, so a held
-box's record was refused; the bound is 16. A slot freezes the drive it takes, and only a
+rows with the host under its save key, and the box the host spawns from a client's placement of it (the client took it
+out of its inventory; the drop intent names the key the pocket parked) gets them back at the lane's first sight of it,
+before its canonical goes, where the host's empty rows had emptied it on every peer (VOTV-MP/Multivoid#192): a new box that
+merely reuses the key keeps its own rows `[?]` (`coop/dev/drive_box_drill`, a drive box through the inventory and its
+`reuse` arm; the reds, `drive_box_restore_off` and `drive_box_placed_gate_off`, leave the placed box empty and fill the
+new one). A box's record carries its 16 rows as signals, past the hand lane's old bound of 8, so a held
+box's record was refused; the bound is 16 rows and 12 KB (16 rows at the wire's caps weigh 9.5 KB). A slot freezes the drive it takes, and only a
 grab takes one out -- the drive ejects itself, and the grab unfreezes it -- so a peer applying
 another's eject leaves the unfreeze to that grab's own hold, which reaches the drive through the prop
 lane: its first pose unfreezes the copy, and its release leaves the holder's flags
@@ -301,13 +279,11 @@ compass, its terminal, the desk's radar filter and sounds on its machine -- runs
 ### Upgrades
 
 The signal upgrades are one persistent struct of eighteen levels that parametrise the download,
-ping, coordinate, refiner, radar and detector simulations. The host polls the struct every tick and
-broadcasts all eighteen levels when any moves, so a purchase, a sale and a cheat-menu write converge
-by one route; a client writes the host's levels and runs the gamemode's own re-derive
-(`coop/interactables/upgrade_sync`). A client's buy or sell button is cancelled at the script-body
-gate and sent as an intent: the host checks that the sender holds the laptop, re-derives the price
-and the bounds from its own table and level, charges the shared balance and writes the level, and
-its next broadcast is the answer. The ATV's physical modules are on [vehicles.md](vehicles.md).
+ping, coordinate, refiner, radar and detector simulations. No lane mirrors them: they ride only
+the transferred save, once, so a level bought mid-session diverges silently. The desk routes
+around it by streaming the derived frequency and polarity data, but the struct itself, and the
+purchase as an intent the host validates against the shared research points, are designed and
+not built. The ATV's physical modules are on [vehicles.md](vehicles.md).
 A module row is not a level of the panel's arithmetic: a client's press of one is cancelled at the script-body gate
 and goes to the host as an intent, and the host presses its own copy of the row, whose body charges the balance
 (`coop/interactables/upgrade_sync`). The row numbered 27 writes the triangle level at its 400 credits; ten indices
@@ -338,14 +314,14 @@ measured). Nine of the ten have a row on the laptop's panel, since no widget car
 | the tape accrual | each peer, host-adjusted | a one-hertz re-snap |
 | the servers | the host | state driven into each box |
 | a SAT console command that rests on the world | the host, on a terminal kept for its typist | the typed line up; the printed lines and the busy state back |
-| the upgrade levels | the host | polled and broadcast on change; a client's buy or sell is an intent the host charges and writes |
+| the upgrade levels | the host's save, once | not mirrored |
 
 ## Wire messages
 
 | Kind | Direction | Carries |
 |---|---|---|
 | `DeviceClaim` | a client to the host; the host to all | a claim, a release, the busy table |
-| `DeskInput`, `DeskScanEvent`, `DeskState`, `DeskLogLine` | the presser, relayed | a field delta (a dial's stopped offset among them); a quick-scan; the desk scalars; a one-shot log line |
+| `DeskInput`, `DeskScanEvent`, `DeskState`, `DeskLogLine` | the presser, relayed | a field delta; a quick-scan; the desk scalars; a one-shot log line |
 | `DeskSimPose` (stream), `DeskCursorPose` (stream) | the host to all; the mover to all | the simulation outputs; the cursor |
 | `DeskSndFx` | the presser, relayed | an audio effect event |
 | `SkySignalState`, `SkySignalCatch`, `DishAimState` | the host; the host; the occupant | the signal set; a catch; committed coordinates |
@@ -366,7 +342,6 @@ measured). Nine of the ten have a row on the laptop's panel, since no widget car
 | `LaptopState`, `LaptopQuad` | the presser and the host | the power edge and the portable PC's lid; the file buffer, with the slot's generation |
 | `ServerState` | the host to all | the servers' broken set |
 | `SatConsole` | a client to the host; the host to that client | a typed line with its terminal's context; the lines the host's run printed, and its busy state |
-| `UpgradeLevels`, `UpgradeIntent` | the host to all and to a joiner; a client to the host | the eighteen levels; a buy or sell of one level row |
 | `DeskShortState`, `DeskShortRequest` | the host to all; a client to the host | the desk shorted (`on` 1); the host's answer to a refused ask, to its sender alone (`on` 0) |
 
 ## Late join
@@ -386,13 +361,13 @@ mid-command while another client keeps the session leaves the command running on
 is bound to its terminal and its busy state as its world is ready; the last client's leave ends the
 session, and every such terminal is discarded with it, its command stopping there. An eraser press's
 show lasts its 3 s and is not replayed; its wipe arrives as the drive's row. The upgrade levels
-are sent at the joiner's ready edge, since its save was taken at the handshake.
+arrive with the save and never again.
 
 ## Known limits
 
 | Limit | Evidence |
 |---|---|
-| A module row of the upgrade panel (the RC module and the other one-shot unlocks) is bought on the presser's machine alone: a client's purchase debits only its own balance, which the host's next balance broadcast puts back, and the unlock stays on that machine | `[RD]` `coop/interactables/upgrade_sync` lets a module row run locally, since the lane carries no module store |
+| The upgrade levels are not mirrored; a level bought mid-session diverges until the next join | `[V]` no lane exists; `coop/interactables/desk_sim_sync` names the gap |
 | The coordinate log's animated line families are generated per peer from inputs that never mirror, so the host's and a client's logs differ; only the eight one-shot lines ride the wire, the reset's line written by each peer's own reset | `[V]` `coop/interactables/console_state_sync` |
 | A signal whose download's `begin` spawns a world prop (lifecrystal's crystal at the ROZ ship) spawns it on each peer, and a client's own is a world birth it does not author: the host's arriving birth adopts it when the arm's row came first, and it stays beside the host's when the host sent its birth before the arm's row (both ride the Default lane, so they arrive in send order) | `[RD]` `objectRenderer.begin`'s fourth step; the arriving birth's same-class match within 30 cm (`coop/props/remote_prop_spawn`) |
 | The signal camera's trigger runs on each peer, as its arm's `begin` does; the main map's one, the locker looker, watches that peer's own camera and ends that player's game as in single player | `[RD]` `mainGamemode.deleteActiveSignal`, `objectRenderer.begin`, `trigger_lockerLooker`; by design until decided |
@@ -404,20 +379,18 @@ are sent at the joiner's ready edge, since its save was taken at the handshake.
 | Each player's SAT console screen and log are its own; another player's typing is not shown | `[V]` by design until decided |
 | A client's cheat menu (`uncalib`, `summonvirus`) and a virus its own save starts change only its copy of the dishes' precision, and the copy is put back at its next poll; the virus itself waits on a lane for the desk's `virusEvent` | `[V]` `coop/interactables/dish_calib_sync`; no lane carries `virusEvent` |
 | The fakeGrays event's level trigger (`trigger_fakeLmaos`) breaks its dish's server and zeroes the dish on the machine where an allowed actor enters its volume; on a client the zero is put back and the break stays that client's | `[V]` the chain: the eventer's fakeGrays event arms the volume, whose first object is the trigger; `[?]` whether a client's body on the host's copy fires it |
-| A client's short that the host refuses (its sender out of reach) still sparks that client's own desk; the base's power stays the host's | `[RD]` `coop/interactables/desk_short_sync`: the client's own event runs before its request reaches the host |
 
 ## Code map
 
 | Concept | Files |
 |---|---|
 | occupancy | `coop/interactables/device_occupancy` |
-| the desk | `coop/interactables/desk_input_sync`, `coop/interactables/desk_sim_sync`, `coop/interactables/desk_ping_sync`, `coop/interactables/desk_cursor_sync`, `coop/interactables/desk_snd_fx`, `coop/interactables/console_state_sync`; the dial probe `coop/dev/dial_probe` |
+| the desk | `coop/interactables/desk_input_sync`, `coop/interactables/desk_sim_sync`, `coop/interactables/desk_ping_sync`, `coop/interactables/desk_cursor_sync`, `coop/interactables/desk_snd_fx`, `coop/interactables/console_state_sync` |
 | signals, the catch, the dishes | `coop/interactables/signal_sync`, `coop/interactables/signal_wire`, `coop/interactables/signal_catch_sync`, `coop/interactables/dish_sync`, `coop/interactables/dish_calib_sync`, `coop/interactables/download_arm_sync` |
 | the deck and the refiner | `coop/interactables/deck_play_sync`, `coop/interactables/comp_sync` |
 | drives, racks, modules, tapes | `coop/interactables/drive_sync`, `coop/interactables/drive_payload_sync`, `coop/interactables/eraser_press_intent`, `coop/interactables/drive_rack_sync`, `coop/interactables/physmods_sync`, `coop/interactables/tape_caddy_sync` |
 | the laptop, the crate, the database, the servers | `coop/interactables/laptop_sync`, `coop/interactables/floppy_slot_sync`, `coop/interactables/laptop_buffer_sync`, `coop/interactables/floppybox_sync`, `coop/interactables/meadow_db_sync`, `coop/interactables/serverbox_sync` |
 | the SAT console | `coop/interactables/sat_console_sync`, `coop/interactables/sat_console_table` |
-| the upgrade levels | `coop/interactables/upgrade_sync`, `ue_wrap/world/upgrades` |
 | the engine wrappers | `ue_wrap/desk/` (the dish, the console, the coordinate panel, the refiner pane, the drive chain, the tape caddy, the modules, the saved signals, the database, the audio, the SAT console) |
 | the join seeds | `coop/session/join_seed` |
 | tests and instruments | `coop/dev/drive_selftest`, `coop/dev/drive_drill`, `coop/dev/download_drill`, `coop/dev/desk_diag`, `coop/dev/sat_console_drill`, `coop/dev/calib_drill`, `coop/dev/desk_ping_drill`, `harness/autotest/autotest_seeddrill.cpp`, `harness/autotest/autotest_driveslot.cpp` (a drive taken out on one peer is out and carried on the other) |

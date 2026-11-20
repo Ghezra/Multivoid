@@ -335,3 +335,21 @@ One contributor's code, from the [credit ledger](../credits.md#the-ledger).
   refusing its own tick and fire debris. On top: the host checks the client's hand before a use and gives back an item it refused,
   budgets uses, claims and refunds, refuses a rig record a client did not just drop, sends state on the rig's own events instead of a
   scan, and drills with a red for each judge.
+
+- **A held prop that stays in the hand** ([#174](https://github.com/VOTV-MP/Multivoid/pull/174)): the item a player held, shown on the other screens, sank through the
+  floor or hung in the air once its record was written into it, because the prop's own load turns its physics back on. Kept as
+  written: the display made again after the record's write. On top: one definition of a display the hand's spawn and the kerfur's
+  disc carry use too, and a drill arm with a red.
+- **The base's grime across a rehost** ([#179](https://github.com/VOTV-MP/Multivoid/pull/179)): a save replay that ran while a session
+  was live read the map's own decal deletes as wipes and lowered the save's grime (935 decals on the rig). Kept as written: the
+  replay is watched and the lane forgets as it begins. On top: a drill that judges only a cycle whose replay the session saw, with a red.
+- **Fallen leaves and a cleaned stain** ([#188](https://github.com/VOTV-MP/Multivoid/pull/188)): autumn leaves grew on each machine apart,
+  and a stain cleaned away stood on the others. Kept as written: the host's leaves go out as spills, a decal's end as its own mark.
+  On top: a peer's grime value is bounded, leaves have their own join record and are indexed as they spawn, a joiner holds the
+  host's leaves, and drills with a red for each.
+- **The MX robot cleaner** ([#196](https://github.com/VOTV-MP/Multivoid/pull/196)): the cleaner lane matched the plain cleaner's class
+  exactly, so the MX one was never synced. Kept as written: a cleaner is any descendant of the plain one. On top: the drill runs the
+  MX cleaner with a red for the exact match, and the base class is looked up once.
+- **A drive box across a pocket** ([#198](https://github.com/VOTV-MP/Multivoid/pull/198)): a client's pocketed box came back empty on the
+  host. Kept as written: the host remembers a gone box's rows by its key and writes them back. On top: only a box a client placed
+  gets them (a new box reusing the key keeps its own), the tables end with their world, the record holds 16 rows, and drills with reds.

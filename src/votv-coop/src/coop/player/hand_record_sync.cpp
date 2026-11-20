@@ -23,8 +23,6 @@
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/script_gate.h"
-#include "ue_wrap/engine/engine.h"
-#include "ue_wrap/engine/engine_attach.h"
 #include "ue_wrap/facts/function_row.h"
 
 #include <array>
@@ -41,7 +39,6 @@ namespace {
 
 namespace R  = ue_wrap::reflection;
 namespace SR = ue_wrap::save_record;
-namespace E  = ue_wrap::engine;
 namespace sg = ue_wrap::script_gate;
 namespace CI = ue_wrap::container_inventory;
 namespace CR = ue_wrap::class_resolve;
@@ -58,9 +55,12 @@ constexpr int kTag = 0x48524355;  // 'HRCU'
 constexpr N::IntentBudget kBudget{4.0f, 2.0f};
 
 // A held item's record is its leaf state. Every honest held-can record measured 232-234 B on the rig (the can, hand,
-// joiner and forge arms), so the lane's own ceiling is 4 KB, a wide margin for an item that carries a list (an order box
-// names its items' classes), and a record past it is refused whole before anything of it is decoded or relayed.
-constexpr size_t kMaxRecordBytes = 4096;
+// joiner and forge arms); a record past the ceiling is refused whole before anything of it is decoded or relayed. A drive
+// box holds 16 signal rows, and a row's bytes are signal_wire's 48 of head, 2 per char of its four texts (capped at 96,
+// 48, 64 and 64 chars: 544 B) and a 4-byte length: 596 B at the caps, 9536 B for 16 rows, which a 4 KB ceiling refused
+// (the sender cleared the hand and the box was lost). 12 KB holds the 16 capped rows and leaves 2.7 KB for the rest of
+// a box's record, which carries no list.
+constexpr size_t kMaxRecordBytes = 12288;
 // The bounds on what a decoded record may carry, set from that measured shape plus margin (the stored line prints every
 // group's count so the next run can tighten them): a held item writes a handful of short groups.
 constexpr size_t kMaxGroups = 16;      // groups of one kind
@@ -134,12 +134,13 @@ coop::roster_ledger::PerSlotState<uint32_t> g_written;    // records written int
 coop::roster_ledger::PerSlotState<uint32_t> g_cleared;    // this slot's record cleared (the host) or taken as cleared (a peer)
 uint32_t g_indicesNeutered = 0;                           // a container record that carried a GObjStack index
 
-void Refuse(uint8_t sender, Refusal why, const wchar_t* cls) {
+// `detail`, when given, says which bound; it is logged with the refusal, which a power-of-two count throttles.
+void Refuse(uint8_t sender, Refusal why, const wchar_t* cls, const char* detail = "") {
     const uint32_t n = ++g_refused[sender][static_cast<int>(why)];
     // %.64ls: the class name is the sender's, up to the wire's 256 K chars.
     if ((n & (n - 1)) == 0)
-        UE_LOGW("hand_record: refused (%s) slot=%u class='%.64ls' (#%u from this sender)",
-                kRefusalName[static_cast<int>(why)], static_cast<unsigned>(sender), cls ? cls : L"", n);
+        UE_LOGW("hand_record: refused (%s) slot=%u class='%.64ls' (#%u from this sender) %s",
+                kRefusalName[static_cast<int>(why)], static_cast<unsigned>(sender), cls ? cls : L"", n, detail);
 }
 
 // Every number a record carries, finite: a non-finite one is refused whole, never clamped (hook_anchor's shape).
@@ -315,9 +316,7 @@ bool DecodeAndCheck(uint8_t sender, Parked& p) {
     if (p.rec.key.empty() || p.rec.key == L"None") { Refuse(sender, Refusal::Keyless, cls); return false; }
     if (!RecordFinite(p.rec)) { Refuse(sender, Refusal::NonFinite, cls); return false; }
     if (const std::string why = BoundsFault(p.rec); !why.empty()) {
-        Refuse(sender, Refusal::Bounds, cls);
-        UE_LOGW("hand_record: slot %u's %.64ls record is past a bound: %s", static_cast<unsigned>(sender), cls ? cls : L"",
-                why.c_str());
+        Refuse(sender, Refusal::Bounds, cls, why.c_str());
         return false;
     }
     return true;
@@ -498,10 +497,10 @@ void TickMirrors() {
         }
         const SR::ClassLoad load = host ? SR::ClassLoad::LookupOnly : SR::ClassLoad::Immediate;
         const bool ok = SR::ApplyRecord(mirror, h.rec, load);
-        // The prop's own loadData turns its physics back on, and a display falls out of the hand between the
-        // view's placings (Ghezra/Multivoid#38, a disc seen hanging and sinking): it is made a display again.
-        E::SetActorSimulatePhysics(mirror, false);
-        E::SetActorEnableCollision(mirror, false);
+        // A prop's loadData runs its init, which turns its physics back on: the mirror falls out of the hand between the
+        // view's placings and hangs in the air when it is put back. The write leaves it a display again.
+        static const bool redoOff = coop::config::ResolveFlag(::coop::config_registry::rows::hand_display_redo_off);  // [dev] red arm
+        if (!redoOff) coop::hand_item::MakeDisplay(mirror);
         h.appliedTo.Set(mirror);
         h.dirty = false;
         ++g_written[s];
@@ -521,6 +520,14 @@ void SendSnapshot(int slot, uint16_t sources) {
 }
 
 }  // namespace
+
+size_t EncodedBytes(const SR::SaveRecord& r) {
+    SR::SaveRecord copy = r;
+    copy.xform = {};   // as the sender sends it: where the hand holds it is no part of the record
+    return Encode(0, copy).size();
+}
+
+size_t RecordCeilingBytes() { return kMaxRecordBytes; }
 
 void Install(coop::net::Session* session) {
     g_session = session;
