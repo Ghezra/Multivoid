@@ -2,7 +2,8 @@
 // (VOTVCOOP_ISSUE42_PROBE=<mode> on every peer). Times run from the probe's arm; the host ends with `[I42] DONE`.
 //   roach    60 s the host adds 3 roaches by itself and moves 2 of them 300 m off; every peer counts its own.
 //   bigbox   60 s the host puts 80 drive records of ~800 B into a world container; every peer reports each container
-//            of 50 records or more (count and hash), and each cardboard box whose record is 50 KB or more.
+//            of 50 records or more (count and hash); the host changes a box whose record is 50 KB or more and
+//            publishes it, and every peer reports each such box.
 //   reseed   60 s slot 1 spawns a beebox, a shrimp, a jar and a cardboard box of its own and grabs each in turn; the
 //            host's re-scan must not send them back with eid 0.
 
@@ -16,6 +17,7 @@
 #include "coop/props/container_contents_sync.h"
 #include "coop/props/container_record_edit.h"
 #include "coop/props/prop_record_wire.h"
+#include "coop/props/prop_save_data.h"
 #include "ue_wrap/actors/prop.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/actors/save_record.h"
@@ -129,7 +131,35 @@ void PickOne(uint32_t eid, void* ctx) {
     if (!pick && CC::ContentHashOf(eid, h, n) && n < 100 && RE::Probe(eid) == RE::EditResult::Done) pick = eid;
 }
 
-void TickBigBox(uint64_t t, bool host, int& step) {
+// The first cardboard box whose record is 50 KB or more, changed live: its last string grows by a word, through its
+// own loadData, and the record is published, as a box a player fills is.
+void EditBigBox(coop::net::Session* s) {
+    void* const cls = ue_wrap::object_index::ClassByName(L"prop_box_C");
+    void* box = nullptr;
+    ue_wrap::save_record::SaveRecord r;
+    if (cls)
+        ue_wrap::object_index::ForEachInstance(cls, [](void* ctx, void* obj, int32_t) {
+            void*& pick = *static_cast<void**>(ctx);
+            ue_wrap::save_record::SaveRecord rec;
+            if (!pick && obj && R::IsLive(obj) && !R::NameStartsWith(R::NameOf(obj), L"Default__") &&
+                ue_wrap::save_record::CaptureRecord(obj, rec) &&
+                coop::props::prop_record_wire::RecordBytes(rec) >= 50000)
+                pick = obj;
+        }, &box);
+    if (!box || !ue_wrap::save_record::CaptureRecord(box, r) || r.strings.empty() || r.strings.back().empty()) {
+        UE_LOGW("[I42] host: no cardboard box with a record of 50 KB or more to change (%p)", box);
+        return;
+    }
+    r.strings.back().back() += L" mv42";
+    const bool applied = ue_wrap::save_record::ApplyRecord(box, r, ue_wrap::save_record::ClassLoad::LookupOnly);
+    size_t bytes = 0;
+    const std::wstring key = ue_wrap::prop::GetInteractableKeyString(box);
+    const bool pub = coop::prop_save_data::Publish(s, box, key, &bytes);
+    UE_LOGI("[I42] host: box key=%ls changed live (applied %d), its record published %d (%zu B)", key.c_str(),
+            applied ? 1 : 0, pub ? 1 : 0, bytes);
+}
+
+void TickBigBox(coop::net::Session* s, uint64_t t, bool host, int& step) {
     if (!host || step != 0 || t < 60000) return;
     step = 1;
     uint32_t eid = 0;
@@ -154,6 +184,7 @@ void TickBigBox(uint64_t t, bool host, int& step) {
     void* const owner = eid ? coop::element::LivePropActor(eid) : nullptr;
     UE_LOGI("[I42] host: container eid=%u (%ls) took %d records (last %s)", eid,
             owner ? R::ClassNameOf(owner).c_str() : L"none", put, RE::EditResultName(last));
+    EditBigBox(s);
 }
 
 // Each cardboard box whose own record is near the chunk ceiling or past it: its size and a hash of its values.
@@ -244,7 +275,7 @@ void Tick(coop::net::Session* session) {
     void* const me = coop::players::Registry::Get().Local();
     const std::string& m = Mode();
     if (m == "roach") TickRoach(t, host, me, g_step);
-    else if (m == "bigbox") TickBigBox(t, host, g_step);
+    else if (m == "bigbox") TickBigBox(session, t, host, g_step);
     else if (m == "reseed") TickReseed(t, host, me, g_step);
     if (host && !g_done && t >= 120000) {
         g_done = true;
