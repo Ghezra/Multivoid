@@ -13,6 +13,8 @@
 #include "coop/net/session.h"
 #include "coop/player/hand_item.h"
 #include "coop/player/players_registry.h"
+#include "ue_wrap/actors/prop.h"
+#include "ue_wrap/core/asset_load.h"
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
@@ -109,9 +111,19 @@ void Tick(coop::net::Session* session) {
                         E::TryGetActorLocation(me, g_spot);
                     }
         }
-        const bool held = coop::dev::drill_hand::TakeIntoHandNow(L"toolbox", L"prop_toolbox_C");
-        UE_LOGI("[FLOOD] client: beside pipe '%ls' (moved=%d), a toolbox in the hand (%d)",
-                R::ToString(R::NameOf(pipe)).c_str(), moved ? 1 : 0, held ? 1 : 0);
+        // VOTVCOOP_FLOOD_TOOL names the repair tool's class (prop_ducttape_C, a toolbox subclass); its list_props row
+        // is its class default's name.
+        const std::string toolEnv = coop::config::ReadEnv("VOTVCOOP_FLOOD_TOOL");
+        const std::wstring tool = toolEnv.empty() ? std::wstring(L"prop_toolbox_C") : std::wstring(toolEnv.begin(), toolEnv.end());
+        std::wstring row = L"toolbox";
+        if (tool != L"prop_toolbox_C") {
+            std::wstring leaf = tool.substr(0, tool.size() - 2);
+            ue_wrap::asset_load::LoadObjectByPath((L"/Game/objects/" + leaf + L"." + tool).c_str());
+            if (void* const cdo = R::FindClassDefaultObject(tool.c_str())) row = R::ToString(ue_wrap::prop::GetPropName(cdo));
+        }
+        const bool held = coop::dev::drill_hand::TakeIntoHandNow(row.c_str(), tool.c_str());
+        UE_LOGI("[FLOOD] client: beside pipe '%ls' (moved=%d), a %ls (row '%ls') in the hand (%d)",
+                R::ToString(R::NameOf(pipe)).c_str(), moved ? 1 : 0, tool.c_str(), row.c_str(), held ? 1 : 0);
     }
     // Held beside the pipe until the repair: the basement floor may not hold a teleported player.
     if (!host && pipe && me && g_step == 1 && g_spot.Z != 0.f) E::SetActorLocation(me, g_spot);

@@ -1,5 +1,5 @@
-// coop/dev/subclass_probe.h -- [dev] the exact-class sweep's fixes on the rig (VOTVCOOP_SUBCLASS_PROBE=1 on every peer):
-// a client's conversion of a raw patty, a client-side blue brain cheese's tick, a client's shot from the rapid RPG.
+// coop/dev/subclass_probe.h -- [dev] the exact-class sweep's fixes on the rig (VOTVCOOP_SUBCLASS_PROBE=<mode> on every peer;
+// the modes are in the .cpp).
 #pragma once
 
 namespace coop::net { class Session; }

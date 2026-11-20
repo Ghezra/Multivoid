@@ -24,7 +24,8 @@
 #include "coop/session/rig_verdict.h"
 #include "harness/screenshot.h"
 #include "ue_wrap/actors/vitals.h"
-#include "ue_wrap/core/call.h"
+#include "ue_wrap/core/call.h"
+#include "ue_wrap/core/class_resolve.h"
 #include "ue_wrap/core/fname_utils.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
@@ -566,6 +567,22 @@ bool Return(const Plan& p, const Now& before) {
     return Emit("back", Res::Pass, "back in the world with what it carried, its view its own throughout");
 }
 
+// VOTVCOOP_LEVEL_VISIT_HOOK names a hook class (prop_hook_erie_C, a prop_hook_C subclass) the visitor spawns where it
+// stands in the map: untitled_untitled's own hook check ends a visit with a hook in the map.
+void SpawnHookHere() {
+    const std::string v = coop::config::ReadEnv("VOTVCOOP_LEVEL_VISIT_HOOK");
+    if (v.empty()) return;
+    const std::wstring cls(v.begin(), v.end());
+    OnGameThread([&cls] {
+        void* const c = ue_wrap::class_resolve::ResolveClass(cls.c_str(), ue_wrap::class_resolve::AnyFamily(),
+                                                           ue_wrap::class_resolve::Load::Immediate).cls;
+        ue_wrap::FVector at{};
+        void* const hook = c && E::TryGetActorLocation(Me(), at) ? E::SpawnActor(c, {at.X + 60.f, at.Y, at.Z}) : nullptr;
+        UE_LOGI("level-visit: %hs spawned a %ls in the map at (%.0f,%.0f,%.0f): %p", Who(), cls.c_str(), at.X, at.Y,
+                at.Z, hook);
+    });
+}
+
 // The visitor's half of a pair: the trip, the stay until the watcher has judged its copy hidden, the end, the return.
 bool Visit(const Plan& p) {
     if (p.camera && !TakeCamera()) return false;
@@ -577,6 +594,7 @@ bool Visit(const Plan& p) {
     harness::screenshot::Capture(L"visit-in");
     if (p.look == "lamp") LampSequence();
     if (!Heard("hid")) return false;
+    SpawnHookHere();
     EndVisit(p.end);
     return Return(p, before);
 }

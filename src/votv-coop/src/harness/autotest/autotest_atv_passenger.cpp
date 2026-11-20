@@ -18,6 +18,7 @@
 #include "coop/dev/set_clock.h"
 #include "coop/dev/spawn_npc.h"
 #include "coop/interactables/atv_passenger.h"
+#include "ue_wrap/core/asset_load.h"
 #include "coop/interactables/atv_sync.h"
 #include "coop/player/level_visit.h"
 #include "coop/player/players_registry.h"
@@ -123,8 +124,18 @@ int AnimOnAtv(void* body) {
     return anim && Field(anim, L"isOnAtv", on) ? (on ? 1 : 0) : -1;
 }
 
+// VOTVCOOP_ATV_PASSENGER_KERFUR: the kerfur's class, kerfurOmega_C by default; a skin (kerfurOmega_1_C, a subclass) is
+// loaded by its asset path and spawned.
+const wchar_t* KerfurCls() {
+    static const std::wstring c = [] {
+        const std::string v = coop::config::ReadEnv("VOTVCOOP_ATV_PASSENGER_KERFUR");
+        return v.empty() ? std::wstring(L"kerfurOmega_C") : std::wstring(v.begin(), v.end());
+    }();
+    return c.c_str();
+}
+
 void* FirstKerfur() {
-    for (void* o : R::FindObjectsByClass(L"kerfurOmega_C"))
+    for (void* o : R::FindObjectsByClass(KerfurCls()))
         if (o && R::IsLive(o) && !R::NameStartsWith(R::NameOf(o), L"Default__")) return o;
     return nullptr;
 }
@@ -827,10 +838,15 @@ void RunHost() {
         float dx = me.X - atv.X, dy = me.Y - atv.Y;
         const float d = std::sqrt(dx * dx + dy * dy);
         if (d > 1.f) { dx /= d; dy /= d; } else { dx = 1.f; dy = 0.f; }
+        if (std::wstring(KerfurCls()) != L"kerfurOmega_C") {
+            std::wstring leaf = KerfurCls();
+            leaf.resize(leaf.size() - 2);
+            ue_wrap::asset_load::LoadObjectByPath((L"/Game/objects/" + leaf + L"." + KerfurCls()).c_str());
+        }
         void* k = FirstKerfur() ? FirstKerfur()
-                                : coop::dev::spawn_npc::SpawnAt(L"kerfurOmega_C", {me.X + dx * 200.f, me.Y + dy * 200.f,
-                                                                                   me.Z + 20.f});
-        UE_LOGI("atv-passenger: HOST kerfur %p beside the ATV", k);
+                                : coop::dev::spawn_npc::SpawnAt(KerfurCls(), {me.X + dx * 200.f, me.Y + dy * 200.f,
+                                                                              me.Z + 20.f});
+        UE_LOGI("atv-passenger: HOST kerfur %p (%ls) beside the ATV", k, KerfurCls());
     });
     ::Sleep(6000);
     Write("atv_key", key);

@@ -416,7 +416,9 @@ void HostApplyRackOp(const coop::net::RackStateHead& h, const std::vector<uint8_
         UE_LOGI("drive_rack: host applied rack set eid=%u idx=%u from slot %u",
                 h.rackEid, h.idx, senderSlot);
     } else if (h.op == 1) {  // take{idx}
-        if (!rows[h.idx].has) {
+        // VOTVCOOP_RACK_DENY_TAKES=1 (dev): every take is denied as a raced one, so a drill reaches the client's ghost reap.
+        static const bool s_denyTakes = coop::config::ReadEnv("VOTVCOOP_RACK_DENY_TAKES") == "1";
+        if (!rows[h.idx].has || s_denyTakes) {
             deny(1);
             // Arm the CONTENT-correlated reap: the loser's ghost carries the
             // row the winning take removed at this (rackEid, idx).
@@ -465,7 +467,7 @@ void ClientApplyRackBlob(const coop::net::RackStateHead& h, const std::vector<ui
                     now - t.when < kDenyTtl) { wantHash = t.rowHash; break; }
             }
         }
-        int destroyed = 0;
+        int destroyed = 0, bound = 0, other = 0;
         // Every drive class: a row taken out comes back as its own class (explosive, ae, unbreakable, the debug ones
         // are prop_drive_C subclasses).
         std::vector<void*> drives;
@@ -478,18 +480,21 @@ void ClientApplyRackBlob(const coop::net::RackStateHead& h, const std::vector<ui
             for (void* obj : drives) {
                 if (!obj || !R::IsLive(obj)) continue;
                 if (coop::element::Registry::Get().EidForActor(obj) !=
-                    coop::element::kInvalidId) continue;
+                    coop::element::kInvalidId) { ++bound; continue; }
                 SD::Row grow;
-                if (!DC::ReadDriveRow(obj, grow)) continue;
-                if (coop::blob_chunks::Fnv64(coop::signal_wire::Serialize(grow)) != wantHash)
+                if (!DC::ReadDriveRow(obj, grow)) { ++other; continue; }
+                if (coop::blob_chunks::Fnv64(coop::signal_wire::Serialize(grow)) != wantHash) {
+                    ++other;
                     continue;
+                }
                 coop::prop_lifecycle::DestroyLocalProp(obj, /*deferred*/true);
                 ++destroyed;
                 break;
             }
         }
         UE_LOGW("drive_rack: rack op=%u idx=%u DENIED by host -- %d content-matched ghost(s) "
-                "destroyed%s", h._pad0, h.idx, destroyed,
+                "destroyed of %zu drive(s) (%d bound, %d another row)%s", h._pad0, h.idx, destroyed, drives.size(), bound,
+                other,
                 wantHash ? "" : " (no shadow row -- nothing destroyed; host reaps by payload)");
         return;
     }
