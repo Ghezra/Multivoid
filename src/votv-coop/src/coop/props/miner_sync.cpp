@@ -176,14 +176,14 @@ void Answer(int slot, uint32_t eid, uint8_t item, bool granted) {
 }
 
 bool Upgrade(void* rig, uint8_t item) {
-    ue_wrap::ParamFrame f(R::FindFunction(R::ClassOf(rig), L"upgrade"));
+    ue_wrap::ParamFrame f(R::FindDispatchFunction(R::ClassOf(rig), L"upgrade", nullptr));
     if (!f.valid()) return false;
     f.Set<R::FName>(L"upgrade", ue_wrap::fname_utils::StringToFName(kItems[item]));
     return ue_wrap::Call(rig, f) && f.Get<bool>(L"success");
 }
 
 bool Claim(void* rig, void* player) {
-    ue_wrap::ParamFrame f(R::FindFunction(R::ClassOf(rig), L"actionOptionIndex"));
+    ue_wrap::ParamFrame f(R::FindDispatchFunction(R::ClassOf(rig), L"actionOptionIndex", nullptr));
     if (!f.valid()) return false;
     f.Set<void*>(L"player", player);
     f.Set<uint8_t>(L"action", kActionClaim);
@@ -265,7 +265,7 @@ bool ApplyState(const N::MinerPayload& p) {
     *IntAt(rig, L"upg_gpu") = p.gpus;
     *IntAt(rig, L"upg_slots") = p.slots;
     *IntAt(rig, L"upg_fans") = p.fans;
-    void* const upd = R::FindFunction(R::ClassOf(rig), L"upd");
+    void* const upd = R::FindDispatchFunction(R::ClassOf(rig), L"upd", nullptr);
     g_applying = true;
     const bool ran = upd && R::CallFunction(rig, upd, nullptr);  // its GPUs, coolers and slots shown
     g_applying = false;

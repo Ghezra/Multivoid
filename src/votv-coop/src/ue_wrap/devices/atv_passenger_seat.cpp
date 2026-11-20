@@ -98,7 +98,7 @@ void* SpawnSitBox(void* atv) {
 
 bool Sit(void* player, void* atv, void* box) {
     if (!player || !atv || !box || !R::IsLive(player)) return false;
-    void* f = R::FindFunction(R::ClassOf(player), L"sit");
+    void* f = R::FindDispatchFunction(R::ClassOf(player), L"sit", nullptr);
     ParamFrame pf(f);
     return f && pf.valid() && pf.Set<void*>(L"actor", atv) && pf.Set<void*>(L"component", nullptr) &&
            pf.Set<void*>(L"place", box) && Call(player, pf);
@@ -106,7 +106,7 @@ bool Sit(void* player, void* atv, void* box) {
 
 bool Unsit(void* player) {
     if (!player || !R::IsLive(player)) return false;
-    void* f = R::FindFunction(R::ClassOf(player), L"unsit");
+    void* f = R::FindDispatchFunction(R::ClassOf(player), L"unsit", nullptr);
     ParamFrame pf(f);
     return f && pf.valid() && Call(player, pf);
 }
