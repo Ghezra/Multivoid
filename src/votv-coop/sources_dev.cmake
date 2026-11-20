@@ -453,6 +453,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/kprint_probe.cpp
     src/coop/dev/kwheel_probe.cpp
     src/coop/dev/rack_record_probe.cpp
+    src/coop/dev/subclass_probe.cpp
     src/coop/dev/wall_fill_probe.cpp
     src/coop/dev/wall_preview_probe.cpp
     src/coop/dev/tower_poof_probe.cpp
