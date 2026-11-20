@@ -436,6 +436,12 @@ void Tick(coop::net::Session* session) {
         for (void* w : All(L"killerwisp_C"))
             UE_LOGI("[SUBCLASS] host: the killer wisp brought 15 m ahead (%d)",
                     E::TeleportTo(w, {p.X, p.Y, p.Z + 50.f}, {}) ? 1 : 0);
+    } else if (m == "kwisp" && host && g_step == 2 && t >= 120000) {
+        g_step = 3;
+        const FVector p = Ahead(me, 30000.f);
+        for (void* w : All(L"killerwisp_C"))
+            UE_LOGI("[SUBCLASS] host: the killer wisp sent 300 m off again (%d)",
+                    E::TeleportTo(w, {p.X, p.Y, p.Z + 50.f}, {}) ? 1 : 0);
     } else if (m == "walker" && host && g_step == 0 && t >= 60000) {
         g_step = 1;
         UE_LOGI("[SUBCLASS] host: spawned a prop_wAlien_C %p", Spawn(L"prop_wAlien_C", Ahead(me, 300.f)));
