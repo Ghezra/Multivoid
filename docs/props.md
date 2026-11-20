@@ -410,7 +410,7 @@ food's tick gate and the buckets' lane are built.
 
 A world food takes the first shape (`coop/props/prop_food_sync`), cooking progress included. Its tick rolls temperature and spoilage and, at the
 ends of the range, spawns a burnt or frozen copy and destroys itself, so a client's copy is refused its tick at the
-script gate (`coop/props/food_tick_gate`: `prop_food_C.ReceiveTick` and the four subclasses that declare their own, a
+script gate (`coop/props/food_tick_gate`: `prop_food_C.ReceiveTick` and the five subclasses that declare their own, a
 switch on the actor's tick being undone by the food's `init` and the coffee cup's BeginPlay) and takes the host's
 temperature, ripeness and uses, sent when they move, and the two poison fields a bite reads (written only by an MRE's
 `spawn`, on the content it poisons; every FoodState carries them, so a content's birth, a change and a join all deliver them
