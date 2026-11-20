@@ -195,7 +195,7 @@ void Judge(N::Session& s, uint8_t slot, const Payload& p) {
         const coop::element::IntentSubject subject = coop::element::IntentTarget::ForClientIntent(s, slot, kReachUU).Authorize(pipe);
         if (!subject) why = coop::element::OutcomeName(subject.outcome);
     }
-    if (!why && !coop::hand_item::HeldClassIs(slot, kToolboxClass)) why = "no toolbox in the hand";
+    if (!why && !coop::hand_item::HeldClassIsA(slot, kToolboxClass)) why = "no toolbox in the hand";   // or duct tape
     if (!why && (!Damaged(pipe, damaged) || !damaged)) why = "the pipe is whole";
     if (why) {
         UE_LOGI("flood_sync: slot %u's repair of '%ls' refused: %s", static_cast<unsigned>(slot), name.c_str(), why);
