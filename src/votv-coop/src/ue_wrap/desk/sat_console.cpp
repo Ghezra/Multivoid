@@ -304,4 +304,37 @@ void* RootPanel() {
     return ReadObject(console_desk::Instance(), g_offDeskRoot);
 }
 
+size_t Panels(void** out, size_t cap) {
+    if (!EnsureResolved()) return 0;
+    void* desk = console_desk::Instance();
+    if (!desk) return 0;
+    const auto* arr = At<TArrayView>(desk, g_offDeskPanels);
+    if (!arr->data || arr->num <= 0) return 0;
+    void* const* elems = reinterpret_cast<void* const*>(arr->data);
+    size_t n = 0;
+    for (int32_t i = 0; i < arr->num && n < cap; ++i)
+        if (elems[i] && R::IsLive(elems[i])) out[n++] = elems[i];
+    return n;
+}
+
+void* PanelDish(void* panel) {
+    if (!panel || !R::IsLive(panel)) return nullptr;
+    const int32_t off = R::FindPropertyOffset(R::ClassOf(panel), L"control_asDish");
+    return ReadObject(panel, off);
+}
+
+void* DishServer(void* dish) {
+    if (!dish || !R::IsLive(dish)) return nullptr;
+    const int32_t off = R::FindPropertyOffset(R::ClassOf(dish), L"server");
+    return ReadObject(dish, off);
+}
+
+bool CallServerBroken(void* term, void* server, bool damagedHealth) {
+    if (!g_resolved || !IsTerminal(term)) return false;
+    ParamFrame f(TerminalFn(term, L"serverBroken"));
+    const uint8_t d = damagedHealth ? 1 : 0;
+    if (!f.valid() || !f.Set(L"server", server) || !f.SetRaw(L"damagedHealth", &d, sizeof(d))) return false;
+    return Call(term, f);
+}
+
 }  // namespace ue_wrap::sat_console

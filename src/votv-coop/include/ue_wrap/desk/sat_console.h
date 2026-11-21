@@ -70,5 +70,12 @@ void* FindPanelByName(const std::wstring& name);
 // The desk's ROOT console (analogDScreenTest_C.rootConsole), the panel the world's broken-device alerts light; null
 // while the desk is not live.
 void* RootPanel();
+// The desk's panels (analogDScreenTest_C.consoles), in list order; empty while the desk is not live.
+size_t Panels(void** out, size_t cap);
+// A panel's dish (panel_SATconsole_C.control_asDish), and a dish's server box (dish_C.server); null when none.
+void* PanelDish(void* panel);
+void* DishServer(void* dish);
+// [dev] The terminal's own serverBroken(server, damagedHealth), as the world's alert binding calls it.
+bool CallServerBroken(void* term, void* server, bool damagedHealth);
 
 }  // namespace ue_wrap::sat_console
