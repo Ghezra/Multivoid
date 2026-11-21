@@ -145,6 +145,7 @@
 #include "coop/dev/hallfood_probe.h"   // [dev] a food hallucination, seen from every peer
 #include "coop/dev/lightsave_probe.h"   // [dev] a client's lights through the host's save
 #include "coop/dev/cremdoor_probe.h"   // [dev] a far client works the cremator's door
+#include "coop/dev/deskneedle_probe.h"   // [dev] the desk's needle and save latch on every peer
 #include "coop/dev/sit_probe.h"   // the chair sit probe
 #include "coop/dev/join_stall_probe.h"   // [dev] a client's game thread held still while it joins
 #include "coop/dev/kdisc_watch.h"   // [dev] every floppy disc's place, parent and physics
@@ -569,6 +570,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::hallfood_probe::Tick(&session);  // [dev] a food hallucination (a latched read when off)
     coop::dev::lightsave_probe::Tick(&session);  // [dev] lights through a save (a latched read when off)
     coop::dev::cremdoor_probe::Tick(&session);  // [dev] the cremator's door (a latched read when off)
+    coop::dev::deskneedle_probe::Tick(&session);  // [dev] the desk's needle (a latched read when off)
     coop::dev::sit_probe::Tick(&session);  // a client sits on a chair; the host looks
     coop::dev::kdisc_watch::Tick(&session);  // [dev] VOTVCOOP_KDISC_WATCH
     coop::dev::kfollow_probe::Tick(&session);  // [dev] VOTVCOOP_KFOLLOW_PROBE
