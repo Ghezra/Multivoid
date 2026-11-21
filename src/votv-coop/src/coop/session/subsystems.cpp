@@ -93,6 +93,7 @@
 #include "coop/creatures/kerfur_form_assembler.h"  // script-body gate consumer (observe-only + containment counter)
 #include "coop/world/vent_crawler_sync.h"
 #include "coop/props/prop_hold_claim.h"
+#include "coop/interactables/battery_charger_sync.h"
 #include "coop/props/bucket_sync.h"
 #include "coop/props/prop_can_state.h"
 #include "coop/interactables/kitchen_sync.h"
@@ -334,6 +335,7 @@ void Install(coop::net::Session& session) {
     coop::props::prop_record_refresh::Install(&session);  // drive box + reel case republish their own record
     coop::vent_crawler_sync::Install(&session);  // the crawl's start, for a client's sounds
     coop::bucket_sync::Install(&session);  // a mop bucket's water and a concrete bucket's concrete: the host's rows
+    coop::battery_charger_sync::Install(&session);  // the battery charger's slots: the host's rows, a client's put and take
     coop::props::prop_can_state::Install(&session);  // a canned food's lid and contents: its record on a change
     coop::desk_short_sync::Install(&session);  // the base computer's short circuit is the host's
     coop::world_sound_sync::Install(&session);  // the sky's two sounds, a faucet's click
@@ -622,6 +624,7 @@ DisconnectStats DisconnectAll() {
     coop::laptop_buffer_sync::OnDisconnect();  // quad shadow + assembler
     coop::floppybox_sync::OnDisconnect();  // box shadows + taken-ring + canonical retries
     coop::bucket_sync::OnDisconnect();  // what it knew of the buckets, and its counters
+    coop::battery_charger_sync::OnDisconnect();  // what it told of the chargers, and its counters
     coop::dev::dev_lanes::RearmSelftests();  // [dev] the selftests re-arm for the next session
     coop::subsystems::desk::OnDisconnect();  // the desk, the drives and the dishes: each lane's counters, shadows and sessions
     coop::oven_progress_sync::OnDisconnect();  // the known ovens + parked masks
@@ -726,6 +729,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     coop::kerfur_color_sync::Tick();  // the picker's watches, a client's asks and the colours it parked
     coop::printer_sync::Tick();  // the print checks, and the host's printed objects and where they rest
     coop::bucket_sync::Tick();  // the host's rows of the buckets that changed, a client's asks
+    coop::battery_charger_sync::Tick();  // the host's rows of the chargers that changed, a client's parked rows
     coop::props::prop_can_state::Tick();  // the init watch's names resolve until it is live
     coop::props::prop_food_sync::Tick();  // the host's poll, the client's wait list
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:hand_record"}; coop::hand_record_sync::Tick(); }  // the owner's hand read and sent, the host's parked records judged, the mirrors written

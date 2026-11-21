@@ -51,6 +51,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::ChairSeatIntent:
     case ReliableKind::PropRestQuery:
     case ReliableKind::BucketIntent:
+    case ReliableKind::ChargerIntent:
     case ReliableKind::KerfurColorIntent:
     case ReliableKind::PrintAsk:
     case ReliableKind::PrintCheckReply:
@@ -229,6 +230,8 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::ChairSeatState:
     case ReliableKind::PropRestPose:
     case ReliableKind::BucketState:
+    case ReliableKind::ChargerState:
+    case ReliableKind::ChargerGive:
     case ReliableKind::KerfurColorState:
     case ReliableKind::PrintCheck:
     case ReliableKind::PrintNotice:

@@ -1649,6 +1649,17 @@ enum class ReliableKind : uint16_t {
     // print between the two, and its own object at the end is refused. To a joiner, each printer printing. Not
     // pre-world. PrinterStatePayload.
     PrinterState = 312,
+    // The battery charger's four slots (coop/interactables/battery_charger_sync). HOST->ALL: each charger's slots,
+    // battery count and power when they change, every 2 s while one charges, and every one to a joiner; a client writes
+    // them and runs no charge of its own. Not pre-world. ChargerStatePayload. CLIENT->HOST: this client's player put the
+    // rechargeable battery in its hand into a slot (op 0, its charge, run on its own copy as the game does) or asked to
+    // take a slot's battery out (op 1, its own take cancelled); the host judges the reach and the slot and runs it on its
+    // own copy, and a refused put's battery is spawned beside the sender. Never relayed. Not pre-world.
+    // ChargerIntentPayload. HOST->ONE CLIENT: a take the host ran, with the battery's charge; the client puts that
+    // battery into its own inventory as the game's take does. ChargerGivePayload.
+    ChargerState = 313,
+    ChargerIntent = 314,
+    ChargerGive = 315,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2693,6 +2704,41 @@ struct KerfurColorIntentPayload {
     float    color[4];  // 16
 };
 static_assert(sizeof(KerfurColorIntentPayload) == 20, "KerfurColorIntentPayload must be 20 bytes");
+
+// ChargerState, ChargerIntent, ChargerGive. A battery charger (prop_batteryCharger_C) by host element id. A slot's charge
+// is its b1..b4: -1 empty, else 0..100.
+inline constexpr int kChargerSlots = 4;
+inline constexpr int kChargerRowsMax = 8;
+struct ChargerRow {
+    uint32_t eid;                   // 4
+    float    slot[kChargerSlots];   // 16
+    int8_t   plugged;               // 1 -- its plugged, the batteries in it
+    uint8_t  powered;               // 1
+    uint8_t  _pad[2];               // 2 -- zero
+};
+static_assert(sizeof(ChargerRow) == 24, "ChargerRow must be 24 bytes");
+struct ChargerStatePayload {
+    uint8_t    count;                     // 1 -- 1..kChargerRowsMax
+    uint8_t    _pad[3];                   // 3 -- zero
+    ChargerRow rows[kChargerRowsMax];     // 192
+};
+static_assert(sizeof(ChargerStatePayload) == 196, "ChargerStatePayload must be 196 bytes");
+inline constexpr uint8_t kChargerPut = 0, kChargerTake = 1;
+struct ChargerIntentPayload {
+    uint32_t eid;      // 4
+    uint8_t  op;       // 1 -- kChargerPut, kChargerTake
+    uint8_t  slot;     // 1 -- 0..kChargerSlots-1
+    uint8_t  _pad[2];  // 2 -- zero
+    float    charge;   // 4 -- a put's battery charge, 0..100; 0 for a take
+};
+static_assert(sizeof(ChargerIntentPayload) == 12, "ChargerIntentPayload must be 12 bytes");
+struct ChargerGivePayload {
+    uint32_t eid;      // 4
+    uint8_t  slot;     // 1
+    uint8_t  _pad[3];  // 3 -- zero
+    float    charge;   // 4 -- the battery's charge as the host's slot held it
+};
+static_assert(sizeof(ChargerGivePayload) == 12, "ChargerGivePayload must be 12 bytes");
 
 // The 3D printer's lane (coop/props/printer_sync). A model is its folder's name, UTF-8, 1 to 95 bytes, not terminated;
 // a printed object is the host's element id of it, with its save key (an FName as text, up to 63 bytes) for a joiner's

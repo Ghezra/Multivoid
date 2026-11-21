@@ -43,6 +43,7 @@
 #include "coop/creatures/kerfur_dress_sync.h"
 #include "coop/world/cave_rock_sync.h"
 #include "coop/player/chair_seat.h"
+#include "coop/interactables/battery_charger_sync.h"
 #include "coop/props/bucket_sync.h"
 #include "coop/props/prop_rest_sync.h"
 #include "coop/world/sound_relay.h"
@@ -637,6 +638,47 @@ bool HandlePropDriveEvent(net::Session& session,
                 break;
             }
             ::coop::bucket_sync::OnState(p);
+        }
+        break;
+    }
+    case net::ReliableKind::ChargerState:
+    case net::ReliableKind::ChargerIntent:
+    case net::ReliableKind::ChargerGive: {
+        // ChargerState HOST->ALL, ChargerIntent CLIENT->HOST, ChargerGive HOST->ONE (coop/interactables/
+        // battery_charger_sync). Exact length, counts, ops and slots bounded, every charge finite and within -1..100.
+        const net::ReliableKind k = msg.kind;
+        const bool intent = k == net::ReliableKind::ChargerIntent;
+        const size_t want = intent ? sizeof(net::ChargerIntentPayload)
+                          : k == net::ReliableKind::ChargerGive ? sizeof(net::ChargerGivePayload)
+                                                                 : sizeof(net::ChargerStatePayload);
+        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != want) {
+            UE_LOGW("event_feed: a battery charger message the wrong way or the wrong length from slot %d -- dropping",
+                    msg.senderPeerSlot);
+            break;
+        }
+        auto chargeOk = [](float v) { return std::isfinite(v) && v >= -1.f && v <= 100.f; };
+        if (intent) {
+            net::ChargerIntentPayload p{};
+            std::memcpy(&p, msg.payload, sizeof(p));
+            if (p.op > net::kChargerTake || p.slot >= net::kChargerSlots || !chargeOk(p.charge)) break;
+            ::coop::battery_charger_sync::OnIntent(msg.senderPeerSlot, p);
+        } else if (k == net::ReliableKind::ChargerGive) {
+            net::ChargerGivePayload p{};
+            std::memcpy(&p, msg.payload, sizeof(p));
+            if (p.slot >= net::kChargerSlots || !chargeOk(p.charge)) break;
+            ::coop::battery_charger_sync::OnGive(p);
+        } else {
+            net::ChargerStatePayload p{};
+            std::memcpy(&p, msg.payload, sizeof(p));
+            if (p.count == 0 || p.count > net::kChargerRowsMax) break;
+            bool ok = true;
+            for (int i = 0; i < p.count; ++i)
+                for (const float v : p.rows[i].slot) ok = ok && chargeOk(v);
+            if (!ok) {
+                UE_LOGW("event_feed: ChargerState with a charge non-finite or out of range -- dropping");
+                break;
+            }
+            ::coop::battery_charger_sync::OnState(p);
         }
         break;
     }
