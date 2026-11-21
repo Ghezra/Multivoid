@@ -45,8 +45,8 @@ enum class Apply : uint8_t { Done, Waiting, NoSuchTrack };
 // Move the device to `state`: a TV's channel and picture, the device's own openLink for another track, which finishes
 // later, then its time, play or pause and mode. NoSuchTrack when this peer cannot open it, and then it is paused: its
 // catalog has no such track, or its Custom Content rule is off, which openLink refuses with a hint on every call, so it is
-// never called then.
-Apply ApplyState(void* actor, const State& state);
+// never called then. `opened`, when given, is set when this call ran the device's openLink.
+Apply ApplyState(void* actor, const State& state, bool* opened = nullptr);
 
 namespace dev {
 // [dev] the red arm (coop/config/dev_refuse, "media"): ApplyState's openLink is skipped and counted, as a device whose
