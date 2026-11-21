@@ -6,7 +6,7 @@
 //   75 s  the host puts one at 40 into slot 1.
 //  110 s  slot 1 takes slot 0 out (putIn on a full slot: a battery into its inventory); 115 s the host takes slot 1 out.
 //  130 s  slot 1 clips the car battery charger to the first loose ATV battery, red to red and blue to blue, as its used
-//         event leaves them, and plugs the charger in if it reads unplugged.
+//         event leaves them (the host plugged that charger in at 60 s and brought its copy beside the base).
 // Every peer reports every 10 s: each battery charger (its four slots, plugged, powered), the rechargeable batteries in
 // the world, the car battery charger (plugged, clips), each loose ATV battery's charge and the ATVs' batteries.
 
@@ -169,11 +169,8 @@ void Clip(void* me) {
     SetBool(ch, L"pluggedBlueToRed", false);
     SetBool(bat, L"plugged_red", true);
     SetBool(bat, L"plugged_blue", true);
-    const int plugged = GetBool(ch, L"plugged");
-    bool plugRan = false;
-    if (plugged == 0) plugRan = PlugIn(ch);
-    UE_LOGI("[BATT] client: the car battery charger clipped to battery eid=%u at %.2f (charger plugged %d, plugged now %d)",
-            Eid(bat), GetF(bat, L"battery"), plugged, plugRan ? 1 : 0);
+    UE_LOGI("[BATT] client: the car battery charger clipped to battery eid=%u at %.2f (charger plugged %d)", Eid(bat),
+            GetF(bat, L"battery"), GetBool(ch, L"plugged"));
 }
 
 void Report(const char* role) {
@@ -243,6 +240,15 @@ void Tick(coop::net::Session* session) {
             if (charge) *charge = 20.f;
             UE_LOGI("[BATT] host: loose ATV battery eid=%u drained to 20 here (%d)", cars.empty() ? 0u : Eid(cars[0]),
                     charge ? 1 : 0);
+            // The car battery charger's cord in on the host, whose copy charges.
+            const std::vector<void*> carChargers = AllOf(L"prop_carBatteryCharger_C");
+            UE_LOGI("[BATT] host: the car battery charger plugged in (%d)",
+                    !carChargers.empty() && GetBool(carChargers[0], L"plugged") != 1 && PlugIn(carChargers[0]) ? 1 : 0);
+            // The save's car charger stands far out on the map: the host's copy, which judges a clip's reach, comes to
+            // the base, where the clients stand.
+            const FVector by = Ahead(me, 200.f, -150.f);
+            UE_LOGI("[BATT] host: the car battery charger brought beside the base (%d)",
+                    !carChargers.empty() && E::TeleportTo(carChargers[0], {by.X, by.Y, by.Z + 30.f}, {}) ? 1 : 0);
         }
         if (g_step == 1 && t >= 75000) {
             g_step = 2;
