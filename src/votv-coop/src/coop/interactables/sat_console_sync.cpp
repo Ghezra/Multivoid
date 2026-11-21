@@ -2,6 +2,7 @@
 
 #include "coop/interactables/sat_console_sync.h"
 
+#include "coop/config/config.h"  // [dev] the lock's bound, shortened for a drill
 #include "coop/interactables/sat_console_table.h"
 #include "coop/items/save_record_wire.h"  // the blob's read and append primitives
 #include "coop/net/blob_chunks.h"
@@ -20,6 +21,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <deque>
 #include <map>
 #include <string>
@@ -57,6 +59,9 @@ constexpr size_t kMaxTerminals   = 32;    // kept terminals, one a console, whil
 constexpr size_t kOutboxCap      = 512;   // blobs owed to one slot while its sends are refused
 constexpr auto   kResendEvery    = std::chrono::milliseconds(250);  // a refused slot is tried this often
 constexpr auto   kShowEvery      = std::chrono::milliseconds(250);  // a console's lines are sent this often at most
+// A console busy longer than this is stuck: its terminal is discarded, which stops its command and frees its lock.
+// The longest command, sd.calall, takes well under a minute; VOTVCOOP_SAT_LOCK_TIMEOUT_S shortens it for a drill.
+constexpr int64_t kStuckAfterSecs = 600;
 const wchar_t* const kBusyLine = L"<r>The terminal is busy</>";  // the game's answer to a line it cannot take
 const wchar_t* const kErrLine  = L"<r>err</>";                   // the game's answer to a line it cannot run
 
@@ -106,8 +111,16 @@ struct Terminal {
     std::wstring name;
     std::wstring logSent;     // the lines last told
     Clock::time_point nextShow{};
-    std::wstring running;     // the line it runs, until its busy flag falls (a line that finishes at once, a poll)
+    std::wstring running;     // the line it runs, until its busy flag falls
+    // What changed since the lane last read it, marked by the terminal's own watches: a print (writeToLog) marks
+    // its lines, the end of a body (enterCommand or the ubergraph, which every latent continuation resumes) its
+    // busy flag, the only places either changes.
+    bool logDirty = false;
+    bool busyDirty = true;
+    Clock::time_point busySince{};
 };
+// HOST: a console's lines last told, kept when its terminal goes, so the one made after it starts from them.
+std::map<std::wstring, std::wstring> g_history;
 std::vector<Terminal> g_terms;
 
 // HOST: each typist's pace, by slot (0 the host's own player).
@@ -142,6 +155,7 @@ struct Screen {
 };
 std::map<std::wstring, Screen> g_screens;
 std::wstring g_shown;
+void* g_shownPanel = nullptr;  // the panel object g_shown was read from: its name is read again only when it moves
 bool g_haveShown = false;
 // Whether a line this terminal ran itself holds its busy flag: the shown console's level sets it while that
 // console is busy and clears only what it set.
@@ -195,7 +209,10 @@ void Repaint(void* term) {
 void FollowShown() {
     void* term = SC::LocalTerminal();
     if (!term) return;
-    const std::wstring panel = SC::PanelName(SC::ReadUsed(term));
+    void* const used = SC::ReadUsed(term);
+    if (g_haveShown && used == g_shownPanel) return;  // the per-tick steady state: one pointer read
+    g_shownPanel = used;
+    const std::wstring panel = SC::PanelName(used);
     if (!g_haveShown) {
         g_haveShown = true;  // first sight: what it shows stays until a console's lines come
         g_shown = panel;
@@ -458,6 +475,9 @@ Terminal* TerminalFor(const std::wstring& panel) {
     }
     made.panel = panel;
     made.world = WI::CurrentWorld();  // null while unknown: the world term then fails open
+    // A console whose last terminal was discarded starts from that one's lines.
+    if (auto it = g_history.find(panel); it != g_history.end() && SC::WriteLog(term, it->second))
+        made.logSent = it->second;
     g_terms.push_back(std::move(made));
     UE_LOGI("sat_console: HOST made console '%ls''s terminal (%zu kept)", panel.c_str(), g_terms.size());
     return &g_terms.back();
@@ -562,6 +582,7 @@ void HostRunLine(uint8_t slot, int32_t dish, const std::wstring& name, const std
         return;
     }
     t->running = line;
+    t->logDirty = t->busyDirty = true;
     if (slot != 0) ++g_counts.linesRun;
 }
 
@@ -621,33 +642,68 @@ void DrainHostWork() {
     }
 }
 
-// Each console's level and lines, sent as they change, its lines at most four times a second.
+int64_t StuckAfterSecs() {
+    static const int64_t v = [] {
+        const std::string e = coop::config::ReadEnv("VOTVCOOP_SAT_LOCK_TIMEOUT_S");
+        const long n = e.empty() ? 0 : std::strtol(e.c_str(), nullptr, 10);
+        return n > 0 ? static_cast<int64_t>(n) : kStuckAfterSecs;
+    }();
+    return v;
+}
+
+// Each console's level and lines, read only when its watches marked them and sent as they change, its lines at most
+// four times a second. A console busy past its bound is stuck: its terminal goes, its lines kept for the next.
 void HostTellConsoles() {
     const auto now = Clock::now();
-    for (Terminal& t : g_terms) {
+    for (size_t i = 0; i < g_terms.size();) {
+        Terminal& t = g_terms[i];
         void* term = t.pin.Raw();
-        bool busy = false;
-        const bool read = SC::ReadProcessing(term, busy);
-        if (read && !busy) t.running.clear();
-        if (read && busy != t.busySent) {
-            t.busySent = busy;
-            ToReadyClients([&](uint8_t slot) { SendBusy(slot, t.panel, busy); });
-            ApplyBusy(t.panel, busy);
+        if (t.busyDirty) {
+            t.busyDirty = false;
+            bool busy = false;
+            if (SC::ReadProcessing(term, busy)) {
+                if (!busy && !t.running.empty()) {
+                    UE_LOGI("sat_console: HOST console '%ls' finished '%ls'", t.panel.c_str(), Printable(t.running).c_str());
+                    t.running.clear();
+                }
+                if (busy != t.busySent) {
+                    t.busySent = busy;
+                    if (busy) t.busySince = now;
+                    ToReadyClients([&](uint8_t slot) { SendBusy(slot, t.panel, busy); });
+                    ApplyBusy(t.panel, busy);
+                }
+            }
         }
-        if (now < t.nextShow) continue;
-        std::wstring log;
-        if (!SC::ReadLog(term, log) || log == t.logSent) continue;
-        if (log.size() > kMaxLogChars) log.erase(0, log.size() - kMaxLogChars);
-        t.logSent = log;
-        t.nextShow = now + kShowEvery;
-        ToReadyClients([&](uint8_t slot) { SendShow(slot, t.panel, log); });
-        ApplyShow(t.panel, log);
+        if (t.logDirty && now >= t.nextShow) {
+            t.logDirty = false;
+            std::wstring log;
+            if (SC::ReadLog(term, log) && log != t.logSent) {
+                if (log.size() > kMaxLogChars) log.erase(0, log.size() - kMaxLogChars);
+                t.logSent = log;
+                g_history[t.panel] = log;
+                t.nextShow = now + kShowEvery;
+                ToReadyClients([&](uint8_t slot) { SendShow(slot, t.panel, log); });
+                ApplyShow(t.panel, log);
+            }
+        }
+        if (t.busySent && now - t.busySince >= std::chrono::seconds(StuckAfterSecs())) {
+            UE_LOGW("sat_console: HOST console '%ls' busy for %lld s running '%ls' -- its terminal stopped, its lock freed",
+                    t.panel.c_str(), static_cast<long long>(StuckAfterSecs()), Printable(t.running).c_str());
+            DiscardAt(i);
+            continue;
+        }
+        ++i;
     }
 }
 
 // An alert writes into the shown terminal, whichever console it shows: on the host the line is the ROOT
 // console's, written there from Tick, and on a client the host's ROOT console carries it.
 sg::Verdict OnWritePre(const sg::Call& c) {
+    if (SessionIf(coop::net::Role::Host))
+        if (Terminal* t = ByObject(c.object)) {
+            t->logDirty = true;  // read once the write ran, from Tick
+            return sg::Verdict::Run;
+        }
     if (g_alertDepth <= 0 || !c.object || c.object != SC::LocalTerminal()) return sg::Verdict::Run;
     if (SessionIf(coop::net::Role::Host)) {
         std::wstring text;
@@ -671,6 +727,11 @@ void OnAlertPost(const sg::Call&) {
 }
 
 void OnBodyPost(const sg::Call& c) {
+    if (SessionIf(coop::net::Role::Host))
+        if (Terminal* t = ByObject(c.object)) {
+            t->busyDirty = true;
+            return;
+        }
     if (!SessionIf(coop::net::Role::Host) && !SessionIf(coop::net::Role::Client)) return;
     if (c.object && c.object == SC::LocalTerminal()) AfterLocalBody(c.object);
 }
@@ -788,7 +849,9 @@ void OnDisconnect() {
     g_alertDepth = 0;
     while (!g_terms.empty()) DiscardAt(g_terms.size() - 1);
     g_screens.clear();
+    g_history.clear();
     g_shown.clear();
+    g_shownPanel = nullptr;
     g_haveShown = false;
     for (auto& o : g_out) o = Outbox{};
     for (auto& t : g_typists) t = Typist{};
