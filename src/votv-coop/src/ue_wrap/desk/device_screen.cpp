@@ -1,6 +1,7 @@
 // ue_wrap/desk/device_screen.cpp -- see ue_wrap/desk/device_screen.h.
 
 #include "ue_wrap/desk/device_screen.h"
+#include "ue_wrap/desk/sat_console.h"  // a SAT console's claim is its panel's
 
 #include "ue_wrap/core/caller_locals.h"
 #include "ue_wrap/core/call.h"
@@ -46,7 +47,7 @@ struct ClassSlot { const wchar_t* name; void* cls; };
 // last two (per-instance widgets -> owner-resolved position keys).
 ClassSlot g_widgets[] = {
     { L"ui_consolesAtlas_C",            nullptr },  // -> "desk"
-    { L"ui_console_C",                  nullptr },  // -> "sat"
+    { L"ui_console_C",                  nullptr },  // -> "sat_<panel>"
     { L"ui_radar_C",                    nullptr },  // -> "radar"
     { L"ui_reactor_C",                  nullptr },  // -> "reactor"
     { L"ui_laptop_C",                   nullptr },  // -> "laptop"
@@ -59,7 +60,7 @@ const wchar_t* const g_widgetKeys[] = {
 // Device actor classes (the aim/deny side).
 ClassSlot g_devices[] = {
     { L"analogDScreenTest_C",  nullptr },  // -> "desk"
-    { L"panel_SATconsole_C",   nullptr },  // -> "sat"
+    { L"panel_SATconsole_C",   nullptr },  // -> "sat_<panel>"
     { L"panel_radar_C",        nullptr },  // -> "radar"
     { L"panel_reactor_C",      nullptr },  // -> "reactor"
     { L"laptop_C",             nullptr },  // -> "laptop"
@@ -264,6 +265,9 @@ std::wstring ClassifyWidgetClaimKey(void* widget) {
     if (ue_wrap::notebook::IsEditorWidget(widget)) return PropKey(L"note_", ue_wrap::notebook::NotebookOf(widget));
     if (ue_wrap::notebook::IsPaperDrawWidget(widget)) return PropKey(L"draw_", ue_wrap::notebook::PaperOf(widget));
     FillWidgetSlotFromClass(cls);  // beta: resolve this widget's class from its own ClassOf (late-buy safe), inline before the match
+    // A SAT console is its own: the one shared terminal names the panel its player used (sat_console's `used`).
+    if (g_widgets[1].cls && cls == g_widgets[1].cls)
+        return L"sat_" + ue_wrap::sat_console::PanelName(ue_wrap::sat_console::ReadUsed(widget));
     for (size_t i = 0; i < 5; ++i)
         if (g_widgets[i].cls && cls == g_widgets[i].cls) return g_widgetKeys[i];
     if (g_widgets[5].cls && cls == g_widgets[5].cls) {
@@ -292,6 +296,7 @@ std::wstring ClassifyDeviceActorClaimKey(void* actor) {
     if (ue_wrap::notebook::IsNotebook(actor)) return PropKey(L"note_", actor);
     if (ue_wrap::notebook::IsDrawablePaper(actor)) return PropKey(L"draw_", actor);
     FillDeviceSlotFromClass(cls);  // beta: resolve this device's class from its own ClassOf (late-buy safe), inline before the match
+    if (g_devices[1].cls && cls == g_devices[1].cls) return L"sat_" + ue_wrap::sat_console::PanelName(actor);
     for (size_t i = 0; i < 6; ++i)
         if (g_devices[i].cls && cls == g_devices[i].cls) return g_deviceKeys[i];
     if (g_devices[6].cls && cls == g_devices[6].cls) return PosKey(L"tfm_", actor);

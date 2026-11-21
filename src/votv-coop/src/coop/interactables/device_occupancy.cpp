@@ -24,6 +24,8 @@
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/sdk_profile.h"
+#include "ue_wrap/desk/dish.h"         // a SAT console named by its dish
+#include "ue_wrap/desk/sat_console.h"  // the dish a SAT console's panel controls
 #include "ue_wrap/facts/function_row.h"
 
 #include <atomic>
@@ -94,6 +96,13 @@ constexpr auto kLineCooldown = std::chrono::seconds(3);
 // announce, ungated by the cosmetic peer-actions chat toggle: deny feedback is functional,
 // since without it the deny is a bare click. An empty device name falls back to the claim
 // key.
+// A SAT console by the dish its panel controls, as its terminal's title names it; the ROOT console has none.
+std::wstring SatConsoleName(void* panel) {
+    void* dish = ue_wrap::sat_console::PanelDish(panel);
+    const int32_t i = dish ? ue_wrap::dish::IndexOf(dish) : -1;
+    return i >= 0 ? L"the SAT console " + ue_wrap::dish::TechName(i) : std::wstring(L"the ROOT SAT console");
+}
+
 void PushBusyLine(const std::wstring& key, const std::wstring& deviceName, uint8_t holder) {
     const auto now = std::chrono::steady_clock::now();
     if (key == g_lastLineKey && now - g_lastLineTime < kLineCooldown) return;
@@ -339,7 +348,7 @@ void OnUseInputPre(void* self, void*, void*) {
     // The aim memo is written unconditionally, before the busy check: the rising-edge and
     // lost-race denies see the table free at this press, so a deny-gated write would leave
     // exactly those surfaces nameless.
-    g_memoName = R::ToString(R::NameOf(aimed));
+    g_memoName = key.rfind(L"sat_", 0) == 0 ? SatConsoleName(aimed) : R::ToString(R::NameOf(aimed));
     g_memoKey = key;
     g_memoLastTick = coop::net_pump::TickSerial() + kMemoFreshTicks;
     uint8_t holder = 0xFF;
