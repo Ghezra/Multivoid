@@ -62,7 +62,8 @@ leaving one leaves nothing to restore.
 
 | Spawner | On a client | Why |
 |---|---|---|
-| insomniac, fossilhound | tick refused | the host mirrors the product |
+| fossilhound | tick refused | the host mirrors the product |
+| insomniac | runs on every peer | a sleepless player's own: rolled from its sleep, beside and at its own player, never mirrored |
 | cockroach master and summoner | tick, summon and timers refused | its tick also drains and destroys shared food props; `coop/creatures/roach_sync` drives the client's population |
 | mushroom master and spawner | spawn refused | they spawn at their own world transform; the host's mushroom crosses as a prop under its key, and a client's own spawner makes nothing on either peer `[V]` (`harness/autotest/autotest_mushroom`) |
 | yellow wisp spawner | tick refused | anchors on a random navmesh point; the product is host-mirrored |
@@ -129,6 +130,12 @@ own would diverge the shared food, so the host runs it and clients mirror a page
 roach a client stomps or eats is a consumed intent to the host (`coop/creatures/roach_sync`). The
 game's `addRoach` adds none past 100 m of the local camera or past the peer's own roach cap, so a
 client mirrors only the host's roaches within 95 m of it, up to that cap.
+
+A roach's burger look is the hungry player's own. The summon the host runs also re-rolls each
+roach's mesh from the local food: below 15 a roach shows as a burger, with the chance 1 - food/15.
+No look is sent; a client rolls its own copies' look from its own food, at the summoner's interval
+and after each rebuild, so only a hungry player sees burgers and the roach under each is still the
+host's `[?]` (`coop/creatures/roach_sync`).
 
 ### The kerfur
 
