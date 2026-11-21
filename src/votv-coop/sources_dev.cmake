@@ -440,6 +440,8 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/laptopboot_probe.cpp
     src/coop/dev/satlog_probe.cpp
     src/coop/dev/hallfood_probe.cpp
+    src/coop/dev/lightsave_probe.cpp
+    src/coop/dev/cremdoor_probe.cpp
     src/coop/dev/sit_probe.cpp
     src/coop/dev/join_stall_probe.cpp
     src/coop/dev/kdisc_watch.cpp
