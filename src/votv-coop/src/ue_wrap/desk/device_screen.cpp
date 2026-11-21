@@ -211,6 +211,17 @@ std::wstring PosKey(const wchar_t* prefix, void* actor) {
 // The identity of a prop that hosts an editor (a notebook, a drawable paper): the prefix and the
 // FNV-1a hash of the prop's Key, 21 chars, inside the 31-char WireKey budget, the same on every peer
 // because the Key is. Empty for a prop with no Key, as PosKey is for an actor with no place.
+// A SAT console's claim: its panel's placed name, hashed so the key fits the wire's 31 characters (a name runs
+// past 40, and a cut name would give two consoles one key).
+std::wstring SatKey(void* panel) {
+    const std::wstring name = ue_wrap::sat_console::PanelName(panel);
+    uint64_t h = 1469598103934665603ull;
+    for (wchar_t ch : name) { h ^= static_cast<uint16_t>(ch); h *= 1099511628211ull; }
+    wchar_t key[32]{};
+    swprintf_s(key, L"sat_%016llx", static_cast<unsigned long long>(h));
+    return key;
+}
+
 std::wstring PropKey(const wchar_t* prefix, void* prop) {
     const std::wstring propKey = ue_wrap::prop::GetKeyString(prop);
     if (propKey.empty() || propKey == L"None") return {};   // None is the FName of a prop with no Key
@@ -267,7 +278,7 @@ std::wstring ClassifyWidgetClaimKey(void* widget) {
     FillWidgetSlotFromClass(cls);  // beta: resolve this widget's class from its own ClassOf (late-buy safe), inline before the match
     // A SAT console is its own: the one shared terminal names the panel its player used (sat_console's `used`).
     if (g_widgets[1].cls && cls == g_widgets[1].cls)
-        return L"sat_" + ue_wrap::sat_console::PanelName(ue_wrap::sat_console::ReadUsed(widget));
+        return SatKey(ue_wrap::sat_console::ReadUsed(widget));
     for (size_t i = 0; i < 5; ++i)
         if (g_widgets[i].cls && cls == g_widgets[i].cls) return g_widgetKeys[i];
     if (g_widgets[5].cls && cls == g_widgets[5].cls) {
@@ -296,7 +307,7 @@ std::wstring ClassifyDeviceActorClaimKey(void* actor) {
     if (ue_wrap::notebook::IsNotebook(actor)) return PropKey(L"note_", actor);
     if (ue_wrap::notebook::IsDrawablePaper(actor)) return PropKey(L"draw_", actor);
     FillDeviceSlotFromClass(cls);  // beta: resolve this device's class from its own ClassOf (late-buy safe), inline before the match
-    if (g_devices[1].cls && cls == g_devices[1].cls) return L"sat_" + ue_wrap::sat_console::PanelName(actor);
+    if (g_devices[1].cls && cls == g_devices[1].cls) return SatKey(actor);
     for (size_t i = 0; i < 6; ++i)
         if (g_devices[i].cls && cls == g_devices[i].cls) return g_deviceKeys[i];
     if (g_devices[6].cls && cls == g_devices[6].cls) return PosKey(L"tfm_", actor);

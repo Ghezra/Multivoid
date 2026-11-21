@@ -108,8 +108,10 @@ void PushBusyLine(const std::wstring& key, const std::wstring& deviceName, uint8
     if (key == g_lastLineKey && now - g_lastLineTime < kLineCooldown) return;
     g_lastLineKey = key;
     g_lastLineTime = now;
+    // A SAT console's key is a hash: without the aimed panel's name the line says what it is.
+    const std::wstring fallback = key.rfind(L"sat_", 0) == 0 ? std::wstring(L"a SAT console") : key;
     coop::peer_action_feed::AnnounceDirect(holder, coop::peer_action_feed::Action::UsingDevice,
-                                           deviceName.empty() ? key : deviceName);
+                                           deviceName.empty() ? fallback : deviceName);
 }
 
 bool g_observersInstalled = false;
