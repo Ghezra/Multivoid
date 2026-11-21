@@ -56,10 +56,11 @@ void Release(void* actor);
 // it (the row becomes the host's). A BodyPush is a body that walked into the prop: it opens a row only where none stands,
 // since a row already streaming the prop (a let-go's, a verb's, a client's) is its source and re-times itself by its own
 // moves. A LetGo is a hand's plain release (CoastLetGo): it takes a client's row as a Verb does, and is its own cause so a
-// drill can tell it from a body's push. A Settle is a prop that moved with no hand, verb or body on it -- its support
-// was taken from under it, something knocked it, it slid -- seen by body_push near some player; it opens a row only where
-// none stands, as a BodyPush does, so every peer's copy follows the host's fall instead of falling on its own.
-enum class CoastCause : uint8_t { Verb, LetGo, BodyPush, Settle };
+// drill can tell it from a body's push. A Joined row is a prop a constraint ties to a driven one (coop/props/prop_drive_join),
+// opened by CoastJoined and by no caller of Coast. A Settle is a prop that moved with no hand, verb or body on it -- its
+// support was taken from under it, something knocked it, it slid -- seen by body_push near some player; it opens a row
+// only where none stands, as a BodyPush does, so every peer's copy follows the host's fall instead of falling on its own.
+enum class CoastCause : uint8_t { Verb, LetGo, BodyPush, Joined, Settle };
 
 // An instant push moved `actor`: stream it, coasting, until it rests. A prop a verb has claimed
 // stays claimed, and one already coasting starts its rest clock again; the refusals are Claim's.
@@ -68,12 +69,38 @@ enum class CoastCause : uint8_t { Verb, LetGo, BodyPush, Settle };
 // BodyPush leaves alone. Game thread.
 bool Coast(void* actor, const char* reason, CoastCause cause = CoastCause::Verb);
 
+// A prop a constraint ties to the driven prop with element id `leaderEid` gets a coasting row (CoastCause::Joined), logged
+// `joined eid=<leaderEid>, <why>`. Refused as Coast's opening is (no element id, in a hand, a class no peer holds) and
+// when JoinSlotFree says no, unless `overCap`: an owed member whose body sleeps, whose row the rest rule ends on its next
+// probe. True when a row was opened; false for a prop that already has a row, which it leaves as it is. Game thread.
+bool CoastJoined(void* actor, uint32_t leaderEid, bool overCap, const char* why = "");
+
+// A joined row may open now: the coasting rows stand below kMaxCoasting less the let-go's and push's reserve. Game thread.
+bool JoinSlotFree();
+
 // A row of any author is open on `actor` right now. Game thread.
 bool IsDriven(void* actor);
+
+// [dev] A function told at each close of a row that sends the clients its final pose, with the row's element id and
+// generation: the host's own End (a rest), and the End of a row a client syncs (its release, relayed; a host-side ending of
+// that row that sends an End). A drill judges in it where it polled the table. One pointer, null by default; a null clears
+// it. Game thread.
+using EndListener = void (*)(uint32_t eid, uint32_t gen);
+void SetEndListener(EndListener fn);
+
+// The sites that send such an End say so here, once per close: first the join serves the owed members of that row
+// (prop_drive_join::OnRowEnded, which may open rows: the table keeps references, prop_drive_rows.h), then the listener, when
+// set, is called. Game thread.
+void NoteEndSent(uint32_t eid, uint32_t gen);
 
 // The cause of the HOST-authored coast row open on element `eid` right now; false when no such row is open (none, or a
 // client's). For a drill that asks who flew a prop. Game thread.
 bool OpenCoastCause(uint32_t eid, CoastCause& out);
+
+// The cause of the LAST row opened for element `eid` this session, whoever authored it and whether it stands or has closed;
+// false when none is held. The table holds the newest kMaxCoasting props' last cause (the oldest is overwritten) and clears
+// at the session's end. For a drill that asks, after a row closed, why a prop had one. Game thread.
+bool LastOpenCause(uint32_t eid, CoastCause& out);
 
 // True when prop_drive_rules::kMaxCoasting props already coast: the caller opens no further one (a prop that already has a
 // row is no further one). A `birth` stops short of it by kCoastPushReserve, so a pile of births cannot take the rows a

@@ -9,6 +9,7 @@
 #include "coop/dev/director/director.h"
 #include "coop/interactables/atv_sync.h"
 #include "coop/player/players_registry.h"
+#include "coop/props/prop_key_index.h"
 
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
@@ -34,11 +35,16 @@ using ue_wrap::FVector;
 constexpr int kWalkS = 300;
 constexpr int kBurnS = 30;           // a drive holds the throttle until the driver's own fuel has fallen, within this
 
+}  // namespace
+
 // The director walks the local player to within `reachCm` of `at`; `carry` keeps what the hand holds (the walk set
 // without ClearHand). `what` names the goal in the log and in `why`.
-bool WalkTo(const FVector& at, float reachCm, bool carry, const char* what, std::string& why) {
+bool WalkTo(const FVector& at, float reachCm, bool carry, const char* what, std::string& why, const std::wstring& throughKey) {
     std::shared_ptr<DR::BackgroundWalk> walk;
-    OnGt([&] { walk = DR::StartBackgroundWalk(at, reachCm, kWalkS, carry); });
+    OnGt([&] {
+        void* through = throughKey.empty() ? nullptr : coop::prop_key_index::Find(throughKey);
+        walk = DR::StartBackgroundWalk(at, reachCm, kWalkS, carry, through);
+    });
     UE_LOGI("atv-drill: walking to the %s at (%.0f,%.0f,%.0f)", what, at.X, at.Y, at.Z);
     PS::WaitFor("the director's walk", kWalkS + 60, [&] { return walk->state.load() != 0; }, false);
     if (walk->state.load() != 1) {
@@ -48,8 +54,6 @@ bool WalkTo(const FVector& at, float reachCm, bool carry, const char* what, std:
     }
     return true;
 }
-
-}  // namespace
 
 bool ReadFloat(void* o, const wchar_t* name, float& v) {
     const int32_t off = o ? R::FindPropertyOffset(R::ClassOf(o), name) : -1;

@@ -16,6 +16,7 @@
 
 #include "coop/config/config.h"
 #include "coop/element/death_seam.h"
+#include "coop/interactables/grime_judge.h"
 #include "coop/net/protocol.h"
 #include "coop/net/refusal_tally.h"
 #include "coop/net/session.h"
@@ -232,6 +233,7 @@ void ApplyResolved(void* actor, const std::wstring& key, float target, const cha
     // first, so its own end of play here is no wipe of this peer's and is not sent again.
     if (target <= coop::net::kGrimeGone + kProcessEps) {
         coop::grime_sync::ForgetDecal(actor);
+        const coop::grime_judge::AllowDestroy allow;   // this peer's own apply of the host's end: the hold lets it through
         const bool ok = E::DestroyActor(actor);
         if (g_replayWindow.load(std::memory_order_relaxed)) g_lowered.fetch_add(1, std::memory_order_relaxed);
         UE_LOGI("grime: a decal another peer ended is destroyed here (%s) ok=%d key='%ls'", why, ok ? 1 : 0, key.c_str());
@@ -477,14 +479,16 @@ std::wstring KeyOf(void* actor, int32_t idx, int32_t serial) {
     return ck ? ck->key : std::wstring();
 }
 
-void Send(const std::wstring& key, float value) {
+// A live fall, to the host (a client's ask) or to every client (the host's own). `skipSlot` leaves one client out: the
+// asker of a granted fall, whose own copy already stands at what it asked.
+void Send(const std::wstring& key, float value, int skipSlot = -1) {
     auto* s = g_session.load(std::memory_order_acquire);
     if (!s || !s->connected()) return;
     coop::net::KeyedScalarPayload p{};
     WireKeyFromString(key, p.key);
     p.value = value;
     p.adopt = 0;  // a live fall: receivers apply the minimum
-    if (!s->SendReliable(coop::net::ReliableKind::GrimeState, &p, sizeof(p)))
+    if (!s->SendReliable(coop::net::ReliableKind::GrimeState, &p, sizeof(p), skipSlot))
         UE_LOGW("grime: SendReliable failed key='%ls'", key.c_str());
     else if (ProbeLog())
         UE_LOGI("grime: sent process=%.3f key='%ls'", value, key.c_str());
@@ -492,21 +496,46 @@ void Send(const std::wstring& key, float value) {
 
 sg::Verdict OnLowerPre(const sg::Call& call) {
     g_lowering = nullptr;
-    if (call.object && G::IsGrime(call.object) && G::ReadProcess(call.object, g_before)) g_lowering = call.object;
+    if (call.object && G::IsGrime(call.object) && G::ReadProcess(call.object, g_before)) {
+        g_lowering = call.object;
+        // The body carries the judge's scope bit: on a client a destroy the seam holds inside it is told from any other by
+        // the frame that makes it, and asks the host (coop/interactables/grime_judge).
+        if (const uintptr_t bit = coop::grime_judge::OpenVerb()) sg::MarkScope(call, bit);
+    }
     return sg::Verdict::Run;
 }
 
-// After the body: the process it left, sent when it fell. A verb that took it below zero destroyed the
-// decal inside the body; its end of play sends the wipe instead (OnGrimeEnd).
+// After the body: the process it left, sent when it fell. A verb that took it below zero destroys the decal inside the
+// body. On the host that end of play sends the wipe (OnGrimeEnd). On a client the destroy was held: the process stands
+// below zero, which the game's clean leaves for the destroy to settle, so the held decal is written to zero here, the
+// stroke's own report, and zero is asked of the host, which destroys at a granted zero; its end of play ends the decal
+// on every peer, this one included. With the hold off (its seam did not go on) the decal is already dead here: zero is
+// asked after the fact, so the host still ends it.
 void OnLowerPost(const sg::Call& call) {
     if (!g_lowering || call.object != g_lowering) return;
     g_lowering = nullptr;
+    const bool held = coop::grime_judge::TakeHeld(call.object);
     const int32_t idx = R::InternalIndexOf(call.object);
-    if (!R::IsLiveByIndex(call.object, idx)) return;
+    if (!R::IsLiveByIndex(call.object, idx)) {
+        auto* s = g_session.load(std::memory_order_acquire);
+        if (!coop::grime_judge::HoldIsOff() || !s || !s->connected() || s->role() != coop::net::Role::Client) return;
+        const CachedKey* dead = CachedOf(call.object, idx, R::SlotSerial(idx));
+        if (!dead) return;
+        const std::wstring deadKey = dead->key;
+        Lower(deadKey, 0.f);
+        Send(deadKey, 0.f);
+        return;
+    }
     float cur = 0.f;
-    if (!G::ReadProcess(call.object, cur) || cur >= g_before) return;  // an uncleanable decal
     const CachedKey* ck = CachedOf(call.object, idx, R::SlotSerial(idx));
+    if (!ck && held) G::WriteProcessAndApply(call.object, 0.f);   // a decal the lane has no name for stays at zero, asking no one
     if (!ck) return;
+    if (held) {
+        if (!G::WriteProcessAndApply(call.object, 0.f)) return;
+        cur = 0.f;
+    } else if (!G::ReadProcess(call.object, cur) || cur >= g_before) {
+        return;  // an uncleanable decal
+    }
     const std::wstring key = ck->key;
     // Measured against the floor, the lowest value every peer knows for the key, or, before the key has
     // one, the process this decal had when this peer's first fall on it began: falls smaller than the
@@ -531,7 +560,8 @@ bool GoneOff() {
 // A decal's end of play. A stream-out leaves the index and parks its process under its exact place,
 // for its stream-back; a destroy -- a clean or a repair past zero, leaves raked or expired, fuel burnt
 // out -- ends the decal on this peer, sent as a wipe (kGrimeGone, which ends it on every peer) and kept as the floor for a joiner's
-// snapshot.
+// snapshot. A client sends no wipe: a decal ends for everyone only by the host's word, which the host's judge refuses to
+// take from a client, so a client's decal that ends here (a world teardown, a destroy no hold covers) is its own.
 void OnGrimeEnd(const DS::ActorEnd& end) {
     const CachedKey* ck = CachedOf(end.actor, end.actorIndex, end.actorSerial);
     if (!ck) return;
@@ -552,6 +582,8 @@ void OnGrimeEnd(const DS::ActorEnd& end) {
         if (read) g_parked.Get().insert_or_assign(exact, Parked{key, at});
         return;
     }
+    auto* s = g_session.load(std::memory_order_acquire);
+    if (s && s->role() == coop::net::Role::Client) return;
     const float ended = GoneOff() ? 0.f : coop::net::kGrimeGone;
     Lower(key, ended);
     Send(key, ended);
@@ -696,6 +728,46 @@ void ForgetDecal(void* actor) {
     }
     g_posKeyByActor.erase(actor);
     g_scanNextCache.erase(actor);
+}
+
+void* DecalOfKey(const std::wstring& key) { return ResolveFast(key); }
+
+bool HostValueOf(const std::wstring& key, void* decal, float& out) {
+    float process = 0.f;
+    if (!decal || !G::ReadProcess(decal, process)) return false;
+    const auto& floor = Floor();
+    const auto it = floor.find(key);
+    out = (it != floor.end() && it->second < process) ? it->second : process;
+    return true;
+}
+
+void GrantFall(coop::net::Session& session, const std::wstring& key, void* decal, float value, uint8_t askerSlot,
+               bool raiseAsker) {
+    Lower(key, value);
+    ApplyResolved(decal, key, value, "a granted ask", /*lowerOnly=*/true);
+    // The decal is lowered; the others hear the fall as a peer's own live fall, the asker only when it was cut.
+    Send(key, value, askerSlot);
+    if (raiseAsker) {
+        coop::net::KeyedScalarPayload p{};
+        WireKeyFromString(key, p.key);
+        p.value = value;
+        p.adopt = 1;
+        session.SendReliableToSlot(askerSlot, coop::net::ReliableKind::GrimeState, &p, sizeof(p));
+    }
+}
+
+void GrantEnd(void* decal) {
+    // Not ApplyResolved's destroy: that one forgets the decal first, so its end of play sends nothing. Here the end of
+    // play is the send (OnGrimeEnd), the one that tells the asker its held decal is gone.
+    E::DestroyActor(decal);
+}
+
+void AnswerAsker(coop::net::Session& session, const std::wstring& key, float hostValue, uint8_t askerSlot) {
+    coop::net::KeyedScalarPayload p{};
+    WireKeyFromString(key, p.key);
+    p.value = hostValue;
+    p.adopt = 1;
+    session.SendReliableToSlot(askerSlot, coop::net::ReliableKind::GrimeState, &p, sizeof(p));
 }
 
 Tally Tallies() {

@@ -14,6 +14,7 @@ set(VOTVCOOP_SOURCES_UE_WRAP_1
     src/ue_wrap/core/reflection_call.cpp
     src/ue_wrap/core/uobject_listeners.cpp
     src/ue_wrap/core/object_index.cpp
+    src/ue_wrap/core/class_cache.cpp
     src/ue_wrap/core/class_reask.cpp
     src/ue_wrap/core/reflection_dispatch.cpp
     src/ue_wrap/core/reflection_props.cpp
@@ -145,6 +146,7 @@ set(VOTVCOOP_SOURCES_UE_WRAP_2
     src/ue_wrap/actors/broom.cpp
     src/ue_wrap/actors/fire_extinguisher.cpp
     src/ue_wrap/actors/miner.cpp
+    src/ue_wrap/actors/dingus.cpp
     src/ue_wrap/actors/item_spawn.cpp
     src/ue_wrap/actors/woodchipper.cpp
     src/ue_wrap/actors/chip_pile.cpp

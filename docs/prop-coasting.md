@@ -44,7 +44,16 @@ native `[V]` (the body-push drill's HITS lines, on both peers). A coast that res
 resend: the joiner's snapshot is cut after the rest and carries it `[V]` (the coast drill's join arm: the joiner's copy
 rests within 1 cm of the host's with no End sent to it). A push or a runaway thrust in flight when a peer joins is the
 same stream, which every drive row of the prop joins the peer to, so nothing more is owed `[?]` until a join arm reads
-it. A prop that a pushed prop knocks, or whose support is taken away, is the settle watch's below. Every later correction of a copy's resting place is logged with its distance as
+it. A prop that a pushed prop knocks, or whose support is taken away, is the settle watch's below. A prop a physics constraint ties to a
+driven one is the sixth feeder: a partner that the constraint drags. When a prop gets a row, or a hand (the host's, or a
+client's at its first pose) takes it, every keyed prop a constraint ties to it, transitively, through bodies that
+simulate physics (props, cord and wire segments, a hook), gets a coasting row of its own (`CoastCause::Joined`,
+`coop/props/prop_drive_join`); a tie to a body that does not simulate (a frozen prop, a wall, a device) ends the walk.
+The row ends by the rest rule when its body sleeps and its leader is in no hand. The ties are the engine's own
+`SetConstrainedComponents` calls, caught at the native seam from boot (`coop/props/constraint_ties`). A member past the
+join cap (the cap less the let-go and push reserve) waits, and is opened when a slot frees or when its body sleeps, so
+its rest pose still travels the row End; a tied pair moved with no cause at all is not covered `[?]`: every arm of the
+constraint-join drill moves its pair by a hand, so none reads that case. Every later correction of a copy's resting place is logged with its distance as
 `[PROP-CORRECT]`, each one and a 30 s summary (`coop/props/prop_wire_parity`). A receiver parks the prop on the first
 pose and follows the stream the way a carried trash clump is followed -- the fixed-delay interpolation, frozen at the
 last pose across a gap -- where a held prop snaps to each pose; a reliable end edge carries the final pose, the host's
@@ -60,11 +69,16 @@ the body sleeps. The body-push drill has the pusher step back 150 cm after each 
 not held awake by the pawn it was measured against; a dev row (`open_row_trace`, default off) says each open row's awake flag
 and pose delta once a second. A hand always wins: a claimed prop
 somebody grabs leaves the set and rides the held-prop stream, and a receiver yields at once to its own player's grab,
-which no stream from the host knows of yet, handing back the physics its park took.
+which no stream from the host knows of yet, handing back the physics its park took. A client whose first pose of a let-go row
+finds a remote hand still holding the copy (the pose stream beat that hand's reliable release) keeps the yield pending on that
+release and lifts it there, so the row parks the copy and its End applies where the host's did; an End that comes before the
+release is the host's "taken by a hand" End and is dropped (`coop/props/prop_drive_stream`) `[V]` (the coast drill's let-go
+arm with `letgo_release_delay_ms` 250: the yield was kept and lifted at the release and the copies rest within 1 cm; with
+`letgo_unyield_off` too, the same arm fails with the copies 2.4 cm apart).
 
 ## A prop that moves on its own, and a copy that rests apart
 
-The sixth feeder is the settle: a prop that moves with no hand, no row and no host body on it -- the plate on a chair a
+The seventh feeder is the settle: a prop that moves with no hand, no row and no host body on it -- the plate on a chair a
 client picked up, a can a thrown box knocked, a drive left on a table a client dragged. Before it every peer's copy fell by
 its own physics: the plate came to rest 55 cm and 110 degrees from the host's, and the drives on a dragged table 29 to 122
 cm from it, on both clients. The host's body-push list takes the props near every player's puppet as well as its own (64

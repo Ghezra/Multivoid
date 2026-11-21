@@ -41,8 +41,9 @@ void FeedAdmitted(const coop::net::PropDriveRow& e);
 
 // HOST, game thread: the end of a client-authored drive on the host's copy of `end.eid`: unparks it,
 // places it at the End's pose, restores its physics from the End's flags and gives it the velocity.
-// A copy a hand holds is yielded to the hand; a prop never parked takes the End as a receiver that never
-// saw the generation.
+// A copy a hand holds is yielded to the hand (on a client, a first pose that finds a remote hand waits for
+// that hand's release instead: OnRemoteHandEnded); a prop never parked takes the End as a receiver that
+// never saw the generation.
 void ReleaseHost(const coop::net::PropDriveEndPayload& end);
 
 // CLIENT, game thread: the host closed a prop's stream. Validated at the router.
@@ -53,6 +54,20 @@ void OnEnd(const coop::net::PropDriveEndPayload& p);
 // and yielded), minus the hand's physics bookkeeping, so the host's echo of that End and any late pose of that
 // generation are dropped here.
 void CloseGen(uint32_t eid, uint8_t gen);
+
+// CLIENT, game thread: a peer slot's hand drive on `actor` began. A yield kept pending on a release is dropped: every end of
+// the awaited hold's drive has already dropped or lifted its entry, so one still here belongs to an older hold.
+void OnRemoteHandStarted(void* actor);
+
+// CLIENT, game thread: a peer slot's hand drive on `actor` (its hold `holdGen`) ended; called by
+// remote_prop_drive::EndSlotDrive alone. `released`: by that hand's release, explicit or implicit (the stream's silence), or
+// its switch to another prop; the yield this stream kept pending on that release (a drive row's first pose found the hand
+// holding the copy) is lifted, so the row parks the copy and its End applies. Not released (a refused hold, a take-from-hand,
+// a put, a destroyed copy, the slot leaving): the entry is dropped and the yield stands.
+void OnRemoteHandEnded(uint8_t slot, void* actor, uint16_t holdGen, bool released);
+
+// Yields kept pending on a hand's release, and lifted at it, since the session began: for the drills. Game thread.
+void PendingYieldCounts(uint32_t& pending, uint32_t& unyielded);
 
 // True while this stream has `actor` parked: its pose is the host's stream's, so a converge that
 // would move it or re-run its init() leaves it alone, as it leaves a held prop. Game thread.
@@ -104,6 +119,10 @@ DriveView ViewOf(uint32_t eid);
 void NoteMerged(uint32_t eid);
 // Rows of `eid` that reached the receive store this session: against the view's rows it tells coalescing from loss.
 uint32_t MergedOf(uint32_t eid);
+// True while this peer holds a closed generation of `eid` (an End applied, yielded or closed here), with it in `gen`. A newer
+// generation's first pose erases it and its End writes it again, so a drill that read (closed, gen) at an edge and sees the
+// pair change to a closed one of another generation knows a drive began after that edge and ended. Writes nothing. Game thread.
+bool ClosedGen(uint32_t eid, uint8_t& gen);
 }  // namespace dev
 
 }  // namespace coop::prop_drive_stream

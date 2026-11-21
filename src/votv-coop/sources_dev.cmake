@@ -23,6 +23,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/build_probe_damage.cpp
     src/coop/dev/build_probe_place.cpp
     src/coop/dev/build_probe_watch.cpp
+    src/coop/dev/nail_act.cpp
     src/coop/dev/build_identity_census.cpp
     src/coop/dev/build_identity_drill.cpp
     src/coop/dev/feedback_probe.cpp
@@ -71,6 +72,15 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/hostile_drill_coffee.cpp
     src/coop/dev/hostile_drill_coffee_client.cpp
     src/coop/dev/hostile_drill_coffee_host.cpp
+    src/coop/dev/hostile_drill_grime.cpp
+    src/coop/dev/hostile_drill_grime_client.cpp
+    src/coop/dev/hostile_drill_grime_host.cpp
+    src/coop/dev/hostile_drill_dingus.cpp
+    src/coop/dev/hostile_drill_dingus_client.cpp
+    src/coop/dev/hostile_drill_dingus_host.cpp
+    src/coop/dev/hostile_drill_kdress.cpp
+    src/coop/dev/hostile_drill_kdress_client.cpp
+    src/coop/dev/hostile_drill_kdress_host.cpp
     src/coop/dev/hostile_drill_atv.cpp
     src/coop/dev/hostile_drill_atv_client.cpp
     src/coop/dev/hostile_drill_atv_host.cpp
@@ -278,7 +288,6 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/end_play_probe.cpp
     src/coop/dev/death_seam_census.cpp
     src/coop/dev/damage_probe.cpp
-    src/coop/dev/grime_drill.cpp
     src/coop/dev/class_lifetime_probe.cpp
     src/coop/dev/init_seam_probe.cpp
     src/coop/dev/key_parity_probe.cpp
@@ -320,6 +329,11 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/collision_probe.cpp
     src/coop/dev/end_trace.cpp
     src/coop/dev/coast_drill.cpp
+    src/coop/dev/letgo_release_delay.cpp
+    src/coop/dev/constraint_join_drill.cpp
+    src/coop/dev/constraint_join_drill_carry.cpp
+    src/coop/dev/constraint_join_drill_client.cpp
+    src/coop/dev/constraint_join_drill_host.cpp
     src/coop/dev/rest_compare.cpp
     src/coop/dev/drill_ground.cpp
     src/coop/dev/oven_progress_drill.cpp
@@ -356,6 +370,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/atv_gate_drill_joiner.cpp
     src/coop/dev/atv_drive.cpp
     src/coop/dev/atv_gate_drill_acts.cpp
+    src/coop/dev/atv_gate_drill_can.cpp
     src/coop/dev/atv_gate_drill_steps.cpp
     src/coop/dev/atv_riders_drill.cpp
     src/coop/dev/atv_riders_drill_steps.cpp
@@ -467,6 +482,9 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/tower_poof_probe.cpp
     src/coop/dev/puppet_blast_probe.cpp
     src/coop/dev/drive_box_drill.cpp
+    src/coop/dev/dingus_drill.cpp
+    src/coop/dev/dingus_drill_host.cpp
+    src/coop/dev/dingus_drill_client.cpp
     src/coop/dev/hand_record_drill.cpp
     src/coop/dev/hand_record_drill_can.cpp
     src/coop/dev/hand_record_drill_display.cpp
@@ -482,6 +500,14 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/cleanup_trace.cpp
     src/coop/dev/clean_drill_common.cpp
     src/coop/dev/clean_drill_leaves.cpp
+    src/coop/dev/flood_drill.cpp
+    src/coop/dev/flood_drill_host.cpp
+    src/coop/dev/flood_drill_client.cpp
+    src/coop/dev/kdress_drill.cpp
+    src/coop/dev/kdress_drill_host.cpp
+    src/coop/dev/kdress_drill_host_arms.cpp
+    src/coop/dev/kdress_drill_client.cpp
+    src/coop/dev/kdress_drill_client_arms.cpp
 )
 # Per-developer local sources: a gitignored file on this box may append its own entries to
 # VOTVCOOP_DEV_SOURCES and add its own include root. Absent from the public tree; a no-op without it.

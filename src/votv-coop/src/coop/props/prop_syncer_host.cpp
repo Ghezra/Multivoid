@@ -306,7 +306,9 @@ void AdmitRow(const coop::net::PropDriveRow& e, uint8_t slot, uint64_t nowMs) {
 // Diverges from MTA, which has no cap on a syncer's tenure and no first-row deadline (its only take-back is distance,
 // :134-146): a thrown prop has a bounded life, and a lost grant would otherwise wait out the silence rule below.
 void Pass(uint64_t nowMs) {
-    for (Driven& d : coop::prop_drive_host::Rows()) {
+    auto& rows = coop::prop_drive_host::Rows();
+    for (size_t i = 0; i < rows.size(); ++i) {   // by index: an End opens the join's rows behind this one
+        Driven& d = rows[i];
         if (d.dead || d.syncer == 0) continue;
         // A thrown prop is the host's again when no row was admitted in time, or when its flight outlasts any throw.
         if (d.elected && !d.admittedEver &&
@@ -498,6 +500,7 @@ void OnClientEnd(coop::net::Session& s, const coop::net::PropDriveEndPayload& se
     s.SendReliable(coop::net::ReliableKind::PropDriveEnd, &p, sizeof(p), slot);
     RecordHandBack(p.eid, slot, nowMs);
     coop::prop_drive_host::EraseRow(*row);
+    coop::prop_drive_host::NoteEndSent(p.eid, p.gen);
     Tally(g_endsAdmitted, "End admitted (rest)", p.eid, slot);
     if (row->elected)
         UE_LOGI("[PROP-SYNC] HOST thrown eid=%u gen=%u slot %u rested: release-to-End %llu ms, rows admitted %u, jitter (sender dt - arrival dt) max %lld ms over %u rows, maxgap=%u ms",
@@ -522,8 +525,9 @@ void Admit(coop::net::Session& s) {
 
 void OnSlotLeft(uint8_t slot) {
     UE_ASSERT_GAME_THREAD("prop_syncer_host::OnSlotLeft");
-    for (Driven& d : coop::prop_drive_host::Rows())
-        if (!d.dead && d.syncer == slot) EndClientRow(d, Ending::SlotLeft);
+    auto& rows = coop::prop_drive_host::Rows();
+    for (size_t i = 0; i < rows.size(); ++i)   // by index: an End opens the join's rows behind this one
+        if (!rows[i].dead && rows[i].syncer == slot) EndClientRow(rows[i], Ending::SlotLeft);
     for (auto it = g_handBack.begin(); it != g_handBack.end();)
         it = (it->second.slot == slot) ? g_handBack.erase(it) : std::next(it);
 }
@@ -554,6 +558,7 @@ void EndClientRow(Driven& d, Ending why) {
         if (!toHost && g_session) {
             end.physFlags = coop::prop_wire_parity::PhysFlagsOf(actor);
             g_session->SendReliable(coop::net::ReliableKind::PropDriveEnd, &end, sizeof(end));
+            coop::prop_drive_host::NoteEndSent(d.eid, gen);
         }
     }
     // (3) the syncer is told, with the generation it ends (before any bump) and the seq of its claim or the sequence of

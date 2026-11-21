@@ -14,11 +14,11 @@
 #include "coop/props/container_break.h"
 #include "coop/session/join_progress.h"
 #include "coop/dev/dronesack_drill.h"  // NoteWirePropDestroy (the drone sack drill's record)
+#include "coop/dev/letgo_release_delay.h"  // Release: remote_prop::OnRelease, held first on a client when the knob is set
 #include "coop/creatures/npc_mirror.h"
 #include "coop/creatures/owner_entity_sync.h"
 #include "coop/items/hook_anchor.h"
 #include "coop/items/hook_retrieve.h"
-#include "coop/props/dingus_sync.h"  // the dingus found once for every player
 #include "coop/items/hook_sync.h"  // the hook lane
 #include "coop/element/bind_wait.h"  // Holds: a held convert is no failed spawn
 #include "coop/element/quiescence_drain.h"  // the pending position corrections
@@ -136,7 +136,7 @@ bool HandleEntityEvent(net::Session& session,
         // The relay is here, after the clamp and before OnRelease, whatever OnRelease does with the release: one it drops
         // (a stale hold, a prop another owner has) must still close the holder's drive on every mirror.
         coop::prop_throw::JudgeRelease(session, msg.senderPeerSlot, p);
-        remote_prop::OnRelease(msg.senderPeerSlot, p, localPlayer);
+        coop::dev::letgo_release_delay::Release(msg.senderPeerSlot, p, localPlayer);   // remote_prop::OnRelease; a client's dev hold
         break;
     }
     case net::ReliableKind::PropSpawn: {
@@ -453,15 +453,6 @@ bool HandleEntityEvent(net::Session& session,
         ue_wrap::game_thread::Post([p, slot] {
             ::coop::hook_sync::OnDestroyMsg(p, slot);
         });
-        break;
-    }
-    case net::ReliableKind::DingusFound: {
-        // op 0 a client's report of a dingus it found, to the host; op 1 the host's word that one is found.
-        if (msg.payloadLen < sizeof(net::DingusFoundPayload)) break;
-        net::DingusFoundPayload p{};
-        std::memcpy(&p, msg.payload, sizeof(p));
-        const int slot = msg.senderPeerSlot;
-        ue_wrap::game_thread::Post([p, slot] { ::coop::dingus_sync::OnMsg(p, slot); });
         break;
     }
     case net::ReliableKind::HookRetrieve: {

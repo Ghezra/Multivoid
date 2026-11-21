@@ -110,8 +110,9 @@ bool HeldClassIs(uint8_t slot, const wchar_t* cls);
 
 // Whether `slot`'s hand holds an item of the class named `base` or of a class that descends from it: a gas can's big,
 // mini and funny cans are prop_gascan_C to the game's own fuelling casts, and to a host that judges a pour by them. The
-// held class is found loaded by its name (its hand mirror loads it on the host) and its parent chain walked; one not
-// loaded here is only its own name. Game thread only.
+// held class is found loaded by its name and its parent chain walked. A host never loads a class a client names (the hand
+// class resolves LookupOnly), so a held class this peer has not loaded -- one no world it holds ever had -- is only its own
+// name, and is not a subclass of `base` here. Game thread only.
 bool HeldClassIsA(uint8_t slot, const wchar_t* base);
 
 // Whether the class named `name` is `base` or descends from it, by the same walk as HeldClassIsA: a class not loaded
@@ -159,6 +160,10 @@ bool SubscribeHandApplied(HandAppliedFn fn);
 // the key the player's updateHold looks the game's item tables up by, or empty when it holds
 // nothing. Game thread only.
 std::wstring HeldItem(uint8_t slot);
+
+// The class of the item `slot`'s hand holds, as its owner last announced (the class hand_spend::Spend is asked for), or
+// empty when it holds nothing. Game thread only.
+std::wstring HeldClass(uint8_t slot);
 
 // Host, each tick after the roster reconcile and before the drain (event_feed::Update): a client's newest hand state
 // that arrived past its budget is applied once the budget allows it. Game thread only.

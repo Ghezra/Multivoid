@@ -23,6 +23,7 @@
 #include "coop/props/prop_can_state.h"
 #include "coop/props/prop_damage_gate.h"
 #include "coop/props/prop_drive_host.h"
+#include "coop/props/prop_drive_join.h"
 #include "coop/props/prop_drive_stream.h"
 #include "coop/props/prop_food_sync.h"
 #include "coop/props/prop_hold_claim.h"
@@ -43,6 +44,7 @@
 #include "coop/props/trash_collect_sync.h"
 #include "coop/props/trash_pile_sync.h"
 #include "coop/props/trash_sweep.h"
+#include "coop/props/dingus_sync.h"
 
 namespace coop::subsystems::props {
 
@@ -80,6 +82,7 @@ void OnDisconnect() {
     COOP_CLEANUP_STEP("disconnect", coop::prop_pry_host::OnDisconnect());  // the host's pry counters (a sender's queue goes with its slot)
     COOP_CLEANUP_STEP("disconnect", coop::roomba_sync::OnDisconnect());  // the cleaners known, the presses and states queued
     COOP_CLEANUP_STEP("disconnect", coop::fireext_thrust_sync::OnDisconnect());  // the thrusting extinguishers it held
+    COOP_CLEANUP_STEP("disconnect", coop::dingus_sync::OnDisconnect());  // the found set, the births queued, the judge's budgets and tallies
     COOP_CLEANUP_STEP("disconnect", coop::glowstick_sync::OnDisconnect());
     COOP_CLEANUP_STEP("disconnect", coop::prop_save_data::OnDisconnect());
     COOP_CLEANUP_STEP("disconnect", coop::props::container_contents_sync::OnDisconnect());  // dirty set + retry + parked + assembler
@@ -93,6 +96,7 @@ void OnDisconnect() {
     COOP_CLEANUP_STEP("disconnect", coop::trash_sweep::OnDisconnect());  // drop the swept clumps still rolling
     COOP_CLEANUP_STEP("disconnect", coop::trash_clump_pose_stream::OnDisconnect());  // drop all client per-eid carry drives
     COOP_CLEANUP_STEP("disconnect", coop::prop_drive_host::OnDisconnect());  // drop the host's driven-prop set and the client syncers' table (prop_syncer_host)
+    COOP_CLEANUP_STEP("disconnect", coop::prop_drive_join::Clear());  // the owed joins and owed members; the tie index is world state and stays
     COOP_CLEANUP_STEP("disconnect", coop::props::bracket_position_wait::Reset());  // the spawns waiting for a bracket that will not close go with the session
     COOP_CLEANUP_STEP("disconnect", coop::prop_drive_stream::OnDisconnect());  // every driven prop here gets its physics back
 }

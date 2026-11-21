@@ -5,6 +5,9 @@
 
 set(VOTVCOOP_PROPS_SOURCES
     src/coop/props/prop_act_host.cpp
+    src/coop/props/prop_act_families.cpp
+    src/coop/props/prop_act_lines.cpp
+    src/coop/props/prop_act_omega.cpp
     src/coop/props/prop_act_request.cpp
     src/coop/props/prop_act_selftest.cpp
     src/coop/props/snack_act.cpp
@@ -23,7 +26,11 @@ set(VOTVCOOP_PROPS_SOURCES
     src/coop/props/fireext_thrust_sync.cpp
     src/coop/props/fireext_sync.cpp
     src/coop/props/fireext_runaway_ask.cpp
+    src/coop/props/dingus_sync.cpp
+    src/coop/props/dingus_judge.cpp
     src/coop/props/grab_observer.cpp
+    src/coop/props/constraint_ties.cpp
+    src/coop/props/prop_drive_join.cpp
     src/coop/props/prop_sound.cpp
     src/coop/props/prop_echo_suppress.cpp
     src/coop/props/pile_look.cpp
@@ -90,6 +97,7 @@ set(VOTVCOOP_PROPS_SOURCES
     src/coop/props/prop_drive_host.cpp
     src/coop/props/bucket_sync.cpp
     src/coop/props/prop_rest_sync.cpp
+    src/coop/props/prop_drive_rules_selftest.cpp
     src/coop/props/prop_drive_stream.cpp
     src/coop/props/prop_syncer_host.cpp
     src/coop/props/prop_syncer_client.cpp

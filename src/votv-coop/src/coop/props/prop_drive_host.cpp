@@ -13,6 +13,7 @@
 #include "coop/player/hand_item.h"            // IsHandAxisActor: the hotbar hand and its mirrors
 #include "coop/player/local_streams.h"        // LastHeldActor: this player's grab slot
 #include "coop/props/active_drive.h"          // NowMs
+#include "coop/props/prop_drive_join.h"       // Owe, Tick: the props a constraint ties to a driven one
 #include "coop/props/prop_drive_rules.h"      // the epsilons and the rest rule both authors share
 #include "coop/props/prop_drive_stream.h"     // Pump: the apply tick that follows the publish
 #include "coop/props/prop_element_tracker.h"  // GetPropElementIdForActor
@@ -34,6 +35,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <deque>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -49,7 +52,7 @@ using coop::prop_drive_rules::kRestMs;
 using coop::prop_drive_rules::kRestProbeMs;
 using coop::prop_drive_rules::kRestVelCmS;
 
-std::vector<Driven> g_driven;   // game thread only
+std::deque<Driven>  g_driven;   // game thread only; a deque, so a row opened mid-pass moves none (Rows)
 size_t              g_turn = 0; // where the next tick's publishing starts, so no prop waits forever
 uint64_t            g_coastRefused = 0;   // the coasts refused past the cap this session (CoastCapReached)
 // The claim generation is PER PROP: the receiver's closed-generation gate is keyed by eid and
@@ -68,6 +71,24 @@ bool Moved(const Driven& d, const ue_wrap::FVector& loc, const ue_wrap::FRotator
     return coop::prop_drive_rules::MovedPastEps(loc, rot, d.sentLoc, d.sentRot);
 }
 
+EndListener g_endListener = nullptr;   // [dev] a drill's, told at each close that sends the clients a final pose
+
+// [dev] The last cause each prop's row was opened with, kept after the row closes: a ring of the newest props, the oldest
+// overwritten, so its size is the coasting rows' own count. A prop that opens again takes its entry over.
+struct OpenedBy {
+    uint32_t   eid   = 0;   // 0 is no prop (Open refuses element id 0)
+    CoastCause cause = CoastCause::Verb;
+};
+OpenedBy g_openedBy[coop::prop_drive_rules::kMaxCoasting];
+size_t   g_openedNext = 0;   // the entry the next new prop takes
+
+void NoteOpenedBy(uint32_t eid, CoastCause cause) {
+    for (OpenedBy& o : g_openedBy)
+        if (o.eid == eid) { o.cause = cause; return; }
+    g_openedBy[g_openedNext] = OpenedBy{eid, cause};
+    g_openedNext = (g_openedNext + 1) % coop::prop_drive_rules::kMaxCoasting;
+}
+
 void SendEnd(coop::net::Session& s, const Driven& d, void* actor, const ue_wrap::FVector& loc,
              const ue_wrap::FRotator& rot, const char* why) {
     float lin = 0.f;
@@ -76,6 +97,7 @@ void SendEnd(coop::net::Session& s, const Driven& d, void* actor, const ue_wrap:
     UE_LOGI("[PROP-DRIVE] HOST END eid=%u gen=%u %s -> (%.1f,%.1f,%.1f) |v|=%.1f cm/s flags=0x%02x",
             d.eid, static_cast<unsigned>(d.gen), why, loc.X, loc.Y, loc.Z, lin,
             static_cast<unsigned>(p.physFlags));
+    NoteEndSent(d.eid, d.gen);
 }
 
 // A client row's turn: the last pose admitted from its syncer goes out at the row's generation when it is new
@@ -113,6 +135,25 @@ size_t PublishAdmitted(coop::net::Session& s, Driven& d) {
     return turn == coop::net::PoseTurn::Join ? 1 : 0;
 }
 
+// A joined row's leader, by the element id the row stored, is in a hand now (this host's, or a client's by its hold).
+bool LeaderInAHand(const Driven& d) {
+    if (d.leaderEid == 0u) return false;
+    void* leader = coop::remote_prop::ResolveLiveActorByEid(d.leaderEid);
+    return leader && InAHand(leader);
+}
+
+// How a coast's cause reads in the open row's log line. A joined row's own reason already names it (`joined eid=<leader>`).
+const char* CauseSuffix(CoastCause cause) {
+    switch (cause) {
+    case CoastCause::LetGo:    return ", let-go";
+    case CoastCause::BodyPush: return ", body push";
+    case CoastCause::Joined:   return "";
+    case CoastCause::Settle:   return ", settle";
+    case CoastCause::Verb:     break;
+    }
+    return ", verb";
+}
+
 // A new row for `actor` when the channel can carry it: a keyed prop with a host element id, in no
 // hand, of a class peers hold. Null otherwise. `claimed` false opens it coasting. `syncer` 0 is a host
 // verb's row, n a client slot's grant.
@@ -145,12 +186,15 @@ Driven* Open(void* actor, bool claimed, const char* why, uint8_t syncer = 0, Coa
         d.key.data[d.key.len++] = static_cast<char>(keyW[i]);
     d.gen = BumpGen(d.eid);
     d.openMs = d.lastMoveMs = coop::active_drive::NowMs();
+    NoteOpenedBy(d.eid, cause);
     g_driven.push_back(std::move(d));
     UE_LOGI("[PROP-DRIVE] HOST %s eid=%u gen=%u key='%ls' (%s%s) -- %zu driven",
             syncer ? "GRANT" : (claimed ? "CLAIM" : "COAST"), g_driven.back().eid,
             static_cast<unsigned>(g_driven.back().gen), keyW.c_str(), why,
-            claimed || syncer ? "" : (cause == CoastCause::LetGo ? ", let-go" : cause == CoastCause::BodyPush ? ", body push" : cause == CoastCause::Settle ? ", settle" : ", verb"),
-            g_driven.size());
+            claimed || syncer ? "" : CauseSuffix(cause), g_driven.size());
+    // A prop the constraints tie to this one is owed a row of its own, whatever opened this one; a row the join itself
+    // opened owes nothing, since the walk already reached everything tied to it.
+    if (cause != CoastCause::Joined) coop::prop_drive_join::Owe(actor, why);
     return &g_driven.back();
 }
 
@@ -242,7 +286,7 @@ void EraseRow(Driven& row) {
     row.dead = true;   // Tick's sweep erases it; every reader skips a dead row
 }
 
-std::vector<Driven>& Rows() {
+std::deque<Driven>& Rows() {
     return g_driven;
 }
 
@@ -293,6 +337,26 @@ bool Coast(void* actor, const char* reason, CoastCause cause) {
     return Open(actor, /*claimed=*/false, reason ? reason : "", /*syncer=*/0, cause) != nullptr;
 }
 
+bool CoastJoined(void* actor, uint32_t leaderEid, bool overCap, const char* why) {
+    UE_ASSERT_GAME_THREAD("prop_drive_host::CoastJoined");
+    if (!actor || Find(actor)) return false;   // a prop with a row keeps its row: the join never takes one over
+    if (!overCap && !JoinSlotFree()) return false;
+    char reason[96];
+    std::snprintf(reason, sizeof(reason), "joined eid=%u, %s", static_cast<unsigned>(leaderEid), why ? why : "");
+    Driven* d = Open(actor, /*claimed=*/false, reason, /*syncer=*/0, CoastCause::Joined);
+    if (d) d->leaderEid = leaderEid;
+    return d != nullptr;
+}
+
+bool JoinSlotFree() {
+    UE_ASSERT_GAME_THREAD("prop_drive_host::JoinSlotFree");
+    // The constraint-join drill's knob (constraint_join_drill_cap): above 0 it is the join's cap, so a short chain reaches it.
+    static const long s_drillCap = coop::config::ResolveInt(coop::config_registry::rows::constraint_join_drill_cap);
+    const size_t cap = s_drillCap > 0 ? static_cast<size_t>(s_drillCap)
+                                      : coop::prop_drive_rules::kMaxCoasting - coop::prop_drive_rules::kCoastPushReserve;
+    return CoastingCount() < cap;
+}
+
 bool BodyAsleepForEnd(void* actor) {
     UE_ASSERT_GAME_THREAD("prop_drive_host::BodyAsleepForEnd");
     const int awake = E::ReadActorRootBodyAwake(actor);
@@ -315,11 +379,33 @@ bool IsDriven(void* actor) {
     return actor && Find(actor) != nullptr;
 }
 
+void SetEndListener(EndListener fn) {
+    UE_ASSERT_GAME_THREAD("prop_drive_host::SetEndListener");
+    g_endListener = fn;
+}
+
+void NoteEndSent(uint32_t eid, uint32_t gen) {
+    // First: a row's End is the island's announced rest, so the members its leader still owes are served before any
+    // listener reads the table. It may open rows; the table keeps every row where it stands (Rows).
+    coop::prop_drive_join::OnRowEnded(eid);
+    if (g_endListener) g_endListener(eid, gen);
+}
+
 bool OpenCoastCause(uint32_t eid, CoastCause& out) {
     const Driven* d = FindByEid(eid);
     if (!d || d->syncer != 0 || d->claimed) return false;
     out = d->cause;
     return true;
+}
+
+bool LastOpenCause(uint32_t eid, CoastCause& out) {
+    if (eid == 0u) return false;
+    for (const OpenedBy& o : g_openedBy) {
+        if (o.eid != eid) continue;
+        out = o.cause;
+        return true;
+    }
+    return false;
 }
 
 bool CoastCapReached(void* actor, const char* reason, bool birth) {
@@ -421,6 +507,8 @@ void OnPeerWorldReady() {
 // Per host tick: see Pump.
 static void Tick(coop::net::Session& s) {
     UE_ASSERT_GAME_THREAD("prop_drive_host::Tick");
+    // First, before the empty-table return: a join is what fills the table, and its rows open before this tick reads any.
+    coop::prop_drive_join::Tick();
     if (g_driven.empty()) return;
     const uint64_t now = coop::active_drive::NowMs();
     static uint32_t sPublished = 0;
@@ -515,6 +603,12 @@ static void Tick(coop::net::Session& s) {
             continue;
         }
         if (now - d.lastMoveMs >= kRestMs) {
+            // A joined row outlives a still moment while its leader is in a hand: the constraint drags it again the moment
+            // the hand moves. When the leader is let go its own row and join take over, and this row rests by the rule below.
+            if (!d.claimed && d.cause == CoastCause::Joined && LeaderInAHand(d)) {
+                d.nextProbeMs = now + kRestProbeMs;
+                continue;
+            }
             // A coast ends when the body has stood still AND is asleep, as a client author's does (prop_syncer_client
             // StepSyncing): a body that keeps creeping keeps streaming. An unread pose still ends at the last pose sent.
             if (!d.claimed && poseRead && !BodyAsleepForEnd(actor)) {
@@ -557,6 +651,8 @@ void OnDisconnect() {
     g_turn = 0;
     g_coastRefused = 0;
     g_genByEid.clear();
+    for (OpenedBy& o : g_openedBy) o = OpenedBy{};
+    g_openedNext = 0;
     coop::prop_syncer_host::OnDisconnect();   // its buckets, hand-back records and counters go with the rows
     coop::prop_syncer::OnDisconnect();        // a client's table, backoffs and counters (a link that drops ends the session)
 }

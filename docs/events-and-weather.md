@@ -246,13 +246,22 @@ lane.
 A burst pipe (`burstWaterPipe_C`, placed in the basement) keeps one bit, `damaged`: its `State` turns its spray, sound and
 tick on, its tick raises the basement's flood volume (`waterVolume_basementFlooder_C`, whose height between its two ends
 is the level its `getLevel`/`setLevel` read and write), and a toolbox's `toolboxFix` mends it. Each copy ran it alone, so
-a flood never reached a client and a client's repair never reached the host (Ghezra/Multivoid#40). The host owns both: a
-client's pipes run no tick and take no damage of their own, the host sends a pipe whose bit changed and the level as it
-moves (four reads a second, and every pipe and level to a joiner), and a client applies them through the pipe's `State`
-and the volume's `setLevel` and `updateWaterData`. A client's repair runs on its copy and is asked of the host, which
-mends its pipe only for a living sender in reach with a toolbox in the hand (`coop/world/flood_sync`) `[V]`
-(`coop/dev/flood_probe`: the host's burst reached the client in the same second, the level rose on both, and the
-client's repair mended the host's pipe and both levels fell together).
+a flood never reached a client and a client's repair never reached the host (Ghezra/Multivoid#40). The host owns both: the
+host sends a pipe whose bit changed from the pipe's own `State` call and the level from the volume's own `addWater` and
+`setLevel` once it has moved a whole unit. A client refuses three calls outside the lane's own apply: a pipe's `addDamage`
+(a client's hit on a pipe is dropped, not forwarded: a burst is the host's) and the volume's `addWater` and `setLevel`
+(so its level is only the host's). What still runs there is a burst pipe's `State`, spray, sound and tick (the tick's one
+act is the refused `addWater`), the drain's tick and the volume's `updateWaterData`. The client applies the host's pipe
+through `State` and the host's level through `setLevel` and `updateWaterData`, and refuses a level outside the volume's
+range, 0 to its `height` (`coop/world/flood_sync`).
+
+A client's repair runs on its copy and is asked of the host (`FloodIntent`), which trusts nothing in the ask but the
+pipe's name: it mends its pipe only for a sender that is alive, within 400 units of the pipe by the host's own copy of
+the sender, holds a toolbox by the hand the sender announced, and finds the pipe burst. An ask so judged and refused is
+answered with the pipe's state, and a refusal at the target check leaves the pipe burst; an ask from a slot that is not
+world-ready, past four a second per sender, or naming no pipe or another op is dropped with no answer.
+The flood drill (`coop/dev/flood_drill`: `rig: VERDICT flood-burst`, `-mend`, `-far`, `-join`, `-mendold`) reads each of
+these on the peers' own copies, and its red arms withhold the send, the judge and the joiner's replay `[?]`.
 
 ### Sounds played at a place
 
@@ -332,7 +341,7 @@ ending. Tests:
 | the ambient UFOs | the host | its timers refused on a client; its UFOs on the world-actor mirror with the host's rolled path; the Midas run relayed |
 | the pyramid's brain | the host | timers cancelled on the mirror; the gather relayed |
 | the base alarm | whoever transitions | polled; the host canonicalises |
-| the basement's pipes and flood | the host | a client's pipe ticks refused; the bit and the level sent as they change; a client's repair asked |
+| the basement's pipes and flood | the host | a client's `addDamage`, `addWater` and `setLevel` refused outside the lane's apply; the bit and the level sent as they change; a client's repair asked |
 | emails, the daily task | the host | one reflected append; a change-hash poll |
 
 ## Wire messages
@@ -364,7 +373,9 @@ run is re-sent while it flies; the pyramid's gather in flight
 is re-sent after its mirrors exist; the alarm's current flag is sent unconditionally, and the
 joiner runs the native trigger, which is idempotent against a save that already carried it.
 Emails are seeded as a delta against the blob instant; the task state is sent at the ready
-edge. A one-shot cue a joiner was not present for is missed, by definition.
+edge. A one-shot cue a joiner was not present for is missed, by definition. The basement's flood is not one: every pipe's
+bit and the flood's level are sent to the joiner at its ready edge, and the host's changes follow `[?]`
+(`coop/dev/flood_drill`, arm `join`: a client that leaves a rising flood and comes back reads the host's pipes and level).
 
 ## Known limits
 
@@ -399,6 +410,6 @@ edge. A one-shot cue a joiner was not present for is missed, by definition.
 | the stolen radio tower | `coop/world/fuse_tower_ops` (the ticker's refusal), `coop/world/fuse_tower_kind`, `ue_wrap/devices/radio_tower`; `coop/dev/tower_poof_probe` |
 | the ambient UFOs | `coop/world/ufo_sync`, `coop/world/spawn_authority` (the gamemode's five timers); `harness/autotest/autotest_ufo.cpp` (`ufo_drill`) |
 | the alarm, emails, the task | `coop/world/alarm_sync`, `coop/world/email_sync`, `coop/world/daily_task_sync`, `ue_wrap/world/email` |
-| the basement flood | `coop/world/flood_sync`; `coop/dev/flood_probe` |
+| the basement flood | `coop/world/flood_sync`; `coop/dev/flood_drill` |
 | sounds played at a place | `coop/world/sound_relay`; `coop/dev/hit_probe` |
 | tests | `harness/autotest/autotest_weather.cpp`, `autotest_fog_probe.cpp`, `autotest_eventforce.cpp`, `autotest_alarmforce.cpp`, `autotest_piramidforce.cpp`, `autotest_vent_crawler.cpp`; the event drill, `coop/dev/event_drill`; the world roll drill, `coop/dev/world_roll_drill` |

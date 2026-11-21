@@ -3,7 +3,8 @@
 // syncer's pair, PropSyncClaim (client to host) and PropSyncAnswer (host to one client), the host's refusal of
 // a second hold of one prop (PropHoldRefused, host to every client), a garbage container's state (GarbageBinState, host
 // to all), a container's break or a saw's cut asked of the host (ContainerBreakRequest), a plank's, radiator's or
-// security TV's pry asked of the host (PryAsk) and its state back to every client (PryState), and the developer
+// security TV's pry asked of the host (PryAsk) and its state back to every client (PryState), a found dingus (DingusReport,
+// client to host; DingusFound, host to every client), and the developer
 // filler DevLoadFiller (host to one client), DevParityReport (a joiner's pose report to the host) and
 // DevContainerParity (a joiner's container content report to the host). Each case
 // validates at the trust boundary and hands off to its module. The switch below is the family's
@@ -55,6 +56,7 @@
 #include "coop/props/prop_hold_claim.h"    // the client's receiver of a refused hold
 #include "coop/props/miner_bounds.h"  // what a mining rig can hold
 #include "coop/props/miner_sync.h"   // a GPU mining rig's counts and points, the host's
+#include "coop/props/dingus_sync.h"  // a found dingus: a client's report, the host's word
 #include "coop/props/prop_food_sync.h"     // a world food's condition and a client's bite
 #include "coop/props/prop_pry_host.h"      // a client's pry ask, judged by the host
 #include "coop/props/prop_pry_sync.h"      // the host's pried-prop state, applied by a client
@@ -110,6 +112,16 @@ void DropMiner(const net::Session::ReliableMessage& msg) {
     const uint64_t n = ++s_dropped;
     if ((n & (n - 1)) == 0)
         UE_LOGW("event_feed: a mining rig message dropped (the wrong way, of %zu bytes or out of range), from slot %d: %llu so far",
+                static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot, static_cast<unsigned long long>(n));
+}
+
+// Every basement flood message the dispatcher drops (the wrong way, the wrong length or malformed) is counted on one
+// counter, logged at the first and each power of two.
+void DropFlood(const net::Session::ReliableMessage& msg) {
+    static uint64_t s_dropped = 0;
+    const uint64_t n = ++s_dropped;
+    if ((n & (n - 1)) == 0)
+        UE_LOGW("event_feed: a flood message dropped (the wrong way, of %zu bytes or malformed), from slot %d: %llu so far",
                 static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot, static_cast<unsigned long long>(n));
 }
 
@@ -427,6 +439,32 @@ bool HandlePropDriveEvent(net::Session& session,
         else ::coop::miner_sync::OnState(p);
         break;
     }
+    case net::ReliableKind::DingusFound:
+    case net::ReliableKind::DingusReport: {
+        // DingusFound HOST->ALL, DingusReport CLIENT->HOST (coop/props/dingus_sync). Exact length, then a well-formed key.
+        const bool report = msg.kind == net::ReliableKind::DingusReport;
+        static_assert(sizeof(net::DingusFoundPayload) == sizeof(net::DingusReportPayload));
+        if (report != (session.role() == net::Role::Host) || msg.payloadLen != sizeof(net::DingusReportPayload)) {
+            ::coop::dingus_sync::CountDropped(msg.senderPeerSlot, msg.payloadLen);
+            break;
+        }
+        net::WireKey key{};
+        std::memcpy(&key, msg.payload, sizeof(key));
+        if (!::coop::dingus_sync::WireKeyWellFormed(key)) {
+            ::coop::dingus_sync::CountDropped(msg.senderPeerSlot, msg.payloadLen);
+            break;
+        }
+        if (report) {
+            net::DingusReportPayload p{};
+            p.key = key;
+            ::coop::dingus_sync::OnReport(msg.senderPeerSlot, p);
+        } else {
+            net::DingusFoundPayload p{};
+            p.key = key;
+            ::coop::dingus_sync::OnFound(p);
+        }
+        break;
+    }
     case net::ReliableKind::PlantState:
     case net::ReliableKind::PlantEdit: {
         // PlantState HOST->ALL, PlantEdit CLIENT->HOST.
@@ -715,25 +753,6 @@ bool HandlePropDriveEvent(net::Session& session,
         ::coop::car_charger_sync::OnState(p);
         break;
     }
-    case net::ReliableKind::KerfurDressState:
-    case net::ReliableKind::KerfurDressIntent: {
-        // KerfurDressState HOST->ALL, KerfurDressIntent CLIENT->HOST.
-        const bool intent = msg.kind == net::ReliableKind::KerfurDressIntent;
-        if (intent != (session.role() == net::Role::Host) || msg.payloadLen < sizeof(net::KerfurDressPayload)) {
-            UE_LOGW("event_feed: a kerfur dress message the wrong way or too short from slot %d -- dropping",
-                    msg.senderPeerSlot);
-            break;
-        }
-        net::KerfurDressPayload p{};
-        std::memcpy(&p, msg.payload, sizeof(p));
-        if (p.op > net::kKerfurDressPat || (intent && p.op == net::kKerfurDressOutfit)) {
-            UE_LOGW("event_feed: kerfur dress message malformed -- dropping");
-            break;
-        }
-        if (intent) ::coop::kerfur_dress_sync::OnIntent(msg.senderPeerSlot, p);
-        else ::coop::kerfur_dress_sync::OnState(p);
-        break;
-    }
     case net::ReliableKind::KerfurColorState:
     case net::ReliableKind::KerfurColorIntent: {
         // KerfurColorState HOST->ALL, KerfurColorIntent CLIENT->HOST (coop/creatures/kerfur_color_sync). Exact length,
@@ -843,14 +862,14 @@ bool HandlePropDriveEvent(net::Session& session,
     case net::ReliableKind::FloodIntent: {
         // FloodState HOST->ALL, FloodIntent CLIENT->HOST.
         const bool intent = msg.kind == net::ReliableKind::FloodIntent;
-        if (intent != (session.role() == net::Role::Host) || msg.payloadLen < sizeof(net::FloodPayload)) {
-            UE_LOGW("event_feed: a flood message the wrong way or too short from slot %d -- dropping", msg.senderPeerSlot);
+        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != sizeof(net::FloodPayload)) {
+            DropFlood(msg);
             break;
         }
         net::FloodPayload p{};
         std::memcpy(&p, msg.payload, sizeof(p));
         if (p.damaged > 1 || p.op > net::kFloodOpFix || !std::isfinite(p.level)) {
-            UE_LOGW("event_feed: flood message malformed -- dropping");
+            DropFlood(msg);
             break;
         }
         if (intent) ::coop::flood_sync::OnIntent(msg.senderPeerSlot, p);

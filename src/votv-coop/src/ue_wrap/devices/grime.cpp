@@ -8,17 +8,23 @@
 
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/core/log.h"
+#include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
+#include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/engine/engine_component.h"
+#include "ue_wrap/world/world_singleton.h"
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
+#include <vector>
 
 namespace ue_wrap::grime {
 namespace {
 
 namespace R = reflection;
 namespace E = ue_wrap::engine;
+namespace OI = ue_wrap::object_index;
 
 // Resolved once at EnsureResolved, then read-only. Published via the g_resolved
 // release-store / acquire-load (game-thread writes; poll/apply reads).
@@ -151,6 +157,112 @@ bool WriteProcessAndApply(void* grime, float process) {
     ParamFrame f(applyFn);
     if (!f.valid() || !Call(grime, f)) return false;
     return Repaint(grime, process);
+}
+
+namespace {
+
+// A bool property of the decal's class: its byte and bit, kept for the class last asked (the judge asks once per ask, and
+// a decal's class is one of a few dozen).
+bool ReadBoolField(void* grime, const wchar_t* name, void*& cachedCls, int32_t& off, uint8_t& mask, bool& out) {
+    if (!grime || !g_resolved.load(std::memory_order_acquire) || !R::IsLive(grime)) return false;
+    void* cls = R::ClassOf(grime);
+    if (!cls) return false;
+    if (cls != cachedCls) {
+        // Looked up into locals: a class without the field must leave the last class's cached byte and bit as they were.
+        int32_t foundOff = -1;
+        uint8_t foundMask = 0;
+        if (!R::FindBoolProperty(cls, name, foundOff, foundMask) || foundOff < 0 || foundMask == 0) return false;
+        off = foundOff;
+        mask = foundMask;
+        cachedCls = cls;
+    }
+    out = (*(reinterpret_cast<const uint8_t*>(grime) + off) & mask) != 0;
+    return true;
+}
+
+}  // namespace
+
+bool ReadCleanStrength(void* grime, float& out) {
+    static R::InstanceOffset s{L"cleanStrength"};
+    if (!grime || !R::IsLive(grime)) return false;
+    const int32_t o = s.Of(grime);
+    if (o < 0) return false;
+    out = *reinterpret_cast<const float*>(reinterpret_cast<const char*>(grime) + o);
+    return true;
+}
+
+bool ReadIsCleanable(void* grime, bool& out) {
+    static void* cls = nullptr;
+    static int32_t off = -1;
+    static uint8_t mask = 0;
+    return ReadBoolField(grime, L"isCleanable", cls, off, mask, out);
+}
+
+bool ReadResistRain(void* grime, bool& out) {
+    static void* cls = nullptr;
+    static int32_t off = -1;
+    static uint8_t mask = 0;
+    return ReadBoolField(grime, L"resistRain", cls, off, mask, out);
+}
+
+bool ReadWinter(bool& out) {
+    static void* cls = nullptr;
+    static int32_t off = -1;
+    static uint8_t mask = 0;
+    return ReadBoolField(ue_wrap::world_singleton::Gamemode(), L"isWinter", cls, off, mask, out);
+}
+
+size_t ForEachDecal(DecalFn fn, void* ctx) {
+    if (!fn || !g_grimeCls) return 0;
+    // The decals are subclasses of grime_C (dust, blood, oil and the rest), each its own class in the index.
+    struct Classes {
+        void* base;
+        std::vector<void*> list;
+    } classes{g_grimeCls, {}};
+    OI::ForEachClass([](void* c, void* cls, void*) {
+        auto& x = *static_cast<Classes*>(c);
+        if (R::IsDescendantOfAny(cls, &x.base, 1)) x.list.push_back(cls);
+    }, &classes);
+    struct Visit {
+        DecalFn fn;
+        void*   ctx;
+        size_t  n;
+    } v{fn, ctx, 0};
+    for (void* cls : classes.list)
+        OI::ForEachInstance(cls, [](void* c, void* obj, int32_t index) {
+            auto& x = *static_cast<Visit*>(c);
+            if (R::SlotFlags(index) & (R::slot_flags::Dying | R::slot_flags::NotYetReadable)) return;
+            if (R::NameStartsWith(R::NameOf(obj), L"Default__")) return;
+            x.fn(x.ctx, obj);
+            ++x.n;
+        }, &v);
+    return v.n;
+}
+
+bool IsCrack(void* obj) {
+    static void* crackCls = nullptr;
+    if (!obj) return false;
+    if (!crackCls) crackCls = R::FindClass(L"grime_crack_C");
+    void* cls = R::ClassOf(obj);
+    return crackCls && cls && R::IsDescendantOfAny(cls, &crackCls, 1);
+}
+
+bool ReadBox(void* grime, FVector& centre, float& halfDiagonalCm) {
+    static R::InstanceOffset sBox{L"Box"};
+    if (!grime || !R::IsLive(grime)) return false;
+    const int32_t o = sBox.Of(grime);
+    if (o < 0) return false;
+    void* box = *reinterpret_cast<void* const*>(reinterpret_cast<const char*>(grime) + o);
+    if (!box || !R::IsLive(box)) return false;
+    void* cls = R::ClassOf(box);
+    void* fn = cls ? R::FindDispatchFunctionCached(cls, L"GetScaledBoxExtent") : nullptr;
+    if (!fn) return false;
+    ParamFrame f(fn);
+    if (!f.valid() || !Call(box, f)) return false;
+    const FVector half = f.Get<FVector>(L"ReturnValue");
+    centre = E::GetComponentLocation(box);
+    halfDiagonalCm = std::sqrt(half.X * half.X + half.Y * half.Y + half.Z * half.Z);
+    return std::isfinite(halfDiagonalCm);
 }
 
 }  // namespace ue_wrap::grime

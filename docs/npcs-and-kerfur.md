@@ -193,18 +193,6 @@ an id the character's spawn carries (`coop/creatures/kerfur_reconcile`). The rob
 are data-only subclasses, so the spawned class is the skin; the same bodies serve as player skins
 on [players.md](players.md).
 
-An Omega's outfit is its `drip`, the list_kerfurdrip rows it wears, which its `updateDrip` builds into meshes; the
-equipItem of a held item adds a row and the equipment screen's `unequipItem` spawns the item back and removes it. Each
-copy ran these alone, so a hat or the maid outfit one player put on was seen by nobody else (Ghezra/Multivoid#38). The
-host reads its Omegas' outfits twice a second and sends a changed one, and every one to a joiner (`KerfurDressState`);
-a client writes it and runs `updateDrip`. A client's put-on runs on its copy and is told to the host, a take-off is
-refused on its copy and asked of it (`KerfurDressIntent`); the host adds the row, or runs its own `unequipItem`, whose item
-is born on the host, for a living sender within 200 cm, and answers a refusal with its outfit. A pat runs where it is
-picked; the `actionName` seat reports it, and every other copy plays the montage's `pat` section and the meow, without
-the pat's own stop or count (`coop/creatures/kerfur_dress_sync`, `ue_wrap/actors/kerfur_dress`). `[V]` (`coop/dev/kdress_probe`,
-`VOTVCOOP_KDRESS_PROBE=client|host`: the bucket and the maid outfit put on and taken off by a client and by the host
-show on both copies within a second, and the pat plays its montage on the other copy.)
-
 A custom-colour Omega or Kerfus (`prop_kerfurOmega_col_C`, `kerfurOmega_col_C`, `p_kerfus_col_C`) holds its colour in
 `hsv`. The game's colour picker calls the prop's `intComs_applyColor`, which stores `RGBToHSV` of the colour and repaints
 that copy alone, so a colour one player picked was seen by nobody else. The colour is the host's
@@ -218,18 +206,48 @@ the green; a client joining after it all took the green Omega.)
 
 ### The dingus
 
-The dingus (`prop_dingus_C` and its kin, Maxwell among them) is a prop that plays its music on its `ws1` component from
-its spawn until it is found: its first grab (`playerGrabbed`, then `Touch`) sets `isused` and deactivates the music, and
-its own `loadData` does the same for a record whose `isused` is set. Both are one peer's: the grab runs on the
-grabber's machine alone, and a dingus born on another peer from a drop does not take its record there, the dingus
-being a food the food lane owns. The others kept hearing the music of a dingus someone had found. The found set is
-the host's, by the dingus's save key, which it keeps through the inventory: each peer looks at its copies twice a
-second, the host puts a found one's key in the set and tells every client, a client tells the host of one it found,
-and every peer marks each copy under a key of the set found as `Touch` does, so a copy born later goes quiet at its
-first look; a joiner gets the set before its snapshot (`coop/props/dingus_sync`) `[V]` (`coop/dev/dingus_probe`,
-`VOTVCOOP_DINGUS_PROBE=host|client`: the finder grabs it, pockets it and drops it; with either peer the finder, the
-other's copy went quiet within a second of the grab, and the copy the drop made on the other peer within a second of
-its birth).
+The dingus (`prop_dingus_C` and the three classes below it that share its graph, Maxwell among them) is a prop that plays
+its music on its `ws1` component from its spawn until it is found. The find is its `touch`: it grants the finder's
+achievement, deactivates the music and sets `isUsed`, and a grab and every action call it. It runs on the finder's machine
+alone, and holding a dingus never runs it (the hand copy is a new object written by `loadData`, `isUsed` unchanged). A
+copy born on another peer from a drop takes no record, the dingus being a food the food lane owns, so the others kept
+hearing the music of a dingus someone had found `[?]`.
+
+Each peer keeps a set of the keys found (a dingus is named by its save key, which it keeps through the inventory; at most
+64). The script gate sees `touch` end on a dingus by name, on every peer. The host's own find adds the key and says
+`DingusFound` (280) to every client; a client's find is asked of the host, `DingusReport` (281), and the host judges it
+(the sender world-ready and alive, a budget of four at once and one in two seconds, the key not yet known, a live dingus
+copy under it within 600 cm of the sender) before it makes the find its own, which is `DingusFound` to every client, the
+finder included. A client asks only for a key its set does not hold. A refused report is counted by reason on the host
+(no live copy, not a dingus, out of reach, no body, budget, known, not ready) and gets no answer, except the `known` one, which
+sends the key back to the asker alone: the asker's own copy stays found and a forged report has no effect. A peer marks a copy under a key of the set found as `loadData` does (`isUsed`, the
+music's volume and attenuation, its deactivation) and never calls `touch`, so no achievement is granted again: a dingus
+found by one player is found for all, as in single player. The marking is made for a copy alive when the key is heard, for
+a copy the host births (a drop, a load) when its birth is drained from the prop lane's birth list (a dingus the save
+loaded found is a find nobody told of, and its key joins the set then), and for a copy a client binds, at its bind. A
+joiner gets every key inside its snapshot (`coop/props/dingus_sync`, `ue_wrap/actors/dingus`) `[?]`. The set is the host's
+stand-in for an element datum (MTA keeps it on the element and sends it whole at the join): the record lane carries no
+dingus, and carving it out of the food claim would move a food class's ownership off the food lane. Not shared: a dingus
+found while in a hand, the action that toggles its music, and the hand mirror of a held found dingus.
+An Omega's outfit is its `drip`, the list_kerfurdrip rows it wears, which its `updateDrip` builds into meshes; the
+equipItem of a held item adds a row and the equipment screen's `unequipItem` spawns the item back and removes it. Each
+copy ran these alone, so a hat or the maid outfit one player put on was seen by nobody else (Ghezra/Multivoid#38). The
+outfit is the host's: it sends the whole of it (`KerfurDressState`, 224 bytes inside the 228-byte reliable limit: up to eight rows of 1..26 printable characters, each ended by a NUL, back to back; the host counts and says once an outfit that does not pack and sends none, never a cut one) at every `updateDrip` of
+an Omega that has an element and to a joiner for every Omega once the NPC connect broadcast has told the joiner's
+copies by element id. No send follows an Omega's registration: no route of the game dresses an Omega before it registers
+(`prop_kerfurOmega` carries a type, a sentient flag and a name, a drop copies only `sentient`, and `updateDrip` runs only from
+`equipItem`, `unequipItem` and a save's load, which is before any client connects and is covered by the join's send). A client writes the rows to its copy with `updateDrip`, rebuilds the equipment list when the one
+viewer captures that Omega, and keeps the word for a copy not bound yet until the NPC mirror binds. A client's put-on and
+take-off are two families of `prop_act` (`coop/props/prop_act_omega`, entries of its family registry): watches on the
+Omega's `playerUsedOn` and `upgradeTake` cancel the client's call and ask the host, which judges the row against the
+game's own equip rules and, for a put-on, the hand lane's record of the hold. A granted put-on is replayed by the client
+under prop_act's latch and committed once its copy wears the row and its hand lost the hold; the host then spends the hold
+and writes the row. A granted take-off is applied by the host before it answers the grant (`unequipItem`, the item born on the host; one it cannot write is refused) and
+the client replays nothing. A pat runs where it is picked; at its end a client asks the host (`KerfurDressIntent`, 4 bytes),
+which plays the montage on its copy and sends the outfit with the pat flag to every other client, and the host's own pat
+is sent to every client. A receiver plays the montage's `pat` section alone, with no meow and without the pat's own stop or count
+(`coop/creatures/kerfur_dress_sync`, `ue_wrap/actors/kerfur_dress`). `[?]` (the rig proof of the put-on, the take-off, the
+pat and the join is the drill's, `kdress_drill`; the forged asks and pats are `hostile_drill=kdress_ask`.)
 
 ## Who owns what
 
@@ -255,8 +273,9 @@ its birth).
 | `RoachState`, `RoachConsumed` | the host to all; a client to the host | a page of the infestation; a stomped or eaten roach |
 | `KerfurConvertRequest`, `KerfurConvert` | a client to the host; the host to all | a turn-on or turn-off to perform; the form transition with both ids, the form, the class and the pose |
 | `KerfurCommand` | a client to the host | a radial verb with the sender's request number, which the host runs serving the sender |
-| `DingusFound` | a client to the host (op 0); the host to all and to a joiner (op 1) | a dingus's save key: a client found it; it is found |
-| `KerfurDressState`, `KerfurDressIntent` | the host to all; a client to the host | an Omega's outfit rows or a pat to show; a client's put-on, take-off or pat |
+| `DingusReport` | a client to the host | the save key of a dingus the client's own `touch` found; the host judges the sender and the key |
+| `DingusFound` | the host to all and to a joiner | a dingus's save key: it is found, so each peer marks its copies under it |
+| `KerfurDressState`, `KerfurDressIntent` | the host to all; a client to the host | an Omega's whole outfit (up to eight rows), with a flag for a pat to show; a client's pat (the put-on and take-off ride `PropActRequest`) |
 | `KerfurColorState`, `KerfurColorIntent` | the host to all and to a joiner; a client to the host | a custom-colour kerfur's `hsv` by element id; a client's picked colour |
 | `KerfurCommandAnswer` | the host to the requester | the host's refusal of a command (busy, gone, murderous, out of reach, queue full, not an Omega, unavailable) or its wait for a body of the sender, as an enum the client words itself |
 
@@ -296,6 +315,6 @@ the joiner at its ready edge.
 | the black orb | `coop/creatures/orb_authority`, `coop/player/puppet_identity` (its touch row); `harness/autotest/autotest_orb.cpp` (`orb_drill`) |
 | roaches | `coop/creatures/roach_sync` |
 | the kerfur | `coop/creatures/kerfur_entity`, `coop/creatures/kerfur_convert` with its host and client halves, `coop/creatures/kerfur_form_assembler`, `coop/creatures/kerfur_command`, `coop/creatures/kerfur_command_seat`, `coop/creatures/kerfur_command_answer`, `coop/creatures/kerfur_command_wire`, `coop/creatures/kerfur_disc_carry`, `coop/creatures/kerfur_prop_adoption`, `coop/creatures/kerfur_reconcile`, `coop/creatures/served_player`, `coop/creatures/kerfur_dress_sync` with `ue_wrap/actors/kerfur_dress`, `coop/creatures/kerfur_color_sync` |
-| the dingus | `coop/props/dingus_sync`; `coop/dev/dingus_probe` |
+| the dingus | `coop/props/dingus_sync` with `dingus_judge`; `ue_wrap/actors/dingus` |
 | the kerfus | `coop/creatures/kerfus_lanes` with `kerfus_brain`, `kerfus_state`, `kerfus_intent` and `kerfus_follow`; `ue_wrap/actors/kerfus` |
-| tests | `harness/autotest/autotest_kwisp_probe.cpp`, `harness/autotest/autotest_wisplane.cpp`, `coop/dev/kerfur_convert_drill` (a client turns a kerfur off and on beside a disc of its own), `coop/dev/kerfur_serve_drill` (a client's commands to the Omega run for that client), `coop/dev/kerfus_drill` (a kerfus a client turns on follows it), `coop/dev/kdress_probe` (an Omega's outfit and pat), `coop/dev/kgamer_probe` (a gamer or custom-colour Omega and Kerfus), `coop/dev/kwheel_probe` (a kerfus's wheel and the props it hits, fast and far) |
+| tests | `harness/autotest/autotest_kwisp_probe.cpp`, `harness/autotest/autotest_wisplane.cpp`, `coop/dev/kerfur_convert_drill` (a client turns a kerfur off and on beside a disc of its own), `coop/dev/kerfur_serve_drill` (a client's commands to the Omega run for that client), `coop/dev/kerfus_drill` (a kerfus a client turns on follows it), `coop/dev/kdress_drill` (an Omega's outfit and pat: put-on, take-off, pat, born and join) and `coop/dev/hostile_drill_kdress` (forged Omega outfit asks and pats) |

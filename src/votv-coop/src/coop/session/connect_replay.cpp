@@ -133,7 +133,7 @@ void ConnectReplayForSlot(int slot) {
         coop::net::SnapshotSendScope scope(slot);  // the removes are the snapshot's, so the join gate passes them
         coop::join_window_baseline::SendDivergenceDeletes(slot);
         coop::hook_retrieve::SendJoinGone(slot);  // and the anchored hooks it holds that were taken since: its copy goes too
-        coop::dingus_sync::SendJoinFound(slot);  // and every dingus found this session: its copies go quiet as they appear
+        coop::dingus_sync::SendJoinFound(slot);  // and every dingus found this session: a copy bound later is marked at its bind
         coop::prop_nametag::SendJoinTags(slot);  // and every tag put on this session, ahead of the snapshot's props: a copy its save loaded takes it, one the snapshot births waits for it
     }
     // Every dish code, sent here and held by the join gate until the snapshot completes, so a set that goes whole lands
@@ -168,7 +168,6 @@ void ConnectReplayForSlot(int slot) {
     coop::woodchipper_sync::QueueConnectBroadcastForSlot(slot);  // every woodchipper again
     coop::generator_sync::SendJoin(slot);                        // and every portable generator
     coop::flood_sync::SendJoin(slot);                            // and the basement's pipes and flood
-    coop::kerfur_dress_sync::SendJoin(slot);                     // and every Omega's outfit
     coop::kerfur_color_sync::SendJoin(slot);                     // and every custom-colour kerfur's colour
     coop::printer_sync::SendJoin(slot);                          // and every printed object
     coop::arir_ship_sync::SendJoin(slot);                        // and the Ariral ship, while it is up
@@ -213,6 +212,7 @@ void ConnectReplayForSlot(int slot) {
     coop::trash_pile_sync::QueueConnectBroadcastForSlot(slot);  // pile counters (adopt=1) + depleted-key replay
     coop::npc_world_enum::RegisterExistingWorldNpcs(slot);  // pre-existing/level-load NPCs (the save's kerfur) -> the peers already in; the joiner (slot) is skipped, its connect broadcast below sends it and it adopts its twin
     coop::npc_sync::QueueConnectBroadcastForSlot(slot);  // existing NPCs -> joiner
+    coop::kerfur_dress_sync::SendJoin(slot);  // and every Omega's outfit, dressed or not: its copies are told by eid first, and a copy not bound yet holds the word
     coop::world_actor_sync::QueueConnectBroadcastForSlot(slot);  // existing event WorldActors -> joiner
     coop::balance_sync::SendCurrentToSlot(slot);  // host's current balance
     coop::upgrade_sync::SendCurrentToSlot(slot);  // and the upgrade levels: the joiner's save was taken at the handshake

@@ -10,6 +10,7 @@
 #include "coop/net/net_clock.h"
 #include "coop/player/hand_history.h"
 #include "coop/player/roster_ledger.h"
+#include "ue_wrap/core/class_cache.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
 
@@ -137,9 +138,13 @@ bool ClassNameIsA(const std::wstring& name, const wchar_t* base) {
 }
 
 bool HeldClassIsA(uint8_t slot, const wchar_t* base) {
+    if (HeldClassIs(slot, base)) return true;
     if (slot >= coop::players::kMaxPeers || !base) return false;
     const SlotHand& h = g_hands[slot];
-    return h.has && ClassNameIsA(h.cls, base);
+    if (!h.has) return false;
+    void* const cls = ue_wrap::object_index::ClassByName(h.cls.c_str());
+    void* const baseCls = cls ? ue_wrap::class_cache::ByName(base) : nullptr;
+    return baseCls && ue_wrap::reflection::IsDescendantOfAny(cls, &baseCls, 1);
 }
 
 bool LastHeldClassIs(uint8_t slot, const wchar_t* cls) {
@@ -195,6 +200,12 @@ std::wstring HeldItem(uint8_t slot) {
     if (slot >= coop::players::kMaxPeers) return {};
     const SlotHand& h = g_hands[slot];
     return h.has ? h.item : std::wstring();
+}
+
+std::wstring HeldClass(uint8_t slot) {
+    if (slot >= coop::players::kMaxPeers) return {};
+    const SlotHand& h = g_hands[slot];
+    return h.has ? h.cls : std::wstring();
 }
 
 }  // namespace coop::hand_item

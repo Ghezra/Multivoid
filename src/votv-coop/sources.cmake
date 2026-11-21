@@ -77,6 +77,8 @@ set(VOTVCOOP_SOURCES
     src/coop/comms/chat_rate.cpp
     src/coop/interactables/turbine_sync.cpp
     src/coop/interactables/woodchipper_sync.cpp
+    src/coop/world/flood_sync.cpp
+    src/coop/creatures/kerfur_dress_sync.cpp
     src/coop/interactables/woodchipper_gate.cpp
     src/coop/interactables/atv_gate.cpp
     src/coop/interactables/atv_host_judge.cpp
@@ -173,6 +175,7 @@ set(VOTVCOOP_SOURCES
     src/coop/interactables/window_sync.cpp
     src/coop/interactables/window_stroke_sync.cpp
     src/coop/interactables/grime_sync.cpp
+    src/coop/interactables/grime_judge.cpp
     src/coop/session/boot_selftests.cpp
     src/coop/session/session_hooks.cpp
     src/coop/session/player_handshake.cpp
@@ -595,6 +598,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_cover.cpp
     src/harness/autotest/autotest_cover_measure.cpp
     src/harness/autotest/autotest_woodchipper.cpp
+    src/harness/autotest/autotest_woodchipper_mini.cpp
     src/harness/autotest/autotest_class_resolve.cpp
     src/harness/autotest/autotest_item_spawn.cpp
     src/harness/autotest/autotest_prop_props.cpp

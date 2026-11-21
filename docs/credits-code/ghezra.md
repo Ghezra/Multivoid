@@ -353,3 +353,24 @@ One contributor's code, from the [credit ledger](../credits.md#the-ledger).
 - **A drive box across a pocket** ([#198](https://github.com/VOTV-MP/Multivoid/pull/198)): a client's pocketed box came back empty on the
   host. Kept as written: the host remembers a gone box's rows by its key and writes them back. On top: only a box a client placed
   gets them (a new box reusing the key keeps its own), the tables end with their world, the record holds 16 rows, and drills with reds.
+
+- **A dingus found by anyone is quiet for everyone** ([#181](https://github.com/VOTV-MP/Multivoid/pull/181)): a dingus found by one player kept playing its music on the
+  other screens, and a found one carried and dropped played again. Kept as written: his two commits, renumbered to this tree's
+  build. On top: the find is caught as the game makes it instead of scanned twice a second; a client's report is judged by the host
+  (its reach, a budget, a live dingus) and told to everyone; a copy born later, or loaded found from a save, is marked as it appears;
+  drills with reds, and a hostile arm that forges reports.
+- **Every gas can pours** ([#195](https://github.com/VOTV-MP/Multivoid/pull/195), the woodchipper and ATV half): the host took a client's
+  pour only from the plain can in the hand. Kept as written: a subclass in the hand, or a can carried by the grab, pours. On top:
+  both judges test the class by a cached pointer, and drills pour from a mini can and a carried big can, each with a red. The
+  generator half waits for #141.
+
+- **A prop on its side stops streaming** ([#186](https://github.com/VOTV-MP/Multivoid/pull/186), its turn-measure commit): a still prop lying at pitch -90 reads back a new
+  yaw and roll of the same sum on every read, so the per-axis check never saw it stop and its stream ran for minutes. Kept as
+  written: a turn is the angle between the two quaternions, in the drive's send check and the body push. On top: a boot selftest
+  of the measure, and the rest compare's own copy of the angle folded into it. The rest of #186 waits for its own proof.
+
+- **An Omega's outfit and its pat** ([#167](https://github.com/VOTV-MP/Multivoid/pull/167)): an Omega's outfit and a pat showed only on the copy of the player who gave them.
+  Kept as written: his two commits, renumbered to this tree's build. On top: the outfit is the host's, sent when it changes and to a
+  joiner instead of read twice a second; a client's put-on and take-off are asked of the host through the prop actions' request,
+  judged by the game's own rules and the item really in the hand, and the put-on runs on the client only once granted, so nothing is
+  lost or made twice; the pat is shown on every copy; drills with reds, and a hostile arm that forges the asks.

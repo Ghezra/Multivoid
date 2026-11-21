@@ -37,7 +37,9 @@ CFG_ENUM(hostile_drill, "hostile_drill", "dev", "off",
     "ignite_not_ready|ignite_flood|"
     "atv_state_forge|atv_seat_forge|atv_takeover_forge|atv_explode_forge|"
     "cord_malformed|cord_bad_op|cord_reach|cord_flood|cord_dead_sender|"
-    "coffee_malformed|coffee_wrong_class|coffee_reach|coffee_flood|coffee_forged_record|coffee_dead_sender",
+    "coffee_malformed|coffee_wrong_class|coffee_reach|coffee_flood|coffee_forged_record|coffee_dead_sender|"
+    "grime_measure|grime_last|grime_far|grime_notool|grime_gone|grime_fast|grime_rain|grime_dry|grime_joinleak|"
+    "dingus_report|kdress_ask",
     "VOTVCOOP_HOSTILE_DRILL",
     "Receive-boundary drill (BOTH peers). signal_park: a client floods refused saved-signal rows "
     "(size 0, so the game's own gate rejects each) and the host must keep them from filling the apply "
@@ -112,6 +114,24 @@ CFG_ENUM(hostile_drill, "hostile_drill", "dev", "off",
     "coffee_forged_record (the client's record of the host's maker with hasCup set: refused, nothing published) and "
     "coffee_dead_sender (a well-formed press sent while the client's own player is dead: refused as dead); the "
     "host judges by the coffee lane's counters, every message one outcome. "
+    "grime_*: the host's judge of a client's grime fall (coop/interactables/grime_judge), each arm one message on a decal the host picks "
+    "from the client's puppet: grime_far (a fall from a decal 3000 cm away, a sponge in hand), grime_notool (an empty hand), "
+    "grime_gone (an ended mark, which only the host sends), grime_fast (a fall to zero from a full decal: granted cut to one "
+    "step, the asker told the host's value), grime_rain (the host raining, an empty hand: the rain route grants one rain step), "
+    "grime_dry (the host dry, an empty hand, a decal in the rain's radius) and grime_joinleak (grime_far, then the client leaves and rejoins: "
+    "mp.py --rejoin --rejoin-marker \"[HOSTILE-DRILL] grime_joinleak CLIENT LIFE DONE\" --rejoin-env VOTVCOOP_GRIME_DRILL_REJOIN=1; its decal at world-ready must read the host's unchanged value); grime_last (the client's real stroke to the end of a decal: held at zero until the host's "
+    "word, the host destroys it, the end reaches the client) and grime_measure (real strokes with a sponge, then a wall fixer "
+    "use: logs, and says whether the destroy hold fired). The client walks to a decal it needs near (the bot director) and "
+    "holds a sponge it spawns; the host judges by the judge's counters and the value it holds. Reds: grime_judge_off, "
+    "grime_hold_off, grime_rain_open. Set VOTVCOOP_GRIME_LOG=1 on both for the measure. "
+    "dingus_report: the host's judge of a client's found report refuses a key that is empty or longer than the wire, a "
+    "payload of the wrong length, a plain prop's key and a dingus out of reach, counts each under its own reason and "
+    "keeps the found set as it was; a client sends all of them in one tick, 13 messages, and the host judges by the "
+    "dingus lane's counters, every message one outcome. "
+    "kdress_ask: a client forges the Omega outfit asks (prop_act families 4 and 5: a row no table has, a row the hand never "
+    "held, an Omega out of reach, the same hold put on twice, a take-off flood past its drop budget) and 273 pats (a short "
+    "payload, an eid with no Omega, an Omega out of reach, a flood past the pat budget), one at a time for the asks and in one "
+    "tick for the pats; the host judges by the prop_act and pat counters' exact deltas per reason. "
     "Drill only.")
 
 // The act drill: an honest client takes and uses shared props through the real verbs, and the host judges what it

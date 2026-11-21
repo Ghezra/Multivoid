@@ -8,6 +8,7 @@
 #include "harness/autotest/meet.h"
 #include "harness/autotest/peer_signal.h"
 #include "harness/session_runtime.h"
+#include "woodchipper_drill_arms.h"  // co-located private header
 
 #include "coop/config/config.h"
 #include "coop/config/config_registry.h"
@@ -60,12 +61,15 @@
 //   g5  an over-pour: the host takes only what fits. INVALID when the tank holds 20 or less before it.
 //   g6  a pour from a client whose hand holds no gas can: the host refuses it.
 //   g4  with the rig's --rejoin: the chipper is on; the client leaves and comes back, and its copy must read it on.
+//   gm  its own arm, woodchipper_drill=mini: g1 with a mini can in the hand, tag `woodchipper-mini`; red: the host's gascan_exact_class.
 // Red arms: g2 woodchipper_gate_off and woodchipper_intent_off; g5, g6 woodchipper_pour_check_off; g4
 // woodchipper_replay_off. Tags, said by the host: `woodchipper` (g1, g2, g5, g6; the arm `1`), `woodchipper-rejoin` (g4)
 // and `woodchipper-feed` (g3); the lines are tagged `woodchipper:`. The second life carries VOTVCOOP_WOODCHIPPER_DRILL_REJOIN=1.
 
 namespace harness::autotest {
 namespace {
+
+using namespace woodchipper_drill;   // the readings' bounds and the mini arm (woodchipper_drill_arms.h)
 
 namespace R  = ue_wrap::reflection;
 namespace E  = ue_wrap::engine;
@@ -80,11 +84,8 @@ constexpr const wchar_t* kChipperPath = L"/Game/objects/woodchipper.woodchipper_
 constexpr const wchar_t* kPropPath = L"/Game/objects/prop_paper.prop_paper_C";   // wood, bag, paper...: canChip's list
 constexpr const wchar_t* kCanClass = L"prop_gascan_C";
 constexpr int kJoinSec = 480;
-constexpr int kSignalSec = 240;
-constexpr int kCopySec = 40;    // a state reaches a copy: the send, the round trip, the apply
 constexpr int kBurnSec = 90;    // the spin-up, then fuel falling by a measurable amount
 constexpr int kEatSec = 60;     // the drop, the chip animation, the clump (and a census scan to show it to the client)
-constexpr float kFuelTol = 0.6f;
 constexpr float kBurnDrop = 0.2f;
 constexpr float kChipperRouteCm = 400.f;   // a world chipper this near the host by route is the drill's; else one is spawned
 constexpr float kChipperStandCm = 150.f;   // a route's end this near the chipper is a place its use reaches
@@ -251,6 +252,9 @@ std::wstring ChipperKey() {
 }
 
 bool FeedArm() { return coop::config::ResolveEnum(coop::config_registry::rows::woodchipper_drill) == "feed"; }
+bool MiniArm() { return coop::config::ResolveEnum(coop::config_registry::rows::woodchipper_drill) == "mini"; }
+// The can the client takes into its hand: the mini one in the mini arm.
+const wchar_t* CanClass() { return MiniArm() ? kMiniClass : kCanClass; }
 
 // ---- the feed arm: identities, never counts ----
 // The pile eid 3136 near the hopper flips between pile and clump about once a second, so a count of clumps moves
@@ -438,15 +442,26 @@ void RunHost() {
         UE_LOGW("woodchipper: VERDICT ABORT -- no woodchipper in the world and none spawned");
         return;
     }
+    if (MiniArm()) {
+        if (const char* why = SpawnMiniCan()) {
+            RV::Say(kTagMini, RV::Outcome::Invalid, "no mini can for the host's class list: %s", why);
+            return;
+        }
+    }
     PS::Mark("chipper_key", Narrow(key));
     if (!PS::Await("can_in_hand", kSignalSec)) return;
     if (!PS::WaitFor("the client's gas can in hand here", 30, [&] {
             bool held = false;
-            OnGameThread([&] { held = coop::hand_item::HeldClassIs(1, kCanClass); });
+            OnGameThread([&] { held = coop::hand_item::HeldClassIs(1, CanClass()); });
             return held;
         }))
         return;
-    UE_LOGI("woodchipper: HOST sees the client's hand hold a gas can");
+    UE_LOGI("woodchipper: HOST sees the client's hand hold %ls", CanClass());
+    if (MiniArm()) {
+        HostMini(key);
+        UE_LOGI("woodchipper: MINI DONE on host");
+        return;
+    }
 
     // g1. The client pours.
     const Reading f1 = Now(key);
@@ -562,7 +577,7 @@ bool CanInHand() {
     bool in = false;
     OnGameThread([&] {
         void* h = coop::hand_item::LocalHandActor();
-        in = h && R::ClassNameOf(h) == kCanClass;
+        in = h && R::ClassNameOf(h) == CanClass();
     });
     return in;
 }
@@ -627,12 +642,17 @@ void RunClient() {
     if (!PS::AwaitText("chipper_key", keyText, kSignalSec)) return;
     const std::wstring key = Widen(keyText);
     if (!CopyResolves(key)) return;
-    OnGameThread([] { coop::dev::drill_hand::TakeIntoHandNow(L"gascan", kCanClass, &kCanFuel); });
+    OnGameThread([] { coop::dev::drill_hand::TakeIntoHandNow(L"gascan", CanClass(), &kCanFuel); });
     if (!PS::WaitFor("the gas can in this hand", 20, [] { return CanInHand(); })) return;
     float canAmount = -1.f;
     OnGameThread([&] { canAmount = CanAmount(coop::hand_item::LocalHandActor()); });
     UE_LOGI("woodchipper: CLIENT the can in hand holds %.2f", static_cast<double>(canAmount));
     PS::Mark("can_in_hand");
+    if (MiniArm()) {
+        ClientMini(key);
+        UE_LOGI("woodchipper: MINI DONE on client");
+        return;
+    }
 
     // g1.
     std::string go;
@@ -705,6 +725,13 @@ void RunRejoin() {
 }
 
 }  // namespace
+
+namespace woodchipper_drill {
+float FuelNow(const std::wstring& key) { return Now(key).fuel; }
+std::string CopyText(const std::wstring& key) { return Text(Now(key)); }
+unsigned long long RefusedForCan() { return ViewNow().refusedCan; }
+float PourHeldCan(const std::wstring& key) { return Pour(key); }
+}  // namespace woodchipper_drill
 
 DWORD WINAPI WoodchipperThread(LPVOID /*arg*/) {
     if (!PS::Begin(kTag)) return 0;

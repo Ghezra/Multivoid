@@ -50,6 +50,7 @@
 #include "coop/world/ufo_sync.h"             // the ambient UFOs: the host's paths and the Midas run
 #include "coop/props/roomba_sync.h"           // the robot cleaner: the host drives it and owns its switch
 #include "coop/props/fireext_thrust_sync.h"  // an extinguisher in runaway thrust: the host's
+#include "coop/props/dingus_sync.h"            // the dingus found once for every player
 #include "coop/player/puppet_identity.h"  // a puppet's touch never runs this machine's player's effects
 #include "coop/player/sleep_rest.h"
 #include "coop/player/hunger_share.h"  // the host's shared-hunger rule on this peer's own player
@@ -253,7 +254,9 @@ void InstallLoadWatchers(coop::net::Session& session) {
     coop::trash_native_hold::Install(&session);  // the join load's clumps held still at their spawn: a catch installed with the world would arm after the load
     coop::sus_hole_intent::Install(&session);  // the sus hole spawner's holes stamped at their birth, a client's roll sent to the host, from the load window on
     coop::walker_lanes::Install(session);  // the walking mannequin: a client's copy never thinks, the host claims it and answers its gaze, a client's gaze goes to the host
+    coop::dingus_sync::Install(&session);  // the dingus found: the watch on its touch, and the host's birth subscription ahead of the census seed
     coop::atv_gate::Install(&session);  // an ATV's acts at their own functions, from the load window on
+    coop::kerfur_dress_sync::Install(&session);  // an Omega's outfit: the watch on its updateDrip, from the load window on
 }
 
 void Install(coop::net::Session& session) {
@@ -313,7 +316,6 @@ void Install(coop::net::Session& session) {
     coop::woodchipper_sync::Install(&session);  // the host's woodchippers
     coop::generator_sync::Install(&session);    // the host's portable generators
     coop::flood_sync::Install(&session);        // the basement's burst pipes and flood
-    coop::kerfur_dress_sync::Install(&session);  // an Omega's outfit and its pat
     coop::kerfur_color_sync::Install(&session);  // a custom-colour kerfur's colour: the host's
     coop::printer_sync::Install(&session);  // a 3D print, the host's, and the object it prints
     coop::arir_ship_sync::Install(&session);  // the Ariral ship in the sky
@@ -353,7 +355,6 @@ void Install(coop::net::Session& session) {
     coop::fireext_sync::Install(&session);  // an extinguisher: a spray is told the host, a client's damage asks it, every peer shows the foam
     coop::miner_sync::Install(&session);  // a mining rig: a client refuses its tick, its uses and claims are asked of the host
     coop::wall_preview_sync::Install(&session);  // a wall builder's preview: its holder sends it, each mirror shows it
-    coop::dingus_sync::Install(&session);  // the dingus found: the host's set, every copy under it quiet
     coop::plant_sync::Install(&session);  // the host runs every plant
     coop::prop_fire_sync::Install(&session);  // the host burns every keyed prop
     coop::ground_hose_sync::Install(&session);  // the host's garden hoses
@@ -537,6 +538,7 @@ DisconnectStats DisconnectAll() {
     coop::kerfur_entity::OnDisconnect();  // clear the KerfurId table + free its reserved host ids
     coop::kerfur_command::OnDisconnect();  // drop pending menu commands
     coop::kerfur_command_seat::OnDisconnect();  // drop the cached session (the watch stays registered)
+    coop::kerfur_dress_sync::OnDisconnect();  // the words held for unbound Omegas, the pat budgets
     coop::requester_feedback::OnDisconnect();  // say the routed counts, close the scope
     coop::subsystems::props::OnDisconnect();  // the props lanes' state, tallies and latches (from the remover queues to the driven props)
     coop::cheats::OnDisconnect();  // forget the last cheat's status
@@ -608,7 +610,6 @@ DisconnectStats DisconnectAll() {
     coop::woodchipper_sync::OnDisconnect();
     coop::generator_sync::OnDisconnect();
     coop::flood_sync::OnDisconnect();
-    coop::kerfur_dress_sync::OnDisconnect();
     coop::kerfur_color_sync::OnDisconnect();
     coop::printer_sync::OnDisconnect();
     coop::cave_rock_sync::OnDisconnect();
@@ -712,7 +713,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:server"}; coop::serverbox_sync::Tick(); }  // the server boxes: the watches settled, then the HOST's 1 Hz poll -> broadcast on change
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:server_upgrade"}; coop::server_upgrade_sync::Tick(); }  // a parked canonical, applied once the servers resolve
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:slot"}; coop::floppy_slot_sync::Tick(); coop::mirror_slot_entry::Tick(); }  // device slots: 1 Hz digest-gated poll -> HOST canonical, CLIENT claim; the mirror entry's watches settle
-    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"puppet_identity.settle"}; coop::puppet_identity::Tick(); coop::orb_authority::Tick(); coop::ufo_sync::Tick(); coop::roomba_sync::Tick(); coop::wall_preview_sync::Tick(); coop::dingus_sync::Tick(); }  // the watches settle, the per-world pointers follow the class set
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"puppet_identity.settle"}; coop::puppet_identity::Tick(); coop::orb_authority::Tick(); coop::ufo_sync::Tick(); coop::roomba_sync::Tick(); coop::wall_preview_sync::Tick(); }  // the watches settle, the per-world pointers follow the class set
     coop::creature_event_relay::Tick();  // CLIENT: the killer wisp mirrors' per-viewer event, the loop their parked tick stops
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:roach"}; coop::roach_sync::Tick(); }  // roach infestation: HOST 1 Hz population poll -> paged broadcast; CLIENT liveness-scan -> consumption intents
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:owner_entity"}; coop::owner_entity_sync::Tick(); }  // owner-entity: 4 Hz own-pose stream + keepalive + death-watch + mirror prune
@@ -740,6 +741,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:cover"}; coop::cover_sync::Tick(); }  // the host's asks and fresh plate prop, the client's put-back touch
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:fireext"}; coop::fireext_sync::Tick(); }  // the host's sprays' counts, every peer's rays and display of the other players' sprays
     coop::miner_sync::Tick();  // the host's owed states, the client's waiting ones
+    coop::dingus_sync::Tick();  // the class table and the watch's settle; the host's dingus births read (a read of one atomic while none is queued)
     coop::plant_sync::Tick();  // the plants' poll
     coop::prop_fire_sync::Tick();  // the burning props' poll
     coop::ground_hose_sync::Tick();  // the hoses' poll

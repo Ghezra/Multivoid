@@ -14,9 +14,12 @@
 #include "coop/props/trash_mirror.h"   // WeMade
 #include "coop/element/prop.h"
 #include "coop/element/registry.h"
+#include "coop/config/config.h"
+#include "coop/config/config_registry.h"
 #include "coop/net/session.h"
 #include "coop/player/players_registry.h"
 #include "coop/props/prop_drive_stream.h"  // IsParked: the host's channel owns a parked copy
+#include "coop/props/prop_drive_join.h"  // Owe: what a constraint ties to a prop a client takes joins the host's drive
 #include "coop/props/prop_park.h"  // Park / Unpark: a held prop, and a Character welded on it
 #include "coop/props/prop_element_tracker.h"
 #include "coop/props/prop_hold_claim.h"  // AdmitRemoteHold: one hold per keyed prop
@@ -26,6 +29,7 @@
 #include "coop/props/unresolved_pose_ledger.h"  // a pose-before-spawn race vs a sustained identity gap
 #include "coop/props/bracket_position_wait.h"  // KeepIfWaiting: a pose for a key whose spawn waits
 #include "coop/props/trash_channel.h"  // the per-eid sync-time context; stale carry and release drops
+#include "ue_wrap/core/class_cache.h"
 #include "ue_wrap/core/hot_path_guard.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/actors/prop.h"
@@ -84,16 +88,6 @@ int DrivingSlotOf(void* actor, int except) {
     return -1;
 }
 
-bool CarriesClassA(int slot, const wchar_t* base) {
-    UE_ASSERT_GAME_THREAD("remote_prop::CarriesClassA");
-    if (!base || slot < 0 || slot >= static_cast<int>(coop::players::kMaxPeers)) return false;
-    void* const actor = g_drives[slot].actor;
-    if (!actor || !R::IsLive(actor)) return false;
-    for (void* c = R::ClassOf(actor); c; c = R::SuperStructOf(c))
-        if (::_wcsicmp(R::ToString(R::NameOf(c)).c_str(), base) == 0) return true;
-    return false;
-}
-
 bool IsHoldReleased(int slot, uint16_t holdGen) {
     UE_ASSERT_GAME_THREAD("g_holds (remote_prop::IsHoldReleased)");
     if (slot < 0 || slot >= static_cast<int>(coop::players::kMaxPeers) || holdGen == 0) return false;
@@ -105,6 +99,15 @@ bool IsDrivenBy(void* actor, int slot) {
     UE_ASSERT_GAME_THREAD("remote_prop::IsDrivenBy");
     if (!actor || slot < 0 || slot >= static_cast<int>(coop::players::kMaxPeers)) return false;
     return g_drives[slot].actor == actor;
+}
+
+bool CarriesClassA(int slot, const wchar_t* base) {
+    UE_ASSERT_GAME_THREAD("remote_prop::CarriesClassA");
+    if (!base || slot < 0 || slot >= static_cast<int>(coop::players::kMaxPeers)) return false;
+    void* const actor = g_drives[slot].actor;
+    if (!actor || !R::IsLive(actor)) return false;
+    void* const baseCls = ue_wrap::class_cache::ByName(base);
+    return baseCls && R::IsDescendantOfAny(R::ClassOf(actor), &baseCls, 1);
 }
 
 void RefuseHold(int slot, uint16_t holdGen) {
@@ -126,6 +129,30 @@ void RefuseHold(int slot, uint16_t holdGen) {
         coop::prop_park::Unpark(live, d.mesh, !StickHoldsPhysicsOff(live) && !HostAuthorsTrashBody(live));
     UE_LOGI("remote_prop: slot %d hold %u refused by the host -- its drive ends%s", slot,
             static_cast<unsigned>(holdGen), otherDrive ? ", the kept hold's drive stays" : "");
+    EndSlotDrive(slot, /*released=*/false);
+}
+
+bool RemoteHandHolderOf(void* actor, uint8_t& slot, uint16_t& holdGen) {
+    UE_ASSERT_GAME_THREAD("g_drives (remote_prop::RemoteHandHolderOf)");
+    if (!actor) return false;
+    int found = -1;
+    for (int s = 0; s < static_cast<int>(coop::players::kMaxPeers); ++s) {
+        if (g_drives[s].actor != actor) continue;
+        if (found >= 0) return false;   // two slots' drives name it: no one release is the one
+        found = s;
+    }
+    if (found < 0 || g_holds[found].driveGen == 0) return false;
+    slot = static_cast<uint8_t>(found);
+    holdGen = g_holds[found].driveGen;
+    return true;
+}
+
+void EndSlotDrive(int slot, bool released) {
+    UE_ASSERT_GAME_THREAD("g_drives (remote_prop::EndSlotDrive)");
+    if (slot < 0 || slot >= static_cast<int>(coop::players::kMaxPeers)) return;
+    ActiveDrive& d = g_drives[slot];
+    if (d.actor)
+        coop::prop_drive_stream::OnRemoteHandEnded(static_cast<uint8_t>(slot), d.actor, g_holds[slot].driveGen, released);
     ResetDriveState(d);
 }
 
@@ -291,6 +318,11 @@ void ResolveAndStartDrive(int slot, const coop::net::PropPoseSnapshot& pose) {
             }
             return;
         }
+        // The join is owed once per take, on a new nonzero hold generation only: a stream with generation 0 latches nothing
+        // and would owe at every pose. Host only; red arm: constraint_join_off=hand.
+        static const bool s_handOff = coop::config::ResolveEnum(coop::config_registry::rows::constraint_join_off) == "hand";
+        if (pose.holdGen != 0 && hold.preludeGen != pose.holdGen && !s_handOff)
+            coop::prop_drive_join::Owe(prop, "client hand");
         if (pose.holdGen == 0 || hold.preludeGen != pose.holdGen) {
             hold.preludeGen = pose.holdGen;
             coop::glowstick_sync::OnHoldBegin(prop);   // a stuck glowstick's own grab frees it: its game runs releaseGlowstick
@@ -345,6 +377,7 @@ void ResolveAndStartDrive(int slot, const coop::net::PropPoseSnapshot& pose) {
     hold.driveKey = pose.key;
     hold.driveEid = pose.elementId;
     hold.relatches = 0;
+    coop::prop_drive_stream::OnRemoteHandStarted(prop);
     // A host-authoritative trash mirror freezes on a stream gap instead of timing out; it releases
     // only on the explicit reliable edge, and it interpolates rather than snapping. The test is
     // whether the host authors this body (HostAuthorsTrashBody), not what class it is: a client's

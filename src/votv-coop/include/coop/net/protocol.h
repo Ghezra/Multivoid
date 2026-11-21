@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 344;
+inline constexpr uint16_t kProtocolVersion = 345;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -279,9 +279,15 @@ enum class ReliableKind : uint16_t {
     // the host's value as is. KeyedScalarPayload.
     WindowCleanState = 30,
 
-    // Any peer, relayed by the host: a grime decal's process scalar decreased, keyed by the decal's
-    // quantized world position (a static decal's position is its identity). Minimum wins, like the
-    // window. A decal wiped out of existence rides the same kind, as a zero. KeyedScalarPayload.
+    // A grime decal's process scalar decreased, keyed by the decal's quantized world position (a static
+    // decal's position is its identity). Minimum wins, like the window. Client to host: an ask, a live fall
+    // alone; the host's judge (coop/interactables/grime_judge) grants it, cut to one call of the game's own
+    // fall, when the sender holds the verb's tool within its reach or the host is itself raining on a decal
+    // the rain washes within the sender's radius, and sends the fall on to every other client; a refused or
+    // cut ask, and one a full queue could not take, is answered to the asker alone with the host's value, adopted as is; a
+    // dead sender and a key naming no decal get no answer. A client's ended mark or
+    // snapshot is refused. Never relayed. Host to clients: a live fall, the connect snapshot (adopt 1), and a
+    // decal that ended (kGrimeGone), which every peer destroys its own by. KeyedScalarPayload.
     GrimeState = 31,
 
     // Any peer, relayed by the host: the garage door's open state, keyed by the garage's
@@ -1121,9 +1127,10 @@ enum class ReliableKind : uint16_t {
     // absolute. BadSunPayload.
     BadSun = 176,
 
-    // CLIENT->HOST: a client asks to take or use a shared prop before its verb runs (coop::prop_act_host).
-    // Never relayed. Late join: not pre-world; a request before the sender's world is ready waits in the host's queue.
-    // Trust: the host judges the prop, its family, who holds or reserves it, and the reach.
+    // CLIENT->HOST: a client asks to take or use a shared prop before its verb runs (coop::prop_act_host), or to put an
+    // outfit item on an Omega or take one off. Never relayed. Late join: not pre-world; a request before the sender's world
+    // is ready waits in the host's queue. Trust: the host judges the prop, its family, who holds or reserves it, and the
+    // reach; an Omega's outfit row is judged against the game's own rules and the hand lane's record (coop::prop_act_omega).
     PropActRequest = 178,
 
     // HOST->CLIENT: the host's answer to one PropActRequest: granted (the prop is reserved for the sender) or refused
@@ -1323,12 +1330,12 @@ enum class ReliableKind : uint16_t {
     // ANY->ALL: this peer's player changed a microwave's or a mini oven's setting, started or stopped it, opened or
     // closed a microwave's door, or changed a grill's coals, fire
     // or lid; the host's burn of a grill's coals goes the same way. A client's copy is relayed. Not pre-world. Late join: every machine not at its defaults, at the ready edge. KitchenStatePayload.
-    KitchenState = 280,
+    KitchenState = 287,
     // HOST->ALL: a placed radio's or TV's track, time, play state and mode, and a TV's channel and picture, on a change and
     // every few seconds while it plays. A track is a hash a peer looks up in its own catalog. CLIENT->HOST: what this
     // client's player changed through its interface; never relayed, the host's next state answers. Not pre-world. Late join: every device again at
     // the ready edge. MediaDeviceStatePayload.
-    MediaDeviceState = 281,
+    MediaDeviceState = 288,
     // HOST->ALL: a plant's identity, place and values, at once on an edge a viewer sees and every few seconds while it changes,
     // or its end. Not relayed, not pre-world. Late join: every plant again at the ready edge. PlantStatePayload.
     PlantState = 224,
@@ -1340,26 +1347,26 @@ enum class ReliableKind : uint16_t {
     // HOST->ALL: a keyed prop of the host's burns, with its flame's fuel and speed, at the edge, on a refuel and every 2 s while
     // it burns, or it stopped. A client's copy shows that flame and burns nothing down. Not relayed, not pre-world. Late join:
     // every burning prop again at the ready edge. PropFirePayload.
-    PropFireState = 282,
+    PropFireState = 289,
     // CLIENT->HOST: this client's player lit a keyed prop with a lighter or a torch, with the fuel the light gives. Never relayed;
     // the host lights its own copy and its next PropFireState answers. PropFirePayload.
-    PropFireRequest = 283,
+    PropFireRequest = 290,
     // HOST->ALL: a finished garden hose of the host's, as its own save record, when it is new or changed, or its key once
     // when it went. A client lays it on its copy, tied to its faucet and sprinkler. Not relayed, not pre-world. Late
     // join: every hose again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
-    GroundHoseState = 284,
+    GroundHoseState = 291,
     // CLIENT->HOST: a hose this client's player finished laying or changed (op 1, its record), or took up (op 2). Never
     // relayed; the host lays or takes up its own and its next GroundHoseState answers. BlobChunkPayload, as above.
-    GroundHoseIntent = 285,
+    GroundHoseIntent = 292,
     // HOST->ALL: a piece of the host's a player built -- a nail, or a custom wall unfinished, wet or finished -- as its own
     // save record, when it is new or changed, or its key once when it went. A client makes it on its copy, or applies the
     // record to its piece of that key, a nail tied to the actors its keys name there. Not relayed, not pre-world. Late join:
     // every piece again at the ready edge. BlobChunkPayload: [u8 op 1 state | 2 gone][wstr key][record if state].
-    BuildState = 286,
+    BuildState = 293,
     // CLIENT->HOST: a piece this client's player made (op 1, its record), took away (op 2), a wall it hit or repaired
     // (op 3, [f32] the health it lost, negative, or gained), or a nail its pull snapped (op 4). Never relayed; the host
     // makes, destroys, hits, repairs or snaps its own and its BuildState answers. BlobChunkPayload, as above.
-    BuildIntent = 287,
+    BuildIntent = 294,
     // CLIENT->HOST: this client's player pressed the toolgun's prop-properties tool on a keyed prop, with the tool's
     // own static, frozen, active and sleep, seen from this camera point at this hit point. The host judges the sender's
     // right, a toolgun in its hand, who holds the prop and the sight, applies the tool's values through the game's
@@ -1573,61 +1580,46 @@ enum class ReliableKind : uint16_t {
     // second) and once as it ends, a client's to the host, which checks its mirror of that hand is a wall builder and
     // sends it on, the host's own to everyone. Each peer shows it on its mirror of that hand. Not pre-world.
     // WallPreviewPayload.
-    WallPreview = 288,
-    // The dingus found (coop/props/dingus_sync): a client's report of one it found, to the host (op 0), and the host's
-    // word that one is found, to every client and to a joiner (op 1); each peer marks its copies under the key found and
-    // turns their music off. Not pre-world. DingusFoundPayload.
-    DingusFound = 289,
+    WallPreview = 295,
     // A portable generator's fuel and on/off (coop/interactables/generator_sync): the host's, to every client when one
     // changes, once a second while one runs, and to a joiner (GeneratorState); a client's pour or start/stop press, to the
     // host, which judges it and runs it on its copy (GeneratorIntent). Not pre-world. GeneratorPayload.
-    GeneratorState = 290,
-    GeneratorIntent = 291,
-    // The basement flood (coop/world/flood_sync): a burst pipe's state and a flood volume's level, the host's, to every
-    // client when one changes and to a joiner (FloodState); a client's repair of a pipe, to the host, which judges it and
-    // mends its copy (FloodIntent). Not pre-world. FloodPayload.
-    FloodState = 292,
-    FloodIntent = 293,
+    GeneratorState = 296,
+    GeneratorIntent = 297,
     // A sound the game played at a place on one machine alone (coop/world/sound_relay): a melee hit's impact sound. Its
     // player's machine sends it; the host plays a client's and relays it to the other clients. Not pre-world.
     // SoundAtPayload.
-    SoundAt = 294,
-    // An Omega's outfit and its pat (coop/creatures/kerfur_dress_sync). HOST->ALL: an Omega's `drip` rows when they change
-    // and every one to a joiner (op 0), and a pat to show (op 3, sent on past its patter). CLIENT->HOST: its player put an
-    // item on (op 1) or took one off (op 2) an Omega, or patted one (op 3); the host judges and runs it on its copy. Not
-    // pre-world. KerfurDressPayload.
-    KerfurDressState = 295,
-    KerfurDressIntent = 296,
+    SoundAt = 298,
     // HOST->ALL: the Antibreather cave's entrance rock shut or open (coop/world/cave_rock_sync), when it changes and to a
     // joiner. Not pre-world. CaveRockPayload.
-    CaveRockState = 297,
+    CaveRockState = 299,
     // A chair a player sits on (coop/player/chair_seat). HOST->ALL: who sits on which chair, when it changes and every
     // seat to a joiner (op 0 sit, op 1 stand), and the word to a sitter to get up (op 2), when another player takes its
     // chair or the host refused its sit. CLIENT->HOST: this client's player sat down on a chair (op 0) or got up (op 1);
     // the host judges the reach, the chair free and not held, and files it. Not pre-world. ChairSeatPayload.
-    ChairSeatState = 298,
-    ChairSeatIntent = 299,
+    ChairSeatState = 300,
+    ChairSeatIntent = 301,
     // Where a keyed prop rests (coop/props/prop_rest_sync). CLIENT->HOST: the host element ids of props this client's
     // own copy moved with no stream on, now at rest; the host answers the sender alone. Never relayed. Not pre-world.
     // PropRestQueryPayload. HOST->CLIENT: the host's own pose of each asked prop it holds at rest, in no hand and under
     // no row, and 30 s after a joiner's world is ready every keyed prop at rest, paced; the client puts a resting copy
     // off by over 2 cm or 3 degrees there. To one client. Trust: from the host alone. PropRestPosePayload.
-    PropRestQuery = 300,
-    PropRestPose = 301,
+    PropRestQuery = 302,
+    PropRestPose = 303,
     // A mop bucket's water and a concrete bucket's concrete (coop/props/bucket_sync). HOST->ALL: rows of the host's buckets
     // and cement bags that changed, and every one to a joiner at its world-ready. Not pre-world. BucketStatePayload. CLIENT->HOST: this
     // client's player changed a mop bucket's water (op 0, the bucket's water and soap after the verb), mixed cement into
     // one (op 1) or took concrete out with the trowel (op 2); the host judges the reach and the items and runs it on its
     // own, and its BucketState answers. Never relayed. Not pre-world. BucketIntentPayload.
-    BucketState = 302,
-    BucketIntent = 303,
+    BucketState = 304,
+    BucketIntent = 305,
     // A custom-colour Kerfur Omega's or Kerfus's colour, its `hsv` (coop/creatures/kerfur_color_sync). HOST->ALL: an
     // actor's colour when the host's picker applied one, when a kerfur changed form, and every one to a joiner; a client
     // writes it and repaints. Not pre-world. KerfurColorPayload. CLIENT->HOST: this client's player picked a colour for
     // one (the picker's colour, as the game's intComs_applyColor takes it); the host judges the reach and applies it on
     // its own copy, and its KerfurColorState answers. Never relayed. Not pre-world. KerfurColorIntentPayload.
-    KerfurColorState = 304,
-    KerfurColorIntent = 305,
+    KerfurColorState = 306,
+    KerfurColorIntent = 307,
     // A 3D printer's print and the object it prints (coop/props/printer_sync), VOTV-MP/Multivoid#49. A print is the
     // host's, and runs only when every connected player holds the same model folder. CLIENT->HOST: this client's player
     // asked its copy of a printer to print a model (PrintAsk); the host judges the reach and checks the model. HOST->
@@ -1639,16 +1631,16 @@ enum class ReliableKind : uint16_t {
     // object rides the held-prop stream by its element id.
     // Never relayed. Not pre-world. PrintAskPayload, PrintCheckPayload, PrintCheckReplyPayload, PrintNoticePayload,
     // PrintedStatePayload, PrintedIntentPayload.
-    PrintAsk = 306,
-    PrintCheck = 307,
-    PrintCheckReply = 308,
-    PrintNotice = 309,
-    PrintedState = 310,
-    PrintedIntent = 311,
+    PrintAsk = 308,
+    PrintCheck = 309,
+    PrintCheckReply = 310,
+    PrintNotice = 311,
+    PrintedState = 312,
+    PrintedIntent = 313,
     // HOST->ALL: a printer began printing a model, or its print ended (PrinterState); a client's copy runs the game's own
     // print between the two, and its own object at the end is refused. To a joiner, each printer printing. Not
     // pre-world. PrinterStatePayload.
-    PrinterState = 312,
+    PrinterState = 314,
     // The battery charger's four slots (coop/interactables/battery_charger_sync). HOST->ALL: each charger's slots,
     // battery count and power when they change, every 2 s while one charges, and every one to a joiner; a client writes
     // them and runs no charge of its own. Not pre-world. ChargerStatePayload. CLIENT->HOST: this client's player put the
@@ -1657,17 +1649,17 @@ enum class ReliableKind : uint16_t {
     // own copy, and a refused put's battery is spawned beside the sender. Never relayed. Not pre-world.
     // ChargerIntentPayload. HOST->ONE CLIENT: a take the host ran, with the battery's charge; the client puts that
     // battery into its own inventory as the game's take does. ChargerGivePayload.
-    ChargerState = 313,
-    ChargerIntent = 314,
-    ChargerGive = 315,
+    ChargerState = 315,
+    ChargerIntent = 316,
+    ChargerGive = 317,
     // The car battery charger's clips and a loose ATV battery's charge (coop/interactables/car_charger_sync). HOST->ALL:
     // a car charger's clips (the battery each is on and its polarity) and a loose battery's charge and pins, when they
     // change, a charge every 2 s while it moves, and every one to a joiner; a client writes them and runs no charge of its
     // own. Not pre-world. CarChargerStatePayload. CLIENT->HOST: this client's player moved a clip, as the charger's own
     // used event and drag left it here; the host judges the reach and the batteries and sets it on its own copy, and its
     // row answers. Never relayed. Not pre-world. CarChargerIntentPayload.
-    CarChargerState = 316,
-    CarChargerIntent = 317,
+    CarChargerState = 318,
+    CarChargerIntent = 319,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -1724,6 +1716,29 @@ enum class ReliableKind : uint16_t {
     // rig's `upgrade` or claim, whose hints go to the asker; a use it refuses gives the item back beside the sender. A
     // rig's record from a client is judged by the record lane's own gate (miner_sync). Never relayed. MinerPayload.
     MinerIntent = 248,
+
+    // HOST->ALL: a dingus is found (coop/props/dingus_sync): its save key, to every world-ready client, the finder
+    // included (the finder's own set is written only by this message), and to a joiner inside its snapshot. A receiver adds
+    // the key to its found set and marks its live copy under it found; a copy bound later is marked at its bind. Never
+    // relayed; not pre-world. Late join: the host sends every key of its set. DingusFoundPayload.
+    DingusFound = 280,
+
+    // CLIENT->HOST: a dingus this client found on its own copy (its `touch` ran), by save key. The host judges the
+    // sender (world-ready, alive, a budget, in reach of a live dingus copy under that key); an accepted report becomes
+    // the host's own DingusFound, a refused one is counted and said on the host and gets no answer. Never relayed; not
+    // pre-world. Late join: none, a report carries no state. DingusReportPayload.
+    DingusReport = 281,
+    // The basement flood (coop/world/flood_sync): a burst pipe's state and a flood volume's level, the host's, to every
+    // client when one changes and to a joiner (FloodState); a client's repair of a pipe, to the host, which judges it and
+    // mends its copy (FloodIntent). Not pre-world. FloodPayload.
+    FloodState = 285,
+    FloodIntent = 286,
+    // An Omega's outfit and its pat (coop/creatures/kerfur_dress_sync). HOST->ALL (272): an Omega's whole `drip` outfit, at
+    // each change of it and to a joiner for every Omega (none at a registration: no game route dresses an Omega before it
+    // registers), and a pat to show (flags bit 0, the outfit riding along). CLIENT->HOST (273): this client's player patted an Omega; a client's put-on and
+    // take-off of an outfit item ride PropActRequest. Not pre-world. KerfurDressPayload (272), KerfurDressPatPayload (273).
+    KerfurDressState = 272,
+    KerfurDressIntent = 273,
 };
 
 #pragma pack(push, 1)
@@ -2622,16 +2637,6 @@ static_assert(sizeof(FloodPayload) == 40, "FloodPayload must be 40 bytes");
 
 // KerfurDressState / KerfurDressIntent. An Omega by its NPC element id; `names` holds `count` row names of
 // list_kerfurdrip, ASCII, each NUL-terminated, back to back (op 0: the whole outfit; ops 1 and 2: one row; op 3: none).
-inline constexpr uint8_t kKerfurDressOutfit = 0, kKerfurDressEquip = 1, kKerfurDressUnequip = 2, kKerfurDressPat = 3;
-struct KerfurDressPayload {
-    uint32_t elementId;   // 4 -- the Omega's NPC element id (the host's)
-    uint8_t  op;          // 1 -- kKerfurDress*
-    uint8_t  count;       // 1 -- how many names follow
-    uint8_t  _pad[2];     // 2 -- zero
-    char     names[216];  // 216
-};
-static_assert(sizeof(KerfurDressPayload) == 224, "KerfurDressPayload must be 224 bytes");
-
 // A chair seat (ChairSeatState, ChairSeatIntent).
 inline constexpr uint8_t kChairSeatSit = 0, kChairSeatStand = 1, kChairSeatGetUp = 2;
 struct ChairSeatPayload {
@@ -2883,16 +2888,6 @@ struct SoundAtPayload {
 };
 static_assert(sizeof(SoundAtPayload) == 180, "SoundAtPayload must be 180 bytes");
 
-// DingusFound. A dingus is named by its save key, which it keeps through the inventory.
-inline constexpr uint8_t kDingusFoundReport = 0;   // CLIENT->HOST: this peer's copy of it was found
-inline constexpr uint8_t kDingusFoundHost   = 1;   // HOST->ALL: it is found
-struct DingusFoundPayload {
-    WireKey key;     // 32 -- the dingus's save key
-    uint8_t op;      // 1 -- kDingusFound*
-    uint8_t pad[3];  // 3 -- zero
-};
-static_assert(sizeof(DingusFoundPayload) == 36, "DingusFoundPayload must be 36 bytes");
-
 // A burning prop (PropFireState), or a client's light (PropFireRequest).
 struct PropFirePayload {
     WireKey key;        // 32 -- the prop's key
@@ -2943,6 +2938,34 @@ struct KitchenStatePayload {
     float   remaining;  // 4  -- a running microwave's seconds left, or a grill's burn through its coal
 };
 static_assert(sizeof(KitchenStatePayload) == 44, "KitchenStatePayload must be 44 bytes");
+// KerfurDressState (272): an Omega's outfit, by its NPC element id. `names` holds `count` rows of list_kerfurDrip, each
+// 1..kKerfurDressMaxRowChars printable ASCII characters followed by one NUL, back to back from names[0]; every byte past
+// the last NUL is zero. `flags` bit 0 says a pat plays on the Omega; the other bits and `pad` are zero. A pat carries the
+// Omega's current rows too, so a receiver never strips what the Omega wears. The word is 224 bytes, inside one reliable
+// datagram; the host refuses to send an outfit that does not pack (a longer row, more rows) and never cuts it short.
+inline constexpr uint8_t kKerfurDressMaxRows = 8;
+inline constexpr uint8_t kKerfurDressMaxRowChars = 26;
+inline constexpr uint8_t kKerfurDressFlagPat = 1;
+inline constexpr size_t  kKerfurDressNamesBytes = 216;   // eight rows of 26 characters and a NUL
+struct KerfurDressPayload {
+    uint32_t elementId;   // 4 -- the Omega's NPC element id (the host's)
+    uint8_t  count;       // 1 -- 0..kKerfurDressMaxRows
+    uint8_t  flags;       // 1 -- bit 0 a pat to play
+    uint8_t  pad[2];      // 2 -- zero
+    char     names[kKerfurDressNamesBytes];   // 216 -- the rows, NUL-terminated, back to back
+};
+static_assert(sizeof(KerfurDressPayload) == 224, "KerfurDressPayload must be 224 bytes");
+static_assert(sizeof(KerfurDressPayload) <= 256 - 20 - 8,
+              "KerfurDressPayload must fit in one reliable datagram (kMaxReliablePayload)");
+static_assert(kKerfurDressMaxRows * (kKerfurDressMaxRowChars + 1) <= kKerfurDressNamesBytes,
+              "eight full rows must fit the names field");
+
+// KerfurDressIntent (273): this client's player patted the Omega.
+struct KerfurDressPatPayload {
+    uint32_t elementId;   // 4 -- the Omega's NPC element id
+};
+static_assert(sizeof(KerfurDressPatPayload) == 4, "KerfurDressPatPayload must be 4 bytes");
+
 // A client's press of the toolgun's prop-properties tool (PropPropsIntent): the element it hit, the camera point it
 // looked from and the point its shot struck in world centimetres, and the tool's own four values as the spawn menu set
 // them. The host judges the first three; none is trusted.
@@ -3618,22 +3641,39 @@ struct CheatResultPayload {
 };
 static_assert(sizeof(CheatResultPayload) == 8, "CheatResultPayload must be 8 bytes");
 
-// A client's ask to pocket, hold or use a world prop (PropActRequest), the host's answer (PropActReply) and the client's
-// closing word (PropActCommit). `id` is the client's own, nonzero, and pairs the three; `eid` is the prop's element
-// id on the sender.
+// DingusFound and DingusReport. A dingus is named by its save key, which it keeps through the inventory. A key on the wire is
+// 1..31 printable ASCII characters (0x21..0x7E); a receiver refuses any other.
+struct DingusFoundPayload {
+    WireKey key;     // 32 -- the found dingus's save key
+};
+static_assert(sizeof(DingusFoundPayload) == 32, "DingusFoundPayload must be 32 bytes");
+
+struct DingusReportPayload {
+    WireKey key;     // 32 -- the save key of the dingus this client's touch found
+};
+static_assert(sizeof(DingusReportPayload) == 32, "DingusReportPayload must be 32 bytes");
+
+// A client's ask to pocket, hold or use a world prop, or to put on or take off an Omega's outfit item (PropActRequest),
+// the host's answer (PropActReply) and the client's closing word (PropActCommit). `id` is the client's own, nonzero, and
+// pairs the three; `eid` is the prop's element id on the sender.
 // The family byte names the verb, and the host judges each verb by its own conditions (the game's pocket test, its
-// hold test, its use test); any other byte fits nothing.
-enum class PropActFamily : uint8_t { Pocket = 1, Use = 2, Hold = 3 };
+// hold test, its use test; an Omega family's by the game's equip rules and the hand lane); any other byte fits nothing.
+// The Omega families (an Omega's put-on of the held outfit item, and its take-off of a worn one) name an Omega by its NPC
+// element id and a list_kerfurDrip row in `verb`, the family-neutral argument every family beyond the three prop verbs
+// carries in its own way (coop/props/prop_act_families).
+inline constexpr uint8_t kPropActVerbBytes = 28;
+enum class PropActFamily : uint8_t { Pocket = 1, Use = 2, Hold = 3, OmegaPutOn = 4, OmegaTakeOff = 5 };
 enum class PropActReason : uint8_t { Granted = 0, Gone = 1, WrongFamily = 2, Held = 3, Reach = 4, QueueFull = 5 };
 inline constexpr uint8_t kPropActReasons = 6;   // Granted..QueueFull: the per-reason counter width
 
 struct PropActRequestPayload {
     uint16_t id;      // 2 -- the sender's request id
     uint8_t  family;  // 1 -- PropActFamily
-    uint8_t  pad;     // 1 -- zeroed
+    uint8_t  pad;     // 1 -- zeroed; the host refuses a request that sets it
     uint32_t eid;     // 4 -- the prop's Element id
+    char     verb[kPropActVerbBytes];   // 28 -- the family's argument, NUL-padded (an Omega's list_kerfurDrip row); zero for the prop verbs
 };
-static_assert(sizeof(PropActRequestPayload) == 8, "PropActRequestPayload must be 8 bytes");
+static_assert(sizeof(PropActRequestPayload) == 36, "PropActRequestPayload must be 36 bytes");
 
 struct PropActReplyPayload {
     uint16_t id;       // 2 -- the request's id
@@ -3646,6 +3686,8 @@ static_assert(sizeof(PropActReplyPayload) == 4, "PropActReplyPayload must be 4 b
 // eater ran and the client's copy lives. `flags` is a snack's report of what the replay changed on its copy: bit 0 a use
 // was spent, bit 1 a bottle was opened; a snack's commit of 1 carries exactly bit 0, of 2 any of the two, and every
 // other prop's commit carries none (a snack's commit outside this, or a 2 on another prop, is malformed and kept as one).
+// An Omega put-on's commit of 1 says the replay left the row worn on the client's copy and its hand without that hold,
+// and carries no flags; the Omega is never destroyed. An Omega take-off has no commit: the host applies it at the grant.
 struct PropActCommitPayload {
     uint16_t id;         // 2 -- the granted request's id
     uint8_t  committed;  // 1 -- 0 aborted, 1 the prop is gone on the client, 2 a snack's copy lives
@@ -3917,8 +3959,9 @@ struct KeyedScalarPayload {
     uint8_t  _pad[3];    // 3  -- 8-byte alignment / reserved
 };
 static_assert(sizeof(KeyedScalarPayload) == 40, "KeyedScalarPayload must be 40 bytes");
-// GrimeState's value for a decal that ended (cleaned or repaired past zero, raked, burnt out): every peer destroys its
-// own, as the game's clean does at a process below zero, where a 0 would leave it standing at no dirt.
+// GrimeState's value for a decal that ended on the HOST (cleaned or repaired past zero, or a gasoline decal burnt out): every
+// client destroys its own, as the game's clean does at a process below zero, where a 0 would leave it standing at no dirt. A
+// client's own destroy of a grime decal is held and sends none: its last stroke asks the host for zero.
 inline constexpr float kGrimeGone = -1.f;
 // The most dirt a grime decal holds: the largest `process` any grime class declares (the oil and the blood-test decals
 // start at 300; the base decal at 100). A GrimeState value above it is no state the game can have, and a receiver drops it.
