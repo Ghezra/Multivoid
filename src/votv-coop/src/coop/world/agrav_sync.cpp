@@ -168,11 +168,12 @@ void Tick() {
 
 void OnState(const N::AgravStatePayload& p) {
     const bool lifted = p.lifted != 0;
-    int done = 0, missing = 0;
+    int done = 0, missing = 0, simulating = 0;
     for (int i = 0; i < p.count && i < N::kAgravEidsMax; ++i) {
         void* const actor = ActorOf(p.eid[i]);
         void* const root = actor ? E::RootComponentOf(actor) : nullptr;
         if (!root || !E::IsPrimitiveComponent(root)) { ++missing; continue; }
+        if (E::IsComponentSimulatingPhysics(root)) ++simulating;
         E::SetComponentGravity(root, !lifted);
         if (lifted) {
             E::SetComponentLinearVelocity(root, 0.f, 0.f, kLiftCmPerSec);
@@ -183,8 +184,8 @@ void OnState(const N::AgravStatePayload& p) {
     }
     g_applied += done;
     g_missing += missing;
-    UE_LOGI("agrav_sync: the host %s %d prop(s) here (%d with no copy here)", lifted ? "lifted" : "dropped", done,
-            missing);
+    UE_LOGI("agrav_sync: the host %s %d prop(s) here (%d simulating, %d with no copy here)",
+            lifted ? "lifted" : "dropped", done, simulating, missing);
 }
 
 void OnDisconnect() {
