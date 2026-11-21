@@ -464,6 +464,8 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/dingus_probe.cpp
     src/coop/dev/slip_probe.cpp
     src/coop/dev/reelspam_probe.cpp
+    src/coop/dev/firedmg_probe.cpp
+    src/coop/dev/carry_probe.cpp
     src/coop/dev/genp_probe.cpp
     src/coop/dev/deathhand_probe.cpp
     src/coop/dev/blackfog_probe.cpp
