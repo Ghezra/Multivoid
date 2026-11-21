@@ -9,7 +9,8 @@
 //              sd.calall on A and slot 2's sd.calch on B and not the sd.calall there; at +40 s raises serverBroken
 //              for A's server on its own terminal, and at +45 s must read it on the ROOT console and not on B; at
 //              +50 s B's server must still hold its disc.
-// Lines `[SATPANELS] <peer> <check> PASS|FAIL`, and `[SATPANELS] host DONE`.
+// Each check logs its verdict under [SATPANELS], and the host its end. Slot 2 enters B a second time when the
+// first entry, just after its refusal at A, did not hold, and logs the retry's verdict apart.
 
 #pragma once
 

@@ -260,22 +260,31 @@ void Slot2Tick() {
         const bool entered = Enter(g_b);
         UE_LOGI("[SATPANELS] slot2 enters B: call=%d", entered ? 1 : 0);
     } else if (g_step == 3 && t >= 22000u) {
-        g_step = 4;
+        g_step = 30;
         const bool inside = Inside();
         UE_LOGI("[SATPANELS] slot2 other-console-free %s -- inside B=%d", inside ? "PASS" : "FAIL", inside ? 1 : 0);
+        if (!inside) {
+            const bool entered = Enter(g_b);
+            UE_LOGI("[SATPANELS] slot2 enters B again: call=%d", entered ? 1 : 0);
+        }
+    } else if (g_step == 30 && t >= 25000u) {
+        g_step = 4;
+        const bool inside = Inside();
+        UE_LOGI("[SATPANELS] slot2 other-console-free (by its second entry) %s -- inside B=%d",
+                inside ? "PASS" : "FAIL", inside ? 1 : 0);
         const bool typed = Type(L"sd.calch");
         UE_LOGI("[SATPANELS] slot2 at B types sd.calch: type=%d", typed ? 1 : 0);
-    } else if (g_step == 4 && t >= 26000u) {
+    } else if (g_step == 4 && t >= 29000u) {
         g_step = 5;
         const std::wstring log = Screen();
         Verdict("info-at-same-time", Has(log, L"sd.calch") && !Has(log, L"is running") && !Has(log, L"busy"), log);
         const bool typed = Type(L"sd.calall");
         UE_LOGI("[SATPANELS] slot2 at B types sd.calall: type=%d", typed ? 1 : 0);
-    } else if (g_step == 5 && t >= 29000u) {
+    } else if (g_step == 5 && t >= 32000u) {
         g_step = 6;
         const std::wstring log = Screen();
         Verdict("mutating-locked", Has(log, L"is running sd.calall"), log);
-    } else if (g_step == 6 && t >= 32000u) {
+    } else if (g_step == 6 && t >= 35000u) {
         g_step = 7;
         Leave();
         UE_LOGI("[SATPANELS] slot2 leaves B");
