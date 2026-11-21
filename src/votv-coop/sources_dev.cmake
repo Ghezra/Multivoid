@@ -444,6 +444,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/cremdoor_probe.cpp
     src/coop/dev/deskneedle_probe.cpp
     src/coop/dev/satpanels_drill.cpp
+    src/coop/dev/halluc_probe.cpp
     src/coop/dev/satperf_probe.cpp
     src/coop/dev/sit_probe.cpp
     src/coop/dev/join_stall_probe.cpp
