@@ -1666,6 +1666,11 @@ enum class ReliableKind : uint16_t {
     // pre-world. Late join: none, the float lasts seconds and its props rest where the joiner's world loads them.
     // AgravStatePayload.
     AgravState = 320,
+    // Client to host: this client's player took an ATV from the spawn menu (coop/interactables/atv_spawn_ask). The
+    // client's own ATV is removed and the host, judging the sender (world ready, the place within 20 m of its
+    // body, one ask per 3 s), spawns the ATV there, which the ATV lane's AtvSpawn brings to every peer, the asker's
+    // included. Never relayed. Not pre-world. Late join: none, an ask is an act. AtvSpawnAskPayload.
+    AtvSpawnAsk = 321,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2801,6 +2806,13 @@ struct AgravStatePayload {
     uint32_t eid[kAgravEidsMax];    // 480 -- host element ids; only the first `count` are read
 };
 static_assert(sizeof(AgravStatePayload) == 484, "AgravStatePayload must be 484 bytes");
+
+// AtvSpawnAsk: where the client's spawn menu put its ATV, and its yaw.
+struct AtvSpawnAskPayload {
+    float x, y, z;  // 12
+    float yaw;      // 4
+};
+static_assert(sizeof(AtvSpawnAskPayload) == 16, "AtvSpawnAskPayload must be 16 bytes");
 
 // The 3D printer's lane (coop/props/printer_sync). A model is its folder's name, UTF-8, 1 to 95 bytes, not terminated;
 // a printed object is the host's element id of it, with its save key (an FName as text, up to 63 bytes) for a joiner's
