@@ -2,6 +2,7 @@
 
 #include "coop/world/agrav_sync.h"
 
+#include "coop/config/config.h"
 #include "coop/element/registry.h"
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
@@ -58,6 +59,18 @@ uint64_t g_nextRelift = 0;
 uint64_t g_relifts = 0;
 
 uint64_t Now() { return ::GetTickCount64(); }
+
+// VOTVCOOP_AGRAV_TRACE=1: every lift and drop, by element id, with the body's height then, on either role (`[AGRAV]`).
+bool Trace() {
+    static const bool t = coop::config::ReadEnv("VOTVCOOP_AGRAV_TRACE") == "1";
+    return t;
+}
+
+void TraceOne(const char* what, uint32_t eid, void* actor) {
+    if (!Trace() || !actor) return;
+    ue_wrap::FVector at{};
+    if (E::TryGetActorLocation(actor, at)) UE_LOGI("[AGRAV] %s eid=%u z=%.1f", what, eid, at.Z);
+}
 
 uint32_t EidOf(void* actor) {
     if (!actor) return 0;
@@ -152,6 +165,10 @@ void HostScan() {
             ++it;
         }
     }
+    if (Trace()) {
+        for (uint32_t e : lift) TraceOne("lift", e, ActorOf(e));
+        for (uint32_t e : drop) TraceOne("drop", e, ActorOf(e));
+    }
     Send(true, lift);
     Send(false, drop);
     const uint64_t now = Now();
@@ -220,6 +237,7 @@ void OnState(const N::AgravStatePayload& p) {
         void* const root = actor ? E::RootComponentOf(actor) : nullptr;
         if (!root || !E::IsPrimitiveComponent(root)) { ++missing; continue; }
         if (E::IsComponentSimulatingPhysics(root)) ++simulating;
+        TraceOne(lifted ? "lift" : "drop", p.eid[i], actor);
         E::SetComponentGravity(root, !lifted);
         if (lifted) {
             if (g_watch.empty()) g_watchUntil = Now() + 120000;
