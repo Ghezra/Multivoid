@@ -497,6 +497,7 @@ a client's fill read 35 there and 0 elsewhere; now every step matches on all thr
 | the robot cleaner | the host | its drive on the drive stream; its switch a request; a client's tick and pickup refused |
 | a mop bucket's water, a concrete bucket's concrete, a cement bag's units | the host | rows when they change; a client's verb is a request; a client's concrete bucket tick refused |
 | a client's shared-world spawners | the host | refused on a client at the script-body gate; shared-world content arrives only from the host |
+| a starving player's food hallucination (`prop_burgerHallucinate_C`) | that player's machine | per-player: never broadcast or snapshot-expressed; before, the host's became a real prop on every client `[V]` (`coop/props/prop_lifecycle`) |
 
 ## Wire messages
 

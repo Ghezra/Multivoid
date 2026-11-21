@@ -3,20 +3,16 @@
 // A machine has one terminal, the ui_console every SAT console panel shows. A client's line whose command
 // rests on the shared world (coop/interactables/sat_console_table) is refused at its terminal's enterCommand
 // while the terminal is not busy, its input consumed as the body's tail does, and sent to the host with the
-// terminal's context: its dish or ROOT, its name, the panel last used. The host keeps a terminal of the
-// game's class for each typist, by the typist's identity, never constructed or shown, and runs the line
-// there, so the command happens once, in the host's world, and its effects cross by their own lanes. Each
-// line that terminal prints goes back to its typist, who writes it into its own terminal, and so does its
-// busy level. The line also goes to every other client and onto the host's own terminal, and a line the
-// host's own terminal prints goes to every client, so every player's screen shows what any player ran
-// there. A typist that leaves mid-command while another client keeps the session leaves the command
-// running, and back, is bound to its terminal again as its world is ready; the last client's leave ends
-// the session, and every terminal is discarded, its command stopping there. MTA sends a command the client
-// does not own to the server, which runs it as that player and echoes to that player alone
-// (reference/mtasa-blue/Client/mods/deathmatch/ClientCommands.cpp:91,
-// reference/mtasa-blue/Server/mods/deathmatch/logic/CGame.cpp:2406); here the echo goes to every player, as
-// the game's one terminal shows every panel's lines. MTA also runs the client's own handlers first (:60),
-// which here would run the one game handler twice, so a line runs on one machine.
+// terminal's context: its dish or ROOT, its name, the panel last used. The host runs it on a terminal of the
+// game's class it keeps for each typist, by identity, never shown, so the command happens once, in the
+// host's world. Each line that terminal prints goes to its typist with its busy level, and to every other
+// client and the host's own terminal; a line the host's own terminal prints goes to every client, so every
+// screen shows what any player ran. A typist that leaves mid-command leaves it running and is bound again
+// at its world-ready; the last client's leave discards every terminal. MTA runs a command the client does
+// not own on the server, as that player (reference/mtasa-blue/Server/mods/deathmatch/logic/CGame.cpp:2406),
+// but echoes it to that player alone, and runs the client's own handlers first
+// (reference/mtasa-blue/Client/mods/deathmatch/ClientCommands.cpp:60), which here would run the one game
+// handler twice: a line runs on one machine, and its echo goes to every player.
 #pragma once
 
 #include <cstddef>

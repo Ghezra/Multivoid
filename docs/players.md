@@ -204,13 +204,7 @@ a converter that needs no editor; the starter bundle is `assets/paks/README.md`.
 ### Vitals, damage and death
 
 Vitals are per peer: each machine computes its own health, food and sleep and streams them as
-fractions for the nameplate's bar. A starving player's food hallucination
-(`prop_burgerHallucinate_C`, which the gamemode's `addHallFood` spawns beside that player's camera)
-is that player's alone: a per-player class, never broadcast or snapshot-expressed, as the player's
-inventory container is. Before this, the host's reached every client as a real burger, a physics
-prop in the world of players who were not starving `[V]` (`coop/props/prop_lifecycle`;
-`coop/dev/hallfood_probe`).
-Damage is victim-authoritative, MTA's shape. A physical
+fractions for the nameplate's bar. Damage is victim-authoritative, MTA's shape. A physical
 impact (a vehicle, a thrown prop, a coin) dispatches the game's impact events on the body that
 was hit, and the game's health is a per-machine singleton, so an impact resolving against a
 puppet in the host's world would drain the host; an interceptor cancels the three impact entries
