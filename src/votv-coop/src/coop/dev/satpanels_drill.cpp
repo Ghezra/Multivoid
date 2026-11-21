@@ -19,6 +19,7 @@
 #include "ue_wrap/devices/floppy_slot.h"
 #include "ue_wrap/devices/serverbox.h"
 #include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/engine_mainplayer.h"
 #include "ue_wrap/engine/hit_result.h"
 
 #include <windows.h>
@@ -38,10 +39,11 @@ namespace R  = ue_wrap::reflection;
 
 uint64_t Now() { return ::GetTickCount64(); }
 
-bool On() {
-    static const bool v = coop::config::ReadEnv("VOTVCOOP_SATPANELS_DRILL") == "1";
-    return v;
+const std::string& Mode() {
+    static const std::string m = coop::config::ReadEnv("VOTVCOOP_SATPANELS_DRILL");
+    return m;
 }
+bool On() { return Mode() == "1" || Mode() == "ragdoll" || Mode() == "timeout"; }
 
 const char* g_who = "?";
 uint64_t g_startAt = 0;  // the peer's own start edge
@@ -291,6 +293,97 @@ void Slot2Tick() {
     }
 }
 
+// ragdoll: slot 1 starts sd.calall at A and ragdolls out of it; slot 2 enters A, reads the run and is told A is busy;
+// at B its sd.calall waits on A's while A runs, and runs once A has finished.
+void Slot1Ragdoll() {
+    const uint64_t t = Now() - g_startAt;
+    void* me = coop::players::Registry::Get().Local();
+    if (g_step == 0 && t >= 10000u) {
+        g_step = 1;
+        UE_LOGI("[SATPANELS] slot1 enters A: call=%d", Enter(g_a) ? 1 : 0);
+    } else if (g_step == 1 && t >= 12000u) {
+        g_step = 2;
+        UE_LOGI("[SATPANELS] slot1 at A types sd.calall: type=%d", Type(L"sd.calall") ? 1 : 0);
+    } else if (g_step == 2 && t >= 13000u) {
+        g_step = 3;
+        UE_LOGI("[SATPANELS] slot1 ragdolls: ok=%d", E::SetMainPlayerRagdollMode(me, true, false, false) ? 1 : 0);
+    } else if (g_step == 3 && t >= 15000u) {
+        g_step = 4;
+        UE_LOGI("[SATPANELS] slot1 ragdoll-left-console %s -- inside=%d", Inside() ? "FAIL" : "PASS", Inside() ? 1 : 0);
+    } else if (g_step == 4 && t >= 45000u) {
+        g_step = 5;
+        UE_LOGI("[SATPANELS] slot1 gets up: ok=%d", E::SetMainPlayerRagdollMode(me, false, false, false) ? 1 : 0);
+    }
+}
+
+void Slot2Ragdoll() {
+    const uint64_t t = Now() - g_startAt;
+    if (g_step == 0 && t >= 18000u) {
+        g_step = 1;
+        UE_LOGI("[SATPANELS] slot2 enters A after slot 1 ragdolled: call=%d", Enter(g_a) ? 1 : 0);
+    } else if (g_step == 1 && t >= 20000u) {
+        g_step = 2;
+        const std::wstring log = Screen();
+        UE_LOGI("[SATPANELS] slot2 enters-after-ragdoll %s -- inside=%d", Inside() ? "PASS" : "FAIL", Inside() ? 1 : 0);
+        Verdict("sees-the-run", Has(log, L"sd.calall"), log);
+        UE_LOGI("[SATPANELS] slot2 at A types sv.hash: type=%d", Type(L"sv.hash") ? 1 : 0);
+    } else if (g_step == 2 && t >= 22000u) {
+        g_step = 3;
+        const std::wstring log = Screen();
+        Verdict("console-still-busy", Has(log, L"The terminal is busy"), log);
+        Leave();
+    } else if (g_step == 3 && t >= 23000u) {
+        g_step = 4;
+        UE_LOGI("[SATPANELS] slot2 enters B: call=%d", Enter(g_b) ? 1 : 0);
+    } else if (g_step == 4 && t >= 26000u) {
+        g_step = 5;
+        UE_LOGI("[SATPANELS] slot2 at B types sd.calall: type=%d", Type(L"sd.calall") ? 1 : 0);
+    } else if (g_step == 5 && t >= 29000u) {
+        g_step = 6;
+        const std::wstring log = Screen();
+        Verdict("lock-held-after-ragdoll", Has(log, L"is running sd.calall"), log);
+    } else if (g_step == 6 && t >= 100000u) {
+        g_step = 7;
+        UE_LOGI("[SATPANELS] slot2 at B types sd.calall again: type=%d", Type(L"sd.calall") ? 1 : 0);
+    } else if (g_step == 7 && t >= 104000u) {
+        g_step = 8;
+        const std::wstring log = Screen();
+        const size_t last = log.rfind(L"sd.calall");
+        const bool refused = last != std::wstring::npos && log.find(L"is running", last) != std::wstring::npos;
+        Verdict("lock-free-after-finish", last != std::wstring::npos && !refused, log);
+        Leave();
+    }
+}
+
+// timeout (with VOTVCOOP_SAT_LOCK_TIMEOUT_S shortened): slot 1's sd.calall at A outlasts the bound, and slot 2's at B
+// then runs.
+void Slot1Timeout() {
+    const uint64_t t = Now() - g_startAt;
+    if (g_step == 0 && t >= 10000u) {
+        g_step = 1;
+        UE_LOGI("[SATPANELS] slot1 enters A: call=%d", Enter(g_a) ? 1 : 0);
+    } else if (g_step == 1 && t >= 12000u) {
+        g_step = 2;
+        UE_LOGI("[SATPANELS] slot1 at A types sd.calall: type=%d", Type(L"sd.calall") ? 1 : 0);
+    }
+}
+
+void Slot2Timeout() {
+    const uint64_t t = Now() - g_startAt;
+    if (g_step == 0 && t >= 18000u) {
+        g_step = 1;
+        UE_LOGI("[SATPANELS] slot2 enters B: call=%d", Enter(g_b) ? 1 : 0);
+    } else if (g_step == 1 && t >= 30000u) {
+        g_step = 2;
+        UE_LOGI("[SATPANELS] slot2 at B types sd.calall: type=%d", Type(L"sd.calall") ? 1 : 0);
+    } else if (g_step == 2 && t >= 33000u) {
+        g_step = 3;
+        const std::wstring log = Screen();
+        Verdict("lock-timed-out", Has(log, L"sd.calall") && !Has(log, L"is running"), log);
+        Leave();
+    }
+}
+
 }  // namespace
 
 void Tick(coop::net::Session* session) {
@@ -298,13 +391,21 @@ void Tick(coop::net::Session* session) {
     const int slot = coop::players::Registry::Get().LocalPeerId();
     if (session->role() == coop::net::Role::Host) {
         g_who = "host";
-        HostTick(session);
+        if (Mode() == "1") HostTick(session);
     } else if (slot == 1) {
         g_who = "slot1";
-        Slot1Tick();
+        if (Mode() == "1") Slot1Tick();
+        else if (g_startAt || (Slot1Tick(), g_startAt)) {  // the start edge is Slot1Tick's own
+            if (Mode() == "ragdoll") Slot1Ragdoll();
+            else Slot1Timeout();
+        }
     } else if (slot == 2) {
         g_who = "slot2";
-        Slot2Tick();
+        if (Mode() == "1") Slot2Tick();
+        else if (g_startAt || (Slot2Tick(), g_startAt)) {
+            if (Mode() == "ragdoll") Slot2Ragdoll();
+            else Slot2Timeout();
+        }
     }
 }
 
