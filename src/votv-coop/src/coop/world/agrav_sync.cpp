@@ -6,6 +6,7 @@
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
 #include "coop/props/prop_rest_sync.h"
+#include "coop/props/remote_prop.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
@@ -19,6 +20,7 @@
 #include <cstdint>
 #include <cstring>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace coop::agrav_sync {
@@ -48,7 +50,12 @@ uint64_t g_rowsLifted = 0, g_rowsDropped = 0;
 uint64_t g_applied = 0, g_missing = 0;
 // The first few lifted bodies, watched for the log on either role (their height, gravity and simulation every 2 s).
 std::vector<uint32_t> g_watch;
-uint64_t g_nextWatch = 0;
+uint64_t g_nextWatch = 0, g_watchUntil = 0;
+// CLIENT: the copies the host's float holds up. A drive row's end (a host coast of a body the float knocked) leaves its
+// copy asleep where the host's was, so once a second each one no row drives is set lifting again.
+std::unordered_set<uint32_t> g_clientLifted;
+uint64_t g_nextRelift = 0;
+uint64_t g_relifts = 0;
 
 uint64_t Now() { return ::GetTickCount64(); }
 
@@ -130,6 +137,7 @@ void HostScan() {
             if (!E::IsComponentGravityEnabled(comp) && E::IsPrimitiveComponent(comp)) {
                 g_lifted[eid] = true;
                 lift.push_back(eid);
+                if (g_watch.empty()) g_watchUntil = Now() + 120000;
                 if (g_watch.size() < 3) g_watch.push_back(eid);
             }
         }
@@ -156,7 +164,7 @@ void Install(N::Session* session) { g_session = session; }
 
 void WatchLog() {
     const uint64_t now = Now();
-    if (g_watch.empty() || now < g_nextWatch) return;
+    if (g_watch.empty() || now < g_nextWatch || (g_watchUntil && now > g_watchUntil)) return;
     g_nextWatch = now + 2000;
     for (uint32_t eid : g_watch) {
         void* const actor = ActorOf(eid);
@@ -168,9 +176,26 @@ void WatchLog() {
     }
 }
 
+void Relift() {
+    const uint64_t now = Now();
+    if (g_clientLifted.empty() || now < g_nextRelift) return;
+    g_nextRelift = now + 1000;
+    for (uint32_t eid : g_clientLifted) {
+        void* const actor = ActorOf(eid);
+        void* const root = actor ? E::RootComponentOf(actor) : nullptr;
+        if (!root || coop::remote_prop::DrivingSlotOf(actor) >= 0) continue;
+        if (E::IsComponentGravityEnabled(root)) E::SetComponentGravity(root, false);
+        E::SetComponentLinearVelocity(root, 0.f, 0.f, kLiftCmPerSec);
+        ++g_relifts;
+    }
+}
+
 void Tick() {
     WatchLog();
-    if (g_session && g_session->role() == N::Role::Client) return;
+    if (g_session && g_session->role() == N::Role::Client) {
+        Relift();
+        return;
+    }
     if (!g_session || g_session->role() != N::Role::Host || !g_session->connected()) return;
     const uint64_t now = Now();
     if (now < g_nextScan) return;
@@ -197,9 +222,12 @@ void OnState(const N::AgravStatePayload& p) {
         if (E::IsComponentSimulatingPhysics(root)) ++simulating;
         E::SetComponentGravity(root, !lifted);
         if (lifted) {
+            if (g_watch.empty()) g_watchUntil = Now() + 120000;
             if (g_watch.size() < 3) g_watch.push_back(p.eid[i]);
+            g_clientLifted.insert(p.eid[i]);
             E::SetComponentLinearVelocity(root, 0.f, 0.f, kLiftCmPerSec);
         } else {
+            g_clientLifted.erase(p.eid[i]);
             coop::prop_rest_sync::NoteLocalMove(actor);
         }
         ++done;
@@ -213,15 +241,18 @@ void OnState(const N::AgravStatePayload& p) {
 void OnDisconnect() {
     g_lifted.clear();
     g_watch.clear();
+    g_watchUntil = 0;
+    g_clientLifted.clear();
     g_lastBuf = nullptr;
     g_lastNum = 0;
     g_quietSince = 0;
     g_nextScan = 0;
     if (g_rowsLifted || g_applied)
-        UE_LOGI("agrav_sync: session over -- told %llu lifted and %llu dropped; applied %llu, %llu with no copy",
-                static_cast<unsigned long long>(g_rowsLifted), static_cast<unsigned long long>(g_rowsDropped),
-                static_cast<unsigned long long>(g_applied), static_cast<unsigned long long>(g_missing));
-    g_rowsLifted = g_rowsDropped = g_applied = g_missing = 0;
+        UE_LOGI("agrav_sync: session over -- told %llu lifted and %llu dropped; applied %llu, %llu with no copy, %llu "
+                "lifts set again", static_cast<unsigned long long>(g_rowsLifted),
+                static_cast<unsigned long long>(g_rowsDropped), static_cast<unsigned long long>(g_applied),
+                static_cast<unsigned long long>(g_missing), static_cast<unsigned long long>(g_relifts));
+    g_rowsLifted = g_rowsDropped = g_applied = g_missing = g_relifts = 0;
 }
 
 }  // namespace coop::agrav_sync
