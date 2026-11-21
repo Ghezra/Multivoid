@@ -7,8 +7,8 @@
 //   reseed   60 s slot 1 spawns a beebox, a shrimp, a jar and a cardboard box of its own and grabs each in turn; the
 //            host's re-scan must not send them back with eid 0.
 //   loops    the timed client loops, with VOTVCOOP_DEV_REFUSE on the clients: 60 s the host turns the alarm on (off at
-//            90 s), plays a radio it spawned at 55 s, opens the first coordinate tower's panel and spawns a kerfur;
-//            every peer reports the alarm, the radio, the towers and its building pieces.
+//            90 s), plays a radio it spawned at 55 s (Custom Content on everywhere), opens the first coordinate
+//            tower's panel and spawns a kerfur; every peer reports the alarm, the radio, the towers and its pieces.
 
 #include "coop/dev/issue42_probe.h"
 
@@ -32,6 +32,7 @@
 #include "ue_wrap/core/class_resolve.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
+#include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_mainplayer.h"
 #include "ue_wrap/world/world_singleton.h"
@@ -293,6 +294,17 @@ bool RunAlarm(bool on) {
            ue_wrap::Call(t[0], f);
 }
 
+// The game's Custom Content rule on in this process and never saved: a radio opens no link without it. Every peer's.
+void AllowCustomContent() {
+    void* const instance = R::FindObjectByClass(L"mainGameInstance_C");
+    void* const cls = instance ? R::ClassOf(instance) : nullptr;
+    const int32_t rules = cls ? R::FindPropertyOffset(cls, L"gameRules") : -1;
+    void* const type = cls ? R::PropertyInnerStruct(cls, L"gameRules") : nullptr;
+    const int32_t rule = type ? R::FindPropertyOffsetByPrefix(type, L"customContent_") : -1;
+    if (rules >= 0 && rule >= 0) static_cast<uint8_t*>(instance)[rules + rule] = 1;
+    UE_LOGI("[I42] the Custom Content rule set on here (ok=%d)", rules >= 0 && rule >= 0 ? 1 : 0);
+}
+
 void* g_radio = nullptr;
 uint64_t g_radioUntil = 0;
 
@@ -377,6 +389,7 @@ void Tick(coop::net::Session* session) {
     if (!g_armedAt) {
         g_armedAt = Now();
         UE_LOGI("[I42] probe armed role=%s mode=%s", host ? "host" : "client", Mode().c_str());
+        if (Mode() == "loops") AllowCustomContent();
     }
     const uint64_t t = Now() - g_armedAt;
     void* const me = coop::players::Registry::Get().Local();
