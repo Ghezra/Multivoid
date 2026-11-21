@@ -2,6 +2,7 @@
 
 #include "coop/interactables/car_charger_sync.h"
 
+#include "coop/config/dev_refuse.h"
 #include "coop/element/registry.h"
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
@@ -323,6 +324,11 @@ void ClientLook(N::Session& s) {
                 UE_LOGI("car_charger_sync: car charger eid=%u's cord read %s here -- the host's %s put back (#%u)", eid,
                         (now.flags & N::kCarChargerPlugged) ? "in" : "out",
                         (told->second.flags & N::kCarChargerPlugged) ? "in" : "out", g_replugs);
+            // [dev] the red arm: another writer flips the cord back after each put-back, as a client's own cord sync
+            // reading its cord the other way would.
+            static unsigned s_refused = 0;
+            if (coop::dev_refuse::Refuse("cord", s_refused))
+                SetB(ch, g_l.plugged, (told->second.flags & N::kCarChargerPlugged) == 0);
         }
         if (SameClips(told->second, now)) continue;
         N::CarChargerIntentPayload p{};

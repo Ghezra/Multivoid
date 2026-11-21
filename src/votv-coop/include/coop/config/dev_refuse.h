@@ -1,7 +1,7 @@
 // coop/config/dev_refuse.h -- [dev] a lane's game call refused on purpose, the red arm of the timed client loops that
-// act on a pass (VOTVCOOP_DEV_REFUSE=alarm,media,fuse,kcam,buildlose,nail, any of them). Each names one call a client
-// loop makes; refused, the call is skipped (or its effect undone) as the game itself might, and every refusal is
-// counted on one log line, so a run shows how often the loop asked again. Off: one latched read per name.
+// act on a pass (VOTVCOOP_DEV_REFUSE=alarm,media,fuse,kcam,buildlose,nail,cord, any of them). Each names one call a
+// client loop makes; refused, the call is skipped (or its effect undone) as the game itself might, and every refusal
+// is counted on one log line, so a run shows how often the loop asked again. Off: one latched read per name.
 #pragma once
 
 #include "coop/config/config.h"
