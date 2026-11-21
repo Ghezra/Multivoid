@@ -4,7 +4,7 @@
 // THE HOST, 24 s after a client is connected: arms the event and drives its trigger box's own overlap with its player,
 // as a walk-in does (coop/dev/event_force), or, for an event with no box, fires it as the dev event menu does; a
 // "Class.function" instead runs that paramless function of the class's last live actor. BOTH
-// PEERS, at 20 s, 34 s and 50 s: every live actor whose class name holds the substring (any case), with its place.
+// PEERS, at 20 s, 34 s, 50 s and 150 s: every live actor whose class name holds the substring (any case), with its place.
 
 #include "coop/dev/event_probe.h"
 
@@ -117,9 +117,9 @@ void Tick(coop::net::Session* session) {
         UE_LOGI("[EVPROBE] armed role=%s event=%s", host ? "host" : "client", Event().c_str());
     }
     const uint64_t t = Now() - g_startAt;
-    static const uint64_t kCensusAt[] = {20000u, 34000u, 50000u};
-    static const char* const kWhen[] = {"before", "after", "later"};
-    if (g_census < 3 && t >= kCensusAt[g_census]) {
+    static const uint64_t kCensusAt[] = {20000u, 34000u, 50000u, 150000u};
+    static const char* const kWhen[] = {"before", "after", "later", "final"};
+    if (g_census < 4 && t >= kCensusAt[g_census]) {
         Census(kWhen[g_census]);
         ++g_census;
     }
