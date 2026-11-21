@@ -7,6 +7,8 @@
 //   =ragdoll: slot 1 ragdolls out of A just after its sd.calall; slot 2 enters A, reads the run and is told it is
 //       busy, is refused sd.calall at B while A runs, and runs it once A has finished.
 //   =timeout, with VOTVCOOP_SAT_LOCK_TIMEOUT_S: slot 2's sd.calall at B runs once A's has outlasted the bound.
+//   =reconnect: slot 1's sd.calall at A over five zeroed dishes outlives its kill; slot 2 is refused sd.calall
+//       at B, and slot 1's second life (VOTVCOOP_SATPANELS_LIFE=2) finds A busy with the run and sees it end.
 // Each check logs its verdict under [SATPANELS], and the host its end.
 
 #pragma once

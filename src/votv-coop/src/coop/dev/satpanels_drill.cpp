@@ -43,7 +43,12 @@ const std::string& Mode() {
     static const std::string m = coop::config::ReadEnv("VOTVCOOP_SATPANELS_DRILL");
     return m;
 }
-bool On() { return Mode() == "1" || Mode() == "ragdoll" || Mode() == "timeout"; }
+bool On() { return Mode() == "1" || Mode() == "ragdoll" || Mode() == "timeout" || Mode() == "reconnect"; }
+// reconnect: the life of slot 1 this process is (VOTVCOOP_SATPANELS_LIFE=2 for the rejoined one).
+bool SecondLife() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_SATPANELS_LIFE") == "2";
+    return v;
+}
 
 const char* g_who = "?";
 uint64_t g_startAt = 0;  // the peer's own start edge
@@ -129,6 +134,12 @@ std::wstring Screen() {
 
 bool Has(const std::wstring& log, const wchar_t* s) { return log.find(s) != std::wstring::npos; }
 
+bool ShownBusyHere() {
+    bool busy = false;
+    void* term = SC::LocalTerminal();
+    return term && SC::ReadProcessing(term, busy) && busy;
+}
+
 void Verdict(const char* check, bool pass, const std::wstring& log) {
     std::wstring tail = log.size() > 160 ? log.substr(log.size() - 160) : log;
     for (wchar_t& c : tail)
@@ -212,6 +223,11 @@ void HostTick(coop::net::Session* s) {
 
 void Slot1Tick() {
     if (!g_startAt) {
+        if (SecondLife()) {
+            if (!coop::net_pump::HasAnnouncedWorldReady() || !Pick()) return;
+            g_startAt = Now();
+            return;
+        }
         coop::RemotePlayer* rp = coop::players::Registry::Get().Puppet(2);
         if (!rp || !rp->valid() || !Pick()) return;
         g_startAt = Now();
@@ -384,6 +400,66 @@ void Slot2Timeout() {
     }
 }
 
+// reconnect: the host lowers five dishes to nothing, so slot 1's sd.calall at A runs minutes; slot 1 leaves
+// mid-command and the rig kills it. Slot 2 is refused sd.calall at B while A runs; slot 1's second life enters A,
+// reads the run and finds it busy, and logs its end.
+void HostReconnect(coop::net::Session* s) {
+    if (g_startAt || !s->IsSlotWorldReady(1) || !s->IsSlotWorldReady(2) || !Pick()) return;
+    g_startAt = Now();
+    // sd.calall calibrates the dishes in turn, a minute's ramp each from nothing: five of them outlast a rejoin.
+    int lowered = 0;
+    for (int32_t d = 0; d < 5; ++d) lowered += D::WriteCalibration(d, 0.f) ? 1 : 0;
+    UE_LOGI("[SATPANELS] host lowers the first five dishes to nothing: %d lowered", lowered);
+}
+
+void Slot1Reconnect() {
+    const uint64_t t = Now() - g_startAt;
+    if (!SecondLife()) {
+        if (g_step == 0 && t >= 12000u) {
+            g_step = 1;
+            UE_LOGI("[SATPANELS] slot1 enters A: call=%d", Enter(g_a) ? 1 : 0);
+        } else if (g_step == 1 && t >= 14000u) {
+            g_step = 2;
+            UE_LOGI("[SATPANELS] slot1 at A types sd.calall: type=%d", Type(L"sd.calall") ? 1 : 0);
+        } else if (g_step == 2 && t >= 17000u) {
+            g_step = 3;
+            UE_LOGI("[SATPANELS] slot1 leaves mid-command, busy=%d", ShownBusyHere() ? 1 : 0);
+        }
+        return;
+    }
+    if (g_step == 0 && t >= 5000u) {
+        g_step = 1;
+        UE_LOGI("[SATPANELS] slot1 (back) enters A: call=%d", Enter(g_a) ? 1 : 0);
+    } else if (g_step == 1 && t >= 7000u) {
+        g_step = 2;
+        const std::wstring log = Screen();
+        UE_LOGI("[SATPANELS] slot1 reenters-after-reconnect %s -- inside=%d", Inside() ? "PASS" : "FAIL", Inside() ? 1 : 0);
+        Verdict("sees-the-run-after-reconnect", Has(log, L"sd.calall") && Has(log, L"recision"), log);
+        UE_LOGI("[SATPANELS] slot1 busy-after-reconnect %s", ShownBusyHere() ? "PASS" : "FAIL");
+    } else if (g_step == 2 && t >= 8000u && !ShownBusyHere()) {
+        g_step = 3;
+        const std::wstring log = Screen();
+        Verdict("run-ended-after-reconnect", true, log);
+        Leave();
+    }
+}
+
+void Slot2Reconnect() {
+    const uint64_t t = Now() - g_startAt;
+    if (g_step == 0 && t >= 30000u) {
+        g_step = 1;
+        UE_LOGI("[SATPANELS] slot2 enters B: call=%d", Enter(g_b) ? 1 : 0);
+    } else if (g_step == 1 && t >= 33000u) {
+        g_step = 2;
+        UE_LOGI("[SATPANELS] slot2 at B types sd.calall: type=%d", Type(L"sd.calall") ? 1 : 0);
+    } else if (g_step == 2 && t >= 36000u) {
+        g_step = 3;
+        const std::wstring log = Screen();
+        Verdict("lock-held-across-reconnect", Has(log, L"is running sd.calall"), log);
+        Leave();
+    }
+}
+
 }  // namespace
 
 void Tick(coop::net::Session* session) {
@@ -392,11 +468,13 @@ void Tick(coop::net::Session* session) {
     if (session->role() == coop::net::Role::Host) {
         g_who = "host";
         if (Mode() == "1") HostTick(session);
+        else if (Mode() == "reconnect") HostReconnect(session);
     } else if (slot == 1) {
         g_who = "slot1";
         if (Mode() == "1") Slot1Tick();
         else if (g_startAt || (Slot1Tick(), g_startAt)) {  // the start edge is Slot1Tick's own
             if (Mode() == "ragdoll") Slot1Ragdoll();
+            else if (Mode() == "reconnect") Slot1Reconnect();
             else Slot1Timeout();
         }
     } else if (slot == 2) {
@@ -404,6 +482,7 @@ void Tick(coop::net::Session* session) {
         if (Mode() == "1") Slot2Tick();
         else if (g_startAt || (Slot2Tick(), g_startAt)) {
             if (Mode() == "ragdoll") Slot2Ragdoll();
+            else if (Mode() == "reconnect") Slot2Reconnect();
             else Slot2Timeout();
         }
     }
