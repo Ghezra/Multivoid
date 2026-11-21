@@ -14,6 +14,7 @@
 #include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/desk/device_screen.h"
 #include "ue_wrap/desk/dish.h"
+#include "ue_wrap/desk/phys_mods.h"
 #include "ue_wrap/desk/sat_console.h"
 #include "ue_wrap/devices/floppy_slot.h"
 #include "ue_wrap/devices/serverbox.h"
@@ -47,6 +48,8 @@ uint64_t g_startAt = 0;  // the peer's own start edge
 int g_step = 0;
 void* g_a = nullptr;
 void* g_b = nullptr;
+uint8_t g_mods[ue_wrap::phys_mods::kSlots] = {};  // HOST: the desk's modules before the alert's
+bool g_modsSaved = false;
 
 // The same two consoles on every peer: the desk's list is the map's, and so are the dishes' servers.
 bool Pick() {
@@ -170,8 +173,22 @@ void HostTick(coop::net::Session* s) {
         Verdict("sees-B", Has(log, L"sd.calch") && !Has(log, L"sd.calall"), log);
     } else if (g_step == 3 && t >= 40000u) {
         g_step = 4;
+        // The alert prints only on a desk with the server alert module (physMods holds 1): lent for the alert.
+        namespace PM = ue_wrap::phys_mods;
+        uint8_t mods[PM::kSlots] = {};
+        bool lent = false;
+        if (PM::EnsureResolved() && PM::ReadArray(mods)) {
+            std::memcpy(g_mods, mods, sizeof(mods));
+            g_modsSaved = true;
+            bool has = false;
+            for (uint8_t m : mods) has = has || m == 1;
+            for (uint8_t& m : mods)
+                if (!has && m == 0) { m = 1; has = lent = true; }
+            if (lent) PM::WriteArray(mods);
+        }
         const bool ok = SC::CallServerBroken(SC::LocalTerminal(), SC::DishServer(SC::PanelDish(g_a)), true);
-        UE_LOGI("[SATPANELS] host raises serverBroken for A's server: ok=%d", ok ? 1 : 0);
+        UE_LOGI("[SATPANELS] host raises serverBroken for A's server: ok=%d (alert module lent=%d)", ok ? 1 : 0,
+                lent ? 1 : 0);
     } else if (g_step == 4 && t >= 45000u) {
         g_step = 5;
         const std::wstring onB = Screen();
@@ -181,6 +198,7 @@ void HostTick(coop::net::Session* s) {
         g_step = 6;
         const std::wstring log = Screen();
         Verdict("alert-on-root", Has(log, L"damaged"), log);
+        if (g_modsSaved) ue_wrap::phys_mods::WriteArray(g_mods);  // the desk's own modules back
     } else if (g_step == 6 && t >= 50000u) {
         g_step = 7;
         const int32_t b = SlotType(SC::DishServer(SC::PanelDish(g_b)));
