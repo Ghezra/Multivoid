@@ -7,7 +7,8 @@
 // (stood). Every 2 s: the body's location and its AnimBP seat pose.
 // VOTVCOOP_SIT_PROBE_WHO=host: the host sits instead, by the same steps, and every client logs, every 2 s from 30 s to
 // 76 s, the seat it sits on (the box's actor, its class, place and yaw) and how many props within 3 m moved more than
-// 5 cm since 30 s, the farthest of them by name (`[SIT] watch`).
+// 5 cm since 30 s, the farthest of them by name (`[SIT] watch`); the host logs the same of its own seat (`watch (host)`).
+// VOTVCOOP_SIT_PROBE_SEAT=<piece of a class name> (any case) takes only a box on such a seat, e.g. sofa.
 
 #include "coop/dev/sit_probe.h"
 
@@ -33,7 +34,9 @@
 
 #include <windows.h>
 
+#include <cctype>
 #include <cmath>
+#include <cwctype>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -65,6 +68,19 @@ void* ObjField(void* obj, const wchar_t* name) {
     return off < 0 ? nullptr : *reinterpret_cast<void**>(static_cast<uint8_t*>(obj) + off);
 }
 
+// VOTVCOOP_SIT_PROBE_SEAT: a piece of the seat's class name (any case) the box must sit on, e.g. sofa.
+bool SeatMatches(void* parent) {
+    static const std::wstring want = [] {
+        std::string v = coop::config::ReadEnv("VOTVCOOP_SIT_PROBE_SEAT");
+        for (char& c : v) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return std::wstring(v.begin(), v.end());
+    }();
+    if (want.empty()) return true;
+    std::wstring n = R::ClassNameOf(parent);
+    for (wchar_t& c : n) c = static_cast<wchar_t>(std::towlower(c));
+    return n.find(want) != std::wstring::npos;
+}
+
 // The nearest sit box on something other than an ATV.
 void* NearestBox(const FVector& from) {
     void* best = nullptr;
@@ -72,7 +88,7 @@ void* NearestBox(const FVector& from) {
     for (void* b : R::FindObjectsByClass(L"sitBox_C")) {
         if (!b || !R::IsLive(b) || R::NameStartsWith(R::NameOf(b), L"Default__")) continue;
         void* parent = nullptr;
-        if (!E::GetAttachParentActor(b, parent) || !parent || ue_wrap::atv::IsAtv(parent)) continue;
+        if (!E::GetAttachParentActor(b, parent) || !parent || ue_wrap::atv::IsAtv(parent) || !SeatMatches(parent)) continue;
         FVector at{};
         if (!E::TryGetActorLocation(b, at)) continue;
         const float d = Dist(at, from);
@@ -143,11 +159,12 @@ void PropsAround(const FVector& c, std::vector<Seen>& out) {
         }, &ctx);
 }
 
-void WatchTick(uint64_t t) {
-    coop::RemotePlayer* const hp = coop::players::Registry::Get().Puppet(0);
-    void* const body = hp && hp->valid() ? hp->actor() : nullptr;
-    if (!body || t < 30000u || t >= 76000u || Now() < g_nextLog) return;
-    g_nextLog = Now() + 2000;
+void WatchTick(uint64_t t, bool self) {
+    coop::RemotePlayer* const hp = self ? nullptr : coop::players::Registry::Get().Puppet(0);
+    void* const body = self ? coop::players::Registry::Get().Local() : (hp && hp->valid() ? hp->actor() : nullptr);
+    static uint64_t s_next = 0;
+    if (!body || t < 30000u || t >= 76000u || Now() < s_next) return;
+    s_next = Now() + 2000;
     FVector at{};
     E::TryGetActorLocation(body, at);
     if (!g_seat && t >= 30000u) {
@@ -169,9 +186,9 @@ void WatchTick(uint64_t t) {
         if (d > 5.f) ++moved;
         if (d > most) { most = d; farName = Narrow(R::ClassNameOf(p.obj)); }
     }
-    UE_LOGI("[SIT] watch t=%llu: host body (%.0f,%.0f,%.0f); seat %s at (%.1f,%.1f,%.1f) yaw %.1f, %.1f cm from where it "
+    UE_LOGI("[SIT] watch%s t=%llu: host body (%.0f,%.0f,%.0f); seat %s at (%.1f,%.1f,%.1f) yaw %.1f, %.1f cm from where it "
             "stood; %d of %zu props within 3 m moved > 5 cm, the most %s %.1f cm",
-            t / 1000ull, at.X, at.Y, at.Z, g_seat ? Narrow(R::ClassNameOf(g_seat)).c_str() : "-", s.X, s.Y, s.Z, yaw,
+            self ? " (host)" : "", t / 1000ull, at.X, at.Y, at.Z, g_seat ? Narrow(R::ClassNameOf(g_seat)).c_str() : "-", s.X, s.Y, s.Z, yaw,
             g_seat ? Dist(s, g_seatAt0) : -1.f, moved, g_around.size(), farName.c_str(), most);
 }
 
@@ -290,8 +307,8 @@ void Tick(coop::net::Session* session) {
     }
     const uint64_t t = Now() - g_startAt;
     if (HostSits()) {
-        if (host) ClientTick(t);
-        else WatchTick(t);
+        if (host) { ClientTick(t); WatchTick(t, true); }
+        else WatchTick(t, false);
         return;
     }
     if (host) HostTick(t);
