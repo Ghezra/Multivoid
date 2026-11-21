@@ -277,6 +277,15 @@ bool Read(void* actor, State& out) {
     return true;
 }
 
+namespace {
+bool g_refuseOpen = false;   // [dev] dev::SetRefuseOpen
+unsigned g_refusedOpens = 0;
+}  // namespace
+
+namespace dev {
+void SetRefuseOpen(bool on) { g_refuseOpen = on; }
+}  // namespace dev
+
 Apply ApplyState(void* actor, const State& state) {
     const Kind kind = KindOf(actor);
     if (kind == Kind::None || !Layout(actor)) return Apply::Waiting;
@@ -310,7 +319,9 @@ Apply ApplyState(void* actor, const State& state) {
         void* const open = R::FindDispatchFunctionCached(R::ClassOf(actor), L"openLink");
         if (open) {
             ParamFrame f(open);
-            if (f.valid() && f.SetRaw(L"data", found, g_stride) && f.Set<bool>(L"pausePlayer", !state.playing)) Call(actor, f);
+            if (g_refuseOpen) UE_LOGI("[REFUSE] media refused (#%u)", ++g_refusedOpens);
+            else if (f.valid() && f.SetRaw(L"data", found, g_stride) && f.Set<bool>(L"pausePlayer", !state.playing))
+                Call(actor, f);
         }
         return Apply::Waiting;
     }

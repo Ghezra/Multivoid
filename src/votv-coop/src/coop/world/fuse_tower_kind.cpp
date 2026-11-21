@@ -8,6 +8,8 @@
 
 #include "coop/world/fuse_tower_kind.h"
 
+#include "coop/config/dev_refuse.h"
+
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/devices/coord_tower.h"
 #include "ue_wrap/devices/radio_tower.h"
@@ -421,7 +423,8 @@ bool ConvergePanel(Kind kind, void* tower, void* player, const FuseTowerRow& row
     const bool target = (row.flags & coop::net::kFuseTowerAnim) ? !open : open;
     if (l.opened == target) return false;
     opens = target;
-    ran = CT::Use(tower, player, CT::LookAt{CT::Part::Retract, -1});
+    static unsigned s_refused = 0;   // [dev] the red arm: a retract the game does not take
+    ran = !coop::dev_refuse::Refuse("fuse", s_refused) && CT::Use(tower, player, CT::LookAt{CT::Part::Retract, -1});
     return true;
 }
 

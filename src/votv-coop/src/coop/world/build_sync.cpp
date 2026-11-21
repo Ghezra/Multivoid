@@ -2,6 +2,7 @@
 
 #include "coop/world/build_sync.h"
 
+#include "coop/config/dev_refuse.h"
 #include "coop/items/save_record_wire.h"
 #include "coop/net/blob_chunks.h"
 #include "coop/net/protocol.h"
@@ -463,8 +464,12 @@ bool Lost(coop::net::Session& s, const std::wstring& key, Known& k, Clock::time_
     }
     if (!k.confirmed) return true;   // this player's own, which the host never had
     const SaveRecord rec = k.rec;   // made again from its record, once its ends are here
-    if (Make(key, rec, nullptr, false, now))
+    if (Make(key, rec, nullptr, false, now)) {
         UE_LOGI("build_sync: the host's %s '%ls' was lost here -- made again", KindName(kind), key.c_str());
+        static unsigned s_refused = 0;   // [dev] the red arm: a remade piece the game takes away again
+        if (coop::dev_refuse::Refuse("buildlose", s_refused))
+            if (void* const piece = k.ref.Get()) B::DestroyQuiet(piece);
+    }
     return false;
 }
 
@@ -572,7 +577,15 @@ void ClientPoll(coop::net::Session& s, Clock::time_point now) {
         Known& k = e.second;
         const auto p = here.find(e.first);
         if (!k.confirmed || p == here.end() || g_inbox.count(e.first)) continue;
-        if (!B::NailBroken(p->second) || RecordBroken(k.rec)) {
+        // [dev] the red arm: one host nail read as broken here however often it is tied again.
+        static const bool s_nailArm = coop::dev_refuse::Armed("nail");
+        static std::wstring s_nailKey;
+        bool broken = B::NailBroken(p->second);
+        if (s_nailArm && !broken && B::KindOf(p->second) == B::Kind::Nail && (s_nailKey.empty() || s_nailKey == e.first)) {
+            s_nailKey = e.first;
+            broken = true;
+        }
+        if (!broken || RecordBroken(k.rec)) {
             k.snapped = {};
             continue;
         }
@@ -586,11 +599,23 @@ void ClientPoll(coop::net::Session& s, Clock::time_point now) {
         if (Make(e.first, rec, p->second, true, now)) {
             ++g_reties;
             UE_LOGI("build_sync: the host's nail '%ls' snapped here alone -- tied again", e.first.c_str());
+            static unsigned s_refused = 0;
+            if (s_nailArm && e.first == s_nailKey) coop::dev_refuse::Refuse("nail", s_refused);
         }
     }
     for (auto it = g_known.begin(); it != g_known.end();) {
         Known& k = it->second;
-        const bool present = here.count(it->first) > 0;
+        bool present = here.count(it->first) > 0;
+        // [dev] the red arm's first loss: one host wall here, taken away once (a wall, so the loss is a remake).
+        static bool s_lostOne = false;
+        if (present && !s_lostOne && k.confirmed && coop::dev_refuse::Armed("buildlose") &&
+            B::KindOf(here[it->first]) == B::Kind::Wall) {
+            s_lostOne = true;
+            B::DestroyQuiet(here[it->first]);
+            here.erase(it->first);
+            present = false;
+            UE_LOGI("[REFUSE] buildlose: the host's wall '%ls' taken away here", it->first.c_str());
+        }
         if (!k.confirmed && now - k.since > kEchoLife) {
             if (present) B::DestroyQuiet(here[it->first]);
             ++g_refused;

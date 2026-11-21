@@ -12,6 +12,7 @@
 
 #include "coop/world/alarm_sync.h"
 
+#include "coop/config/dev_refuse.h"
 #include "coop/net/latest_wins.h"
 #include "coop/net/net_clock.h"
 #include "coop/net/protocol.h"
@@ -178,7 +179,8 @@ void Apply(bool active, bool suppressDetection) {
     void* owner = nullptr;  // the alarm graph never reads owner (bytecode: only index is used)
     frame.Set(L"owner", owner);
     frame.Set(L"index", static_cast<int32_t>(active ? 1 : 0));
-    ue_wrap::Call(trig, frame);
+    static unsigned s_refused = 0;   // [dev] the red arm: a client's replay the game does not take
+    if (!(suppressDetection && coop::dev_refuse::Refuse("alarm", s_refused))) ue_wrap::Call(trig, frame);
     g_pendingApply = -1;
     UE_LOGI("alarm_sync: applied active=%d (native runTrigger replay)", active ? 1 : 0);
     if (suppressDetection) {

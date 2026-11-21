@@ -2,6 +2,7 @@
 
 #include "coop/creatures/kerfur_camera.h"
 
+#include "coop/config/dev_refuse.h"
 #include "coop/net/session.h"
 
 #include "ue_wrap/actors/kerfur.h"
@@ -56,14 +57,17 @@ void Tick(coop::net::Session& session) {
     if (cams->num < 0 || cams->num > kMaxCams) return;
     for (void* k : ue_wrap::kerfur::AllKerfurs()) {
         void* const cam = CameraOf(k);
-        if (!cam || Listed(cams, cam)) continue;
+        // [dev] the red arm: every camera read as off the list, and its saveInit not run, as one the game never lists.
+        static const bool s_arm = coop::dev_refuse::Armed("kcam");
+        if (!cam || (Listed(cams, cam) && !s_arm)) continue;
         // Its saved index cleared, the camera's own saveInit adds it to the list and names it as it would a new one.
         const int32_t idxOff = R::FindPropertyOffset(R::ClassOf(cam), L"index_0");
         void* const fn = R::FindDispatchFunctionCached(R::ClassOf(cam), L"saveInit");
         if (idxOff < 0 || !fn) continue;
         *reinterpret_cast<int32_t*>(static_cast<uint8_t*>(cam) + idxOff) = -1;
         ue_wrap::ParamFrame f(fn);
-        const bool ran = f.valid() && ue_wrap::Call(cam, f);
+        static unsigned s_refused = 0;
+        const bool ran = !coop::dev_refuse::Refuse("kcam", s_refused) && f.valid() && ue_wrap::Call(cam, f);
         if (g_said.insert(cam).second)
             UE_LOGI("kerfur_camera: an Omega's camera was off the laptop's list -- put back (ran=%d, listed=%d)", ran ? 1 : 0,
                     Listed(cams, cam) ? 1 : 0);

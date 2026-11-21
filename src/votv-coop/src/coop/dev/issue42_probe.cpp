@@ -6,11 +6,15 @@
 //            publishes it, and every peer reports each such box.
 //   reseed   60 s slot 1 spawns a beebox, a shrimp, a jar and a cardboard box of its own and grabs each in turn; the
 //            host's re-scan must not send them back with eid 0.
+//   loops    the timed client loops, with VOTVCOOP_DEV_REFUSE on the clients: 60 s the host turns the alarm on (off at
+//            90 s), plays a radio it spawned at 55 s, opens the first coordinate tower's panel and spawns a kerfur;
+//            every peer reports the alarm, the radio, the towers and its building pieces.
 
 #include "coop/dev/issue42_probe.h"
 
 #include "coop/config/config.h"
 #include "coop/dev/director/aimed_grab.h"
+#include "coop/dev/spawn_npc.h"
 #include "coop/element/registry.h"
 #include "coop/net/session.h"
 #include "coop/player/players_registry.h"
@@ -18,7 +22,10 @@
 #include "coop/props/container_record_edit.h"
 #include "coop/props/prop_record_wire.h"
 #include "coop/props/prop_save_data.h"
+#include "ue_wrap/actors/build_piece.h"
 #include "ue_wrap/actors/prop.h"
+#include "ue_wrap/devices/coord_tower.h"
+#include "ue_wrap/world/media_device.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/actors/save_record.h"
 #include "ue_wrap/core/call.h"
@@ -258,6 +265,106 @@ void TickReseed(uint64_t t, bool host, void* me, int& step) {
     ++g_next;
 }
 
+// ---- loops ----
+std::vector<void*> AllOf(const wchar_t* cls) {
+    std::vector<void*> out;
+    if (void* const c = ue_wrap::object_index::ClassByName(cls))
+        ue_wrap::object_index::ForEachInstance(c, [](void* ctx, void* obj, int32_t) {
+            if (obj && R::IsLive(obj) && !R::NameStartsWith(R::NameOf(obj), L"Default__"))
+                static_cast<std::vector<void*>*>(ctx)->push_back(obj);
+        }, &out);
+    return out;
+}
+
+bool AlarmActive(void* trig, bool& out) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!trig || !R::FindBoolProperty(R::ClassOf(trig), L"active", off, mask)) return false;
+    out = (static_cast<const uint8_t*>(trig)[off] & mask) != 0;
+    return true;
+}
+
+bool RunAlarm(bool on) {
+    const std::vector<void*> t = AllOf(L"trigger_alarm_C");
+    void* const fn = t.empty() ? nullptr : R::FindDispatchFunctionCached(R::ClassOf(t[0]), L"runTrigger");
+    ue_wrap::ParamFrame f(fn);
+    void* owner = nullptr;
+    return fn && f.valid() && f.Set(L"owner", owner) && f.Set(L"index", static_cast<int32_t>(on ? 1 : 0)) &&
+           ue_wrap::Call(t[0], f);
+}
+
+void* g_radio = nullptr;
+uint64_t g_radioUntil = 0;
+
+void TickLoops(uint64_t t, bool host, void* me, int& step) {
+    namespace MD = ue_wrap::media_device;
+    namespace CT = ue_wrap::coord_tower;
+    if (!host || !me) return;
+    if (step == 0 && t >= 55000) {
+        step = 1;
+        g_radio = Spawn(L"prop_radio_internet_C", Ahead(me, 200.f, 100.f));
+        UE_LOGI("[I42] host: a radio %p", g_radio);
+    }
+    if (step == 1 && t >= 60000) {
+        step = 2;
+        UE_LOGI("[I42] host: the alarm on (%d)", RunAlarm(true) ? 1 : 0);
+        const std::vector<void*> towers = AllOf(L"coordRadarDish_C");
+        const bool used = !towers.empty() && CT::Use(towers[0], me, CT::LookAt{CT::Part::Retract, -1});
+        UE_LOGI("[I42] host: the first of %zu coordinate towers' panel used (%d)", towers.size(), used ? 1 : 0);
+        FVector at = Ahead(me, 300.f, -100.f);
+        void* const kerfur = coop::dev::spawn_npc::SpawnAt(L"kerfurOmega_C", {at.X, at.Y, at.Z + 60.f});
+        UE_LOGI("[I42] host: a kerfur %p", kerfur);
+        g_radioUntil = Now() + 30000;
+    }
+    if (step == 2 && g_radio && R::IsLive(g_radio)) {
+        MD::State st;
+        st.track = MD::CatalogTrack(g_radio, 0);
+        st.playing = true;
+        const MD::Apply r = MD::ApplyState(g_radio, st);
+        if (r == MD::Apply::Done || Now() > g_radioUntil) {
+            step = 3;
+            UE_LOGI("[I42] host: the radio plays track %llx (%s)", static_cast<unsigned long long>(st.track),
+                    r == MD::Apply::Done ? "done" : (r == MD::Apply::NoSuchTrack ? "no such track" : "still waiting"));
+        }
+    }
+    if (step >= 2 && step < 9 && t >= 90000) {
+        step = 9;
+        UE_LOGI("[I42] host: the alarm off (%d)", RunAlarm(false) ? 1 : 0);
+    }
+}
+
+void ReportLoops(const char* role) {
+    namespace MD = ue_wrap::media_device;
+    namespace CT = ue_wrap::coord_tower;
+    bool alarm = false;
+    const std::vector<void*> trig = AllOf(L"trigger_alarm_C");
+    const bool ar = !trig.empty() && AlarmActive(trig[0], alarm);
+    std::string towers;
+    for (void* tw : AllOf(L"coordRadarDish_C")) {
+        CT::State st;
+        towers += CT::Read(tw, st) ? (st.opened ? " open" : " shut") : " ?";
+    }
+    std::string radio = "none";
+    for (void* r : AllOf(L"prop_radio_internet_C")) {
+        MD::State st;
+        if (MD::Read(r, st) && st.track) {
+            char b[64];
+            std::snprintf(b, sizeof(b), "track %llx playing %d", static_cast<unsigned long long>(st.track), st.playing);
+            radio = b;
+        }
+    }
+    std::vector<void*> pieces;
+    ue_wrap::build_piece::List(pieces);
+    int walls = 0, nails = 0;
+    for (void* pc : pieces) {
+        const auto k = ue_wrap::build_piece::KindOf(pc);
+        walls += k == ue_wrap::build_piece::Kind::Wall;
+        nails += k == ue_wrap::build_piece::Kind::Nail;
+    }
+    UE_LOGI("[I42] %s alarm %s; towers%s; radio %s; %zu pieces (%d walls, %d nails)", role,
+            ar ? (alarm ? "on" : "off") : "?", towers.c_str(), radio.c_str(), pieces.size(), walls, nails);
+}
+
 uint64_t g_armedAt = 0, g_reportAt = 0;
 int g_step = 0;
 bool g_done = false;
@@ -277,6 +384,7 @@ void Tick(coop::net::Session* session) {
     if (m == "roach") TickRoach(t, host, me, g_step);
     else if (m == "bigbox") TickBigBox(session, t, host, g_step);
     else if (m == "reseed") TickReseed(t, host, me, g_step);
+    else if (m == "loops") TickLoops(t, host, me, g_step);
     if (host && !g_done && t >= 120000) {
         g_done = true;
         UE_LOGI("[I42] DONE");
@@ -291,6 +399,7 @@ void Tick(coop::net::Session* session) {
         E::TryGetActorLocation(me, at);
         UE_LOGI("[I42] %s roaches here: %zu (player at %.0f,%.0f)", role, Roaches(Master()).size(), at.X, at.Y);
     }
+    if (m == "loops") ReportLoops(role);
     if (m == "bigbox") {
         CC::ForEachWorldContainer(&ReportOne, role);
         ReportBigBoxes(role);

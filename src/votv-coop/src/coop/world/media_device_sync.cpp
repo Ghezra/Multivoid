@@ -2,6 +2,7 @@
 
 #include "coop/world/media_device_sync.h"
 
+#include "coop/config/dev_refuse.h"
 #include "coop/interactables/atv_sync.h"  // an ATV radio's ATV, by its key
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
@@ -222,7 +223,10 @@ void PollClient(coop::net::Session& s, const std::vector<void*>& radios, Clock::
 
 }  // namespace
 
-void Install(coop::net::Session* session) { g_session.store(session, std::memory_order_release); }
+void Install(coop::net::Session* session) {
+    g_session.store(session, std::memory_order_release);
+    MD::dev::SetRefuseOpen(coop::dev_refuse::Armed("media"));   // [dev] the red arm: an open that never takes
+}
 
 void Tick() {
     auto* s = g_session.load(std::memory_order_acquire);

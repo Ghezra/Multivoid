@@ -48,6 +48,12 @@ enum class Apply : uint8_t { Done, Waiting, NoSuchTrack };
 // never called then.
 Apply ApplyState(void* actor, const State& state);
 
+namespace dev {
+// [dev] the red arm (coop/config/dev_refuse, "media"): ApplyState's openLink is skipped and counted, as a device whose
+// open never takes.
+void SetRefuseOpen(bool on);
+}  // namespace dev
+
 // The track at `index` of this peer's catalog for this device, 0 past its end.
 uint64_t CatalogTrack(void* actor, int index);
 
