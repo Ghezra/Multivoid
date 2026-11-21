@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <vector>
 
 namespace coop::dev::satpanels_drill {
 namespace {
@@ -409,7 +410,14 @@ void HostReconnect(coop::net::Session* s) {
     // sd.calall calibrates the dishes in turn, a minute's ramp each from nothing: five of them outlast a rejoin.
     int lowered = 0;
     for (int32_t d = 0; d < 5; ++d) lowered += D::WriteCalibration(d, 0.f) ? 1 : 0;
-    UE_LOGI("[SATPANELS] host lowers the first five dishes to nothing: %d lowered", lowered);
+    // The chain stops at the first server that does not answer: every broken one repaired first.
+    int repaired = 0;
+    std::vector<void*> servers;
+    if (ue_wrap::serverbox::EnsureBreakResolved() && ue_wrap::serverbox::ReadServers(servers))
+        for (void* box : servers)
+            if (ue_wrap::serverbox::ReadIsBroken(box) && ue_wrap::serverbox::ApplyBreak(box, false)) ++repaired;
+    UE_LOGI("[SATPANELS] host lowers the first five dishes to nothing (%d lowered) and repairs %d server(s)", lowered,
+            repaired);
 }
 
 void Slot1Reconnect() {
