@@ -284,6 +284,29 @@ void ForceExitLocal(void* local, const std::wstring& key, uint8_t holder) {
     PushBusyLine(key, fresh ? g_memoName : std::wstring(), holder);
 }
 
+// A SAT console's refusal waits a few ticks before it exits the player: the panel's own use enters the terminal
+// three frames after the interface (panel_SATconsole_C: delayframes 3, then the widget's enter), and an exit
+// before that left the next console entered closed again at once. Other devices exit at once, as before.
+constexpr uint64_t kSatExitTicks = 10;
+struct LaterExit {
+    std::wstring key;
+    uint8_t holder = 0xFF;
+    uint64_t due = 0;
+};
+LaterExit g_laterExit;
+
+// Exit the local player from `key`, which `holder` holds: now, or a SAT console's a few ticks later.
+void DenyExit(void* local, const std::wstring& key, uint8_t holder) {
+    if (key.rfind(L"sat_", 0) == 0) {
+        g_localKey.clear();
+        g_pendingSend = false;
+        g_laterExit = LaterExit{key, holder, coop::net_pump::TickSerial() + kSatExitTicks};
+        return;
+    }
+    ForceExitLocal(local, key, holder);
+    g_localWidget = DS::ReadActiveInterface(local);
+}
+
 // Whether a press at `aimed` would open the device's screen. The signal desk (analogDScreenTest_C, the "desk" claim) is
 // one actor for every console on it, and only its coordinates button (`button_coords`) enters the screen: its
 // actionOptionIndex compares the pressed component with each button. Its other buttons -- the import and export, the
@@ -436,10 +459,21 @@ void Tick() {
         g_localWidget = nullptr;
         g_pendingSend = false;
         g_holdPending = false;
+        g_laterExit = LaterExit{};
         return;
     }
 
     const uint8_t mySlot = LocalSlot();
+
+    // A SAT console's refusal, due: the player is exited now, whichever interface it shows.
+    if (!g_laterExit.key.empty() && coop::net_pump::TickSerial() >= g_laterExit.due) {
+        const LaterExit e = std::move(g_laterExit);
+        g_laterExit = LaterExit{};
+        if (DS::ReadActiveInterface(local)) ForceExitLocal(local, e.key, e.holder);
+        g_localWidget = DS::ReadActiveInterface(local);
+        return;
+    }
+    if (!g_laterExit.key.empty()) return;  // the refused screen stays up until its exit
 
     // The pending claim retry: the rising edge fired before the slot was assigned or before the
     // channel accepted the send (a menu-window client). The falling edge clears this, so a retry
@@ -488,8 +522,8 @@ void Tick() {
                 // Known busy locally: lose immediately, no round-trip.
                 UE_LOGI("device_occupancy: entered '%ls' but slot %u holds it -- immediate deny",
                         key.c_str(), static_cast<unsigned>(holder));
-                ForceExitLocal(local, key, holder);
-                g_localWidget = DS::ReadActiveInterface(local);  // null after force-exit
+                DenyExit(local, key, holder);
+                if (!g_laterExit.key.empty()) g_localWidget = w;  // the exit comes later; this is no new edge
                 return;
             }
             g_localKey = key;
@@ -599,8 +633,7 @@ void OnReliable(const coop::net::DeviceClaimPayload& p, uint8_t senderSlot) {
             if (local) {
                 UE_LOGI("device_occupancy: lost '%ls' to slot %u -- force-exiting",
                         key.c_str(), static_cast<unsigned>(p.slot));
-                ForceExitLocal(local, key, p.slot);
-                g_localWidget = DS::ReadActiveInterface(local);
+                DenyExit(local, key, p.slot);
             } else {
                 ClaimEnded(g_localKey);
                 g_localKey.clear();  // world down -- nothing to exit
@@ -697,6 +730,7 @@ void OnDisconnect() {
     g_localWidget = nullptr;
     g_pendingSend = false;
     g_denyPending = false;
+    g_laterExit = LaterExit{};
     g_denyHolder = 0xFF;
     g_denyName.clear();
     g_memoName.clear();      // busy-notice aim memo (session-end full teardown)
