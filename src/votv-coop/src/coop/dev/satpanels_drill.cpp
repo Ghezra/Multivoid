@@ -7,17 +7,23 @@
 #include "coop/player/players_registry.h"
 #include "coop/player/remote_player.h"
 #include "coop/session/net_pump.h"
+#include "ue_wrap/core/call.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
+#include "ue_wrap/core/reflection.h"
+#include "ue_wrap/core/reflection_props.h"
+#include "ue_wrap/desk/device_screen.h"
 #include "ue_wrap/desk/dish.h"
 #include "ue_wrap/desk/sat_console.h"
 #include "ue_wrap/devices/floppy_slot.h"
 #include "ue_wrap/devices/serverbox.h"
 #include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/hit_result.h"
 
 #include <windows.h>
 
 #include <cstdint>
+#include <cstring>
 #include <string>
 
 namespace coop::dev::satpanels_drill {
@@ -27,6 +33,7 @@ namespace SC = ue_wrap::sat_console;
 namespace D  = ue_wrap::dish;
 namespace FS = ue_wrap::floppy_slot;
 namespace E  = ue_wrap::engine;
+namespace R  = ue_wrap::reflection;
 
 uint64_t Now() { return ::GetTickCount64(); }
 
@@ -44,6 +51,7 @@ void* g_b = nullptr;
 // The same two consoles on every peer: the desk's list is the map's, and so are the dishes' servers.
 bool Pick() {
     if (g_a && g_b) return true;
+    if (!ue_wrap::serverbox::EnsureResolved() || !FS::EnsureResolved(FS::DeviceKind::ServerBox)) return false;
     void* panels[64];
     const size_t n = SC::Panels(panels, 64);
     void* firstServer = nullptr;
@@ -65,13 +73,42 @@ bool Pick() {
     return g_a && g_b;
 }
 
-// Walk up to a console as its panel's use does: the terminal records the panel and points at its dish, or ROOT.
+// Look at a console without entering it, as the host here does: the terminal records the panel and points at its
+// dish, or at ROOT.
 bool Use(void* panel, bool root = false) {
     void* term = SC::LocalTerminal();
     if (!term || !panel) return false;
     void* dish = root ? nullptr : SC::PanelDish(panel);
     const int32_t idx = dish ? D::IndexOf(dish) : -1;
     return SC::WriteUsed(term, panel) && SC::CallInit(term, idx >= 0 ? D::TechName(idx) : L"ROOT", false, dish);
+}
+
+// Enter a console as a player's use does: the panel's actionOptionIndex, action 4, with a hit on its box.
+bool Enter(void* panel) {
+    void* me = coop::players::Registry::Get().Local();
+    void* fn = panel ? R::FindFunction(R::ClassOf(panel), L"actionOptionIndex") : nullptr;
+    const int32_t boxOff = panel ? R::FindPropertyOffset(R::ClassOf(panel), L"box") : -1;
+    void* box = nullptr;
+    if (boxOff >= 0) std::memcpy(&box, static_cast<uint8_t*>(panel) + boxOff, sizeof(void*));
+    if (!me || !fn || !box) return false;
+    ue_wrap::FVector at{};
+    E::TryGetActorLocation(panel, at);
+    ue_wrap::ParamFrame f(fn);
+    const uint8_t action = 4;
+    void* none = nullptr;
+    if (!f.valid() || !f.Set(L"player", me) || !ue_wrap::hit_result::Write(f, L"hit", panel, box, at) ||
+        !f.SetRaw(L"action", &action, sizeof(action)) || !f.Set(L"lookAtComponent", none))
+        return false;
+    return ue_wrap::Call(panel, f);
+}
+
+bool Inside() {
+    void* me = coop::players::Registry::Get().Local();
+    return me && ue_wrap::device_screen::ReadActiveInterface(me) != nullptr;
+}
+
+void Leave() {
+    if (void* me = coop::players::Registry::Get().Local()) ue_wrap::device_screen::ForceExitInterface(me);
 }
 
 bool Type(const wchar_t* line) {
@@ -119,28 +156,33 @@ void HostTick(coop::net::Session* s) {
         return;
     }
     const uint64_t t = Now() - g_startAt;
-    if (g_step == 0 && t >= 30000u) {
+    if (g_step == 0 && t >= 35000u) {
         g_step = 1;
-        Use(g_b);
-    } else if (g_step == 1 && t >= 31000u) {
+        Use(g_a);
+    } else if (g_step == 1 && t >= 36000u) {
         g_step = 2;
         const std::wstring log = Screen();
-        Verdict("sees-B", Has(log, L"sv.hash") && !Has(log, L"sd.cal"), log);
-    } else if (g_step == 2 && t >= 35000u) {
+        Verdict("sees-A", Has(log, L"sd.calall"), log);
+        Use(g_b);
+    } else if (g_step == 2 && t >= 37000u) {
         g_step = 3;
-        const bool ok = SC::CallServerBroken(SC::LocalTerminal(), SC::DishServer(SC::PanelDish(g_a)), true);
-        UE_LOGI("[SATPANELS] host raises serverBroken for A's server: ok=%d", ok ? 1 : 0);
+        const std::wstring log = Screen();
+        Verdict("sees-B", Has(log, L"sd.calch") && !Has(log, L"sd.calall"), log);
     } else if (g_step == 3 && t >= 40000u) {
         g_step = 4;
+        const bool ok = SC::CallServerBroken(SC::LocalTerminal(), SC::DishServer(SC::PanelDish(g_a)), true);
+        UE_LOGI("[SATPANELS] host raises serverBroken for A's server: ok=%d", ok ? 1 : 0);
+    } else if (g_step == 4 && t >= 45000u) {
+        g_step = 5;
         const std::wstring onB = Screen();
         Verdict("alert-not-on-B", !Has(onB, L"damaged"), onB);
         Use(SC::RootPanel(), true);
-    } else if (g_step == 4 && t >= 41000u) {
-        g_step = 5;
+    } else if (g_step == 5 && t >= 46000u) {
+        g_step = 6;
         const std::wstring log = Screen();
         Verdict("alert-on-root", Has(log, L"damaged"), log);
-    } else if (g_step == 5 && t >= 45000u) {
-        g_step = 6;
+    } else if (g_step == 6 && t >= 50000u) {
+        g_step = 7;
         const int32_t b = SlotType(SC::DishServer(SC::PanelDish(g_b)));
         const int32_t a = SlotType(SC::DishServer(SC::PanelDish(g_a)));
         UE_LOGI("[SATPANELS] host eject-own-server %s -- A's slot %d, B's slot %d", b >= 0 ? "PASS" : "FAIL", a, b);
@@ -158,12 +200,23 @@ void Slot1Tick() {
     const uint64_t t = Now() - g_startAt;
     if (g_step == 0 && t >= 10000u) {
         g_step = 1;
-        UE_LOGI("[SATPANELS] slot1 at A types sv.eject: use=%d type=%d", Use(g_a) ? 1 : 0, Type(L"sv.eject") ? 1 : 0);
-    } else if (g_step == 1 && t >= 13000u) {
+        const bool entered = Enter(g_a);
+        UE_LOGI("[SATPANELS] slot1 enters A: call=%d", entered ? 1 : 0);
+    } else if (g_step == 1 && t >= 12000u) {
         g_step = 2;
+        const bool inside = Inside();
+        const bool typed = Type(L"sv.eject");
+        UE_LOGI("[SATPANELS] slot1 inside A=%d, types sv.eject: type=%d", inside ? 1 : 0, typed ? 1 : 0);
+    } else if (g_step == 2 && t >= 15000u) {
+        g_step = 3;
         const std::wstring log = Screen();
         Verdict("eject-answers-A", Has(log, L"Floppy slot is empty"), log);
-        UE_LOGI("[SATPANELS] slot1 at A types sd.cal: type=%d", Type(L"sd.cal") ? 1 : 0);
+        const bool typed = Type(L"sd.calall");
+        UE_LOGI("[SATPANELS] slot1 at A types sd.calall: type=%d", typed ? 1 : 0);
+    } else if (g_step == 3 && t >= 60000u) {
+        g_step = 4;
+        Leave();
+        UE_LOGI("[SATPANELS] slot1 leaves A");
     }
 }
 
@@ -176,18 +229,38 @@ void Slot2Tick() {
     const uint64_t t = Now() - g_startAt;
     if (g_step == 0 && t >= 15000u) {
         g_step = 1;
-        UE_LOGI("[SATPANELS] slot2 at B types sv.hash: use=%d type=%d", Use(g_b) ? 1 : 0, Type(L"sv.hash") ? 1 : 0);
-    } else if (g_step == 1 && t >= 20000u) {
+        const bool entered = Enter(g_a);
+        UE_LOGI("[SATPANELS] slot2 enters A, which slot 1 uses: call=%d", entered ? 1 : 0);
+    } else if (g_step == 1 && t >= 18000u) {
         g_step = 2;
-        const std::wstring log = Screen();
-        Verdict("B-not-blocked", Has(log, L"sv.hash") && !Has(log, L"The terminal is busy"), log);
-    } else if (g_step == 2 && t >= 23000u) {
+        const bool inside = Inside();
+        UE_LOGI("[SATPANELS] slot2 same-console-blocked %s -- inside an interface=%d", inside ? "FAIL" : "PASS",
+                inside ? 1 : 0);
+        if (inside) Leave();
+    } else if (g_step == 2 && t >= 19000u) {
         g_step = 3;
-        Use(g_a);
-    } else if (g_step == 3 && t >= 24000u) {
+        const bool entered = Enter(g_b);
+        UE_LOGI("[SATPANELS] slot2 enters B: call=%d", entered ? 1 : 0);
+    } else if (g_step == 3 && t >= 22000u) {
         g_step = 4;
+        const bool inside = Inside();
+        UE_LOGI("[SATPANELS] slot2 other-console-free %s -- inside B=%d", inside ? "PASS" : "FAIL", inside ? 1 : 0);
+        const bool typed = Type(L"sd.calch");
+        UE_LOGI("[SATPANELS] slot2 at B types sd.calch: type=%d", typed ? 1 : 0);
+    } else if (g_step == 4 && t >= 26000u) {
+        g_step = 5;
         const std::wstring log = Screen();
-        Verdict("sees-A", Has(log, L"sd.cal") && Has(log, L"recision"), log);
+        Verdict("info-at-same-time", Has(log, L"sd.calch") && !Has(log, L"is running") && !Has(log, L"busy"), log);
+        const bool typed = Type(L"sd.calall");
+        UE_LOGI("[SATPANELS] slot2 at B types sd.calall: type=%d", typed ? 1 : 0);
+    } else if (g_step == 5 && t >= 29000u) {
+        g_step = 6;
+        const std::wstring log = Screen();
+        Verdict("mutating-locked", Has(log, L"is running sd.calall"), log);
+    } else if (g_step == 6 && t >= 32000u) {
+        g_step = 7;
+        Leave();
+        UE_LOGI("[SATPANELS] slot2 leaves B");
     }
 }
 

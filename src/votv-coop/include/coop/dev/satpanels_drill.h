@@ -1,14 +1,14 @@
 // coop/dev/satpanels_drill.h -- [dev] each SAT console its own terminal, every player's (VOTVCOOP_SATPANELS_DRILL=1,
 // three peers). Every peer picks the same two consoles, A and B: the first two of the desk's panels whose dishes
-// have different servers.
-//   HOST    -- once slot 2's world is ready: puts a disc into B's server if its slot is empty. At +30 s shows B and
-//              must read slot 2's sv.hash there and no sd.cal; at +35 s raises serverBroken on its own terminal for
-//              A's server, and at +40 s must read the alert on the ROOT console and not on B; at +45 s B's server
-//              must still hold its disc.
-//   SLOT 1  -- 10 s after slot 2's puppet is here: at A, sv.eject must answer A's empty slot; then sd.cal, which
-//              holds A busy for half a minute.
-//   SLOT 2  -- 15 s after its world is ready: at B, sv.hash must answer, not "The terminal is busy"; 8 s later
-//              at A, it must read A's sd.cal and its precision lines.
+// have different servers. A player enters a console as its panel's use does (actionOptionIndex 4 on its box).
+//   SLOT 1  -- 10 s after slot 2's puppet is here: enters A; sv.eject must answer A's empty slot; then sd.calall,
+//              which holds A for a while; leaves A at +60 s.
+//   SLOT 2  -- from 15 s after its world is ready: entering A must be refused (slot 1 uses it); entering B must
+//              hold; at B, sd.calch must answer while A runs, and sd.calall must be refused with A's name.
+//   HOST    -- from slot 2's world-ready: puts a disc into B's server if its slot is empty; at +35 s must read A's
+//              sd.calall on A and slot 2's sd.calch on B and not the sd.calall there; at +40 s raises serverBroken
+//              for A's server on its own terminal, and at +45 s must read it on the ROOT console and not on B; at
+//              +50 s B's server must still hold its disc.
 // Lines `[SATPANELS] <peer> <check> PASS|FAIL`, and `[SATPANELS] host DONE`.
 
 #pragma once
