@@ -46,7 +46,7 @@ std::unordered_map<uint32_t, bool> g_lifted;
 uint64_t g_rowsLifted = 0, g_rowsDropped = 0;
 // CLIENT: the switches applied, and the ones with no copy here.
 uint64_t g_applied = 0, g_missing = 0;
-// CLIENT: the first few lifted copies, watched for the log (their height, gravity and simulation every 2 s).
+// The first few lifted bodies, watched for the log on either role (their height, gravity and simulation every 2 s).
 std::vector<uint32_t> g_watch;
 uint64_t g_nextWatch = 0;
 
@@ -130,6 +130,7 @@ void HostScan() {
             if (!E::IsComponentGravityEnabled(comp) && E::IsPrimitiveComponent(comp)) {
                 g_lifted[eid] = true;
                 lift.push_back(eid);
+                if (g_watch.size() < 3) g_watch.push_back(eid);
             }
         }
     }
@@ -153,7 +154,7 @@ void HostScan() {
 
 void Install(N::Session* session) { g_session = session; }
 
-void ClientWatch() {
+void WatchLog() {
     const uint64_t now = Now();
     if (g_watch.empty() || now < g_nextWatch) return;
     g_nextWatch = now + 2000;
@@ -168,7 +169,8 @@ void ClientWatch() {
 }
 
 void Tick() {
-    if (g_session && g_session->role() == N::Role::Client) { ClientWatch(); return; }
+    WatchLog();
+    if (g_session && g_session->role() == N::Role::Client) return;
     if (!g_session || g_session->role() != N::Role::Host || !g_session->connected()) return;
     const uint64_t now = Now();
     if (now < g_nextScan) return;
