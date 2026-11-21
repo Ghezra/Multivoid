@@ -437,6 +437,9 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/hunger_sleep_probe.cpp
     src/coop/dev/beer_probe.cpp
     src/coop/dev/progress_probe.cpp
+    src/coop/dev/laptopboot_probe.cpp
+    src/coop/dev/satlog_probe.cpp
+    src/coop/dev/hallfood_probe.cpp
     src/coop/dev/sit_probe.cpp
     src/coop/dev/join_stall_probe.cpp
     src/coop/dev/kdisc_watch.cpp

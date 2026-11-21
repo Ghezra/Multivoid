@@ -140,6 +140,9 @@
 #include "coop/dev/hunger_sleep_probe.h"   // [dev] a hungry player tries to sleep
 #include "coop/dev/beer_probe.h"   // [dev] the beer's nausea on a client, every peer watching
 #include "coop/dev/progress_probe.h"   // [dev] a timed tool's progress bar on a client, for the frame rate
+#include "coop/dev/laptopboot_probe.h"   // [dev] a joiner boots the laptop with a disc in it
+#include "coop/dev/satlog_probe.h"   // [dev] each peer's SAT console screen
+#include "coop/dev/hallfood_probe.h"   // [dev] a food hallucination, seen from every peer
 #include "coop/dev/sit_probe.h"   // the chair sit probe
 #include "coop/dev/join_stall_probe.h"   // [dev] a client's game thread held still while it joins
 #include "coop/dev/kdisc_watch.h"   // [dev] every floppy disc's place, parent and physics
@@ -559,6 +562,9 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::hunger_sleep_probe::Tick(&session);  // [dev] a hungry player tries to sleep (a latched read when off)
     coop::dev::beer_probe::Tick(&session);  // [dev] the beer's nausea on a client (a latched read when off)
     coop::dev::progress_probe::Tick(&session);  // [dev] a progress bar on a client (a latched read when off)
+    coop::dev::laptopboot_probe::Tick(&session);  // [dev] a joiner's laptop boot (a latched read when off)
+    coop::dev::satlog_probe::Tick();  // [dev] each peer's SAT console screen (a latched read when off)
+    coop::dev::hallfood_probe::Tick(&session);  // [dev] a food hallucination (a latched read when off)
     coop::dev::sit_probe::Tick(&session);  // a client sits on a chair; the host looks
     coop::dev::kdisc_watch::Tick(&session);  // [dev] VOTVCOOP_KDISC_WATCH
     coop::dev::kfollow_probe::Tick(&session);  // [dev] VOTVCOOP_KFOLLOW_PROBE
