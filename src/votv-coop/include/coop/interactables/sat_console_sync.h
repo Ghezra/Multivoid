@@ -7,12 +7,16 @@
 // game's class for each typist, by the typist's identity, never constructed or shown, and runs the line
 // there, so the command happens once, in the host's world, and its effects cross by their own lanes. Each
 // line that terminal prints goes back to its typist, who writes it into its own terminal, and so does its
-// busy level. A typist that leaves mid-command while another client keeps the session leaves the command
+// busy level. The line also goes to every other client and onto the host's own terminal, and a line the
+// host's own terminal prints goes to every client, so every player's screen shows what any player ran
+// there. A typist that leaves mid-command while another client keeps the session leaves the command
 // running, and back, is bound to its terminal again as its world is ready; the last client's leave ends
-// the session, and every terminal is discarded, its command stopping there. MTA sends a command the client does not own to the server, which runs it as that player
-// and echoes to that player alone (reference/mtasa-blue/Client/mods/deathmatch/ClientCommands.cpp:91,
-// reference/mtasa-blue/Server/mods/deathmatch/logic/CGame.cpp:2406); MTA also runs the client's own
-// handlers first (:60), which here would run the one game handler twice, so a line runs on one machine.
+// the session, and every terminal is discarded, its command stopping there. MTA sends a command the client
+// does not own to the server, which runs it as that player and echoes to that player alone
+// (reference/mtasa-blue/Client/mods/deathmatch/ClientCommands.cpp:91,
+// reference/mtasa-blue/Server/mods/deathmatch/logic/CGame.cpp:2406); here the echo goes to every player, as
+// the game's one terminal shows every panel's lines. MTA also runs the client's own handlers first (:60),
+// which here would run the one game handler twice, so a line runs on one machine.
 #pragma once
 
 #include <cstddef>
@@ -41,6 +45,7 @@ struct Counts {
     uint64_t linesSent = 0;
     uint64_t linesRun = 0;
     uint64_t linesReturned = 0;
+    uint64_t linesShown = 0;   // HOST: lines sent to a client that did not type them
     uint64_t rebinds = 0;
     uint64_t busyRebinds = 0;
 };
