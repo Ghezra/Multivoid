@@ -167,6 +167,7 @@
 #include "coop/dev/deathhand_probe.h"   // [dev] a player dies with an item in its hand, its hand logged
 #include "coop/dev/genp_probe.h"   // [dev] a portable generator fuelled and started, logged on every peer
 #include "coop/dev/carry_probe.h"      // [dev] a prop picked up and let go, every peer logging it
+#include "coop/dev/door_census.h"      // [dev] every door's state on every peer
 #include "coop/dev/firedmg_probe.h"    // [dev] a burning client, every player's health through the burn
 #include "coop/dev/reelspam_probe.h"   // [dev] the tape recorder's eject spammed, reels counted on every peer
 #include "coop/dev/slip_probe.h"   // [dev] a player slips on a soap, its health and death logged on every peer
@@ -579,6 +580,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::deathhand_probe::Tick(&session);  // [dev] the hand across a death (a latched read when off)
     coop::dev::genp_probe::Tick(&session);     // [dev] the portable generator (a latched read when off)
     coop::dev::carry_probe::Tick(&session);  // [dev] the carry (a latched read when off)
+    coop::dev::door_census::Tick(&session);  // [dev] the door census (a latched read when off)
     coop::dev::firedmg_probe::Tick(&session);  // [dev] the fire damage (a latched read when off)
     coop::dev::reelspam_probe::Tick(&session);  // [dev] the reel eject spam (a latched read when off)
     coop::dev::slip_probe::Tick(&session);    // [dev] the soap slip (a latched read when off)
