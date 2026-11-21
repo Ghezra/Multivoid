@@ -34,6 +34,8 @@ namespace OI = ue_wrap::object_index;
 
 // The event's own lift: setPhysicsLinearVelocity((0, 0, 10), bAddToCurrent true).
 constexpr float kLiftCmPerSec = 10.f;
+// A lifted copy rising slower than this has stopped, and is set rising again.
+constexpr float kStoppedCmPerSec = 2.f;
 // How often the host looks while a trigger holds bodies, and how long it keeps looking once nothing it told is off.
 constexpr uint64_t kScanMs = 200;
 constexpr uint64_t kQuietMs = 10000;
@@ -147,7 +149,8 @@ void HostScan() {
             if (!comp || !R::IsLive(comp)) continue;
             const uint32_t eid = EidOf(R::OuterOf(comp));
             if (!eid || g_lifted.count(eid)) continue;
-            if (!E::IsComponentGravityEnabled(comp) && E::IsPrimitiveComponent(comp)) {
+            // A body that does not simulate here (a frozen prop) is not moved by the float: it is not told.
+            if (!E::IsComponentGravityEnabled(comp) && E::IsComponentSimulatingPhysics(comp)) {
                 g_lifted[eid] = true;
                 lift.push_back(eid);
                 if (g_watch.empty()) g_watchUntil = Now() + 120000;
@@ -202,6 +205,9 @@ void Relift() {
         void* const root = actor ? E::RootComponentOf(actor) : nullptr;
         if (!root || coop::remote_prop::DrivingSlotOf(actor) >= 0) continue;
         if (E::IsComponentGravityEnabled(root)) E::SetComponentGravity(root, false);
+        // Only a copy that has stopped (a coast's end left it asleep): one still rising keeps its own speed.
+        ue_wrap::FVector lin{}, ang{};
+        if (E::GetActorRootPhysicsVelocity(actor, lin, ang) && lin.Z > kStoppedCmPerSec) continue;
         E::SetComponentLinearVelocity(root, 0.f, 0.f, kLiftCmPerSec);
         ++g_relifts;
     }

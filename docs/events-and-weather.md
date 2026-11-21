@@ -268,11 +268,11 @@ these on the peers' own copies, and its red arms withhold the send, the judge an
 The Ariral's float (`trigger_agrav_C`, the `agrav` event) runs on the host alone: five seconds in, the trigger gathers the
 physics bodies within 100 m of the host's camera into its `buf`, shuffles them, turns each one's gravity off and sets it
 rising at 10 cm/s with a random spin, and after its time turns each back on, one a tick. A client ran none of it, so only
-the host saw the room float. The host now watches the gravity of each body in a live trigger's `buf` and of each it has
+the host saw the room float. The host now watches the gravity of each body in a live trigger's `buf` that simulates (a frozen prop does not move) and of each it has
 told, five times a second while any is off or the buffer has just changed and once a second otherwise, and sends each
 switch as an `AgravState` row by host element id: lifted when it goes off, dropped when it comes back on. A client
 switches its own copy's gravity the same way and lifts it at the event's speed, and once a second sets each lifted copy
-no drive row holds rising again (a host coast of a body the float knocked ends with its copy asleep where the host's
+that has stopped and no drive row holds rising again (a host coast of a body the float knocked ends with its copy asleep where the host's
 was); a dropped copy, once it rests, asks the
 host where its prop rests (`coop/props/prop_rest_sync`), so every copy comes down where the host's did. The spin is not
 sent: each copy turns by its own `[?]` (`coop/world/agrav_sync`; `coop/dev/event_probe` with `agrav`).
