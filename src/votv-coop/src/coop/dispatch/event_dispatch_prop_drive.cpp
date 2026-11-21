@@ -46,6 +46,7 @@
 #include "coop/player/chair_seat.h"
 #include "coop/interactables/battery_charger_sync.h"
 #include "coop/interactables/car_charger_sync.h"
+#include "coop/world/agrav_sync.h"
 #include "coop/props/bucket_sync.h"
 #include "coop/props/prop_rest_sync.h"
 #include "coop/world/sound_relay.h"
@@ -719,6 +720,19 @@ bool HandlePropDriveEvent(net::Session& session,
             }
             ::coop::battery_charger_sync::OnState(p);
         }
+        break;
+    }
+    case net::ReliableKind::AgravState: {
+        // HOST->ALL (coop/world/agrav_sync). Exact length, a count within the rows.
+        net::AgravStatePayload p{};
+        if (session.role() == net::Role::Host || msg.payloadLen != sizeof(p)) {
+            UE_LOGW("event_feed: an AgravState the wrong way or the wrong length from slot %d -- dropping",
+                    msg.senderPeerSlot);
+            break;
+        }
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.count == 0 || p.count > net::kAgravEidsMax || p.lifted > 1) break;
+        ::coop::agrav_sync::OnState(p);
         break;
     }
     case net::ReliableKind::CarChargerState:

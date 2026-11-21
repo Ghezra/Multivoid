@@ -263,6 +263,18 @@ world-ready, past four a second per sender, or naming no pipe or another op is d
 The flood drill (`coop/dev/flood_drill`: `rig: VERDICT flood-burst`, `-mend`, `-far`, `-join`, `-mendold`) reads each of
 these on the peers' own copies, and its red arms withhold the send, the judge and the joiner's replay `[?]`.
 
+### The Ariral's float
+
+The Ariral's float (`trigger_agrav_C`, the `agrav` event) runs on the host alone: five seconds in, the trigger gathers the
+physics bodies within 100 m of the host's camera into its `buf`, shuffles them, turns each one's gravity off and sets it
+rising at 10 cm/s with a random spin, and after its time turns each back on, one a tick. A client ran none of it, so only
+the host saw the room float. The host now watches the gravity of each body in a live trigger's `buf` and of each it has
+told, five times a second while any is off or the buffer has just changed and once a second otherwise, and sends each
+switch as an `AgravState` row by host element id: lifted when it goes off, dropped when it comes back on. A client
+switches its own copy's gravity the same way and lifts it at the event's speed; a dropped copy, once it rests, asks the
+host where its prop rests (`coop/props/prop_rest_sync`), so every copy comes down where the host's did. The spin is not
+sent: each copy turns by its own `[?]` (`coop/world/agrav_sync`; `coop/dev/event_probe` with `agrav`).
+
 ### Sounds played at a place
 
 `PlaySoundAtLocation` is a local one-shot, so a sound a Blueprint plays at a place on one machine is heard there alone:
@@ -342,6 +354,7 @@ ending. Tests:
 | the pyramid's brain | the host | timers cancelled on the mirror; the gather relayed |
 | the base alarm | whoever transitions | polled; the host canonicalises |
 | the basement's pipes and flood | the host | a client's `addDamage`, `addWater` and `setLevel` refused outside the lane's apply; the bit and the level sent as they change; a client's repair asked |
+| the Ariral's float | the host | the bodies its trigger lifts and drops sent as each switches; a client's copy switched the same way and put where the host's rests |
 | emails, the daily task | the host | one reflected append; a change-hash poll |
 
 ## Wire messages
@@ -359,6 +372,7 @@ ending. Tests:
 | `AlarmState` | either role | the alarm's active flag |
 | `EmailAppend`, `EmailDelete`, `TaskNewState` | the host to all; either role; the host to all | an email; a deletion; the task |
 | `FloodState`, `FloodIntent` | the host to all; a client to the host | a pipe's `damaged` or the flood's level; a client's repair |
+| `AgravState` | the host to all | the props the Ariral's float lifted or dropped, by host element id |
 | `SoundAt` | either role, relayed by the host | a sound's and attenuation's paths, place, volume and pitch |
 
 ## Late join
@@ -411,5 +425,6 @@ bit and the flood's level are sent to the joiner at its ready edge, and the host
 | the ambient UFOs | `coop/world/ufo_sync`, `coop/world/spawn_authority` (the gamemode's five timers); `harness/autotest/autotest_ufo.cpp` (`ufo_drill`) |
 | the alarm, emails, the task | `coop/world/alarm_sync`, `coop/world/email_sync`, `coop/world/daily_task_sync`, `ue_wrap/world/email` |
 | the basement flood | `coop/world/flood_sync`; `coop/dev/flood_drill` |
+| the Ariral's float | `coop/world/agrav_sync`, `ue_wrap/engine/engine_physics` (the gravity switch); `coop/dev/event_probe` |
 | sounds played at a place | `coop/world/sound_relay`; `coop/dev/hit_probe` |
 | tests | `harness/autotest/autotest_weather.cpp`, `autotest_fog_probe.cpp`, `autotest_eventforce.cpp`, `autotest_alarmforce.cpp`, `autotest_piramidforce.cpp`, `autotest_vent_crawler.cpp`; the event drill, `coop/dev/event_drill`; the world roll drill, `coop/dev/world_roll_drill` |

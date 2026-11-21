@@ -234,6 +234,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::ChargerState:
     case ReliableKind::ChargerGive:
     case ReliableKind::CarChargerState:
+    case ReliableKind::AgravState:
     case ReliableKind::KerfurColorState:
     case ReliableKind::PrintCheck:
     case ReliableKind::PrintNotice:

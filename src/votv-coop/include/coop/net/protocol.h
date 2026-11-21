@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 345;
+inline constexpr uint16_t kProtocolVersion = 346;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1660,6 +1660,12 @@ enum class ReliableKind : uint16_t {
     // row answers. Never relayed. Not pre-world. CarChargerIntentPayload.
     CarChargerState = 318,
     CarChargerIntent = 319,
+    // The Ariral's float (trigger_agrav_C, coop/world/agrav_sync). HOST->ALL: the props whose gravity the host's event
+    // turned off (each lifted at the event's own 10 cm/s) or back on, by host element id, as the host sees each switch;
+    // a client switches its own copy the same way and asks the host where a dropped one rests. Never relayed. Not
+    // pre-world. Late join: none, the float lasts seconds and its props rest where the joiner's world loads them.
+    // AgravStatePayload.
+    AgravState = 320,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2785,6 +2791,16 @@ struct CarChargerIntentPayload {
     CarChargerRow row;  // 16 -- the charger's clips as this client's copy holds them now
 };
 static_assert(sizeof(CarChargerIntentPayload) == 16, "CarChargerIntentPayload must be 16 bytes");
+
+// AgravState. `lifted` 1: these props' gravity went off (lift them); 0: it came back on (drop them).
+inline constexpr int kAgravEidsMax = 120;
+struct AgravStatePayload {
+    uint8_t  lifted;                // 1 -- 1 lifted, 0 dropped
+    uint8_t  _pad;                  // 1 -- zero
+    uint16_t count;                 // 2 -- 1..kAgravEidsMax
+    uint32_t eid[kAgravEidsMax];    // 480 -- host element ids; only the first `count` are read
+};
+static_assert(sizeof(AgravStatePayload) == 484, "AgravStatePayload must be 484 bytes");
 
 // The 3D printer's lane (coop/props/printer_sync). A model is its folder's name, UTF-8, 1 to 95 bytes, not terminated;
 // a printed object is the host's element id of it, with its save key (an FName as text, up to 63 bytes) for a joiner's
