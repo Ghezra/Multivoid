@@ -20,6 +20,7 @@
 #include "coop/interactables/tape_caddy_sync.h"
 #include "coop/world/daily_task_sync.h"
 #include "coop/dev/perf_probe.h"
+#include "coop/dev/satperf_probe.h"  // [dev] the SAT console lane's tick cost
 #include "ue_wrap/core/walk_timer.h"  // per-sync [WALK-TIME] attribution (diagnostic)
 
 namespace coop::subsystems::desk {
@@ -52,7 +53,7 @@ void Tick() {
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:dish"}; coop::dish_sync::Tick(); }  // host pose sweep (4Hz) / client apply + park latch / calib diff-poll (1Hz)
     { PP::Scope _s{PP::Bucket::Interactable}; coop::download_arm_sync::Tick(); }  // the desk watches' name resolve
     { PP::Scope _s{PP::Bucket::Interactable}; coop::dish_hashcode_sync::Tick(); }  // host: the marked codes, a joiner's owed set / client: rows waiting for their dish
-    { PP::Scope _s{PP::Bucket::Interactable}; coop::sat_console_sync::Tick(); }  // owed blobs, the consoles' lines and flags, the console shown here, and a terminal whose world is gone
+    { PP::Scope _s{PP::Bucket::Interactable}; const uint64_t t0 = coop::dev::satperf_probe::Start(); coop::sat_console_sync::Tick(); coop::dev::satperf_probe::Stop(t0); }  // owed blobs, the consoles' lines and flags, the console shown here, and a terminal whose world is gone
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:reel"}; coop::tape_caddy_sync::Tick(); }  // 4Hz slot sentinel poll (both peers) + host 1Hz corrector / client exact-snap apply
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:task"}; coop::daily_task_sync::Tick(); }  // host 1Hz taskNew change-hash poll (fires a few times per game-day)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:desk_input"}; coop::desk_input_sync::Tick(); }  // 250ms input-field poll -> claim-free DeskInput deltas + cooldown charge/scan classification
