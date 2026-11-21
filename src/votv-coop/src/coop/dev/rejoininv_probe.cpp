@@ -11,8 +11,8 @@
 // own to tell from the host's. EVERY PEER, at 15 s and every 10 s after (600 s at most): its life (connects seen in this
 // process), its store's record count, its hand's class, each record's class and key, and how many records are of the
 // host's two classes (`[REJOININV]`). HOST, every second: a slot's connect and leave, with that slot's join count; 40 s
-// after a slot's second join, `[REJOININV] host: slot N rejoin logged`. CLIENT, 40 s into each life:
-// `[REJOININV] client: life N logged`.
+// after a slot's second join, a line that the slot's rejoin is logged. CLIENT, 40 s into each life: a line that the
+// life is logged.
 
 #include "coop/dev/rejoininv_probe.h"
 
