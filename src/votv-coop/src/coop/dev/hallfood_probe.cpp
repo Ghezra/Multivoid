@@ -8,6 +8,7 @@
 #include "coop/element/registry.h"
 #include "coop/net/session.h"
 #include "coop/player/players_registry.h"
+#include "ue_wrap/actors/vitals.h"
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
@@ -39,12 +40,16 @@ bool g_called = false;
 void CallHallFood(const char* who) {
     void* const gm = ue_wrap::world_singleton::Gamemode();
     void* const fn = gm ? R::FindFunction(R::ClassOf(gm), L"addHallFood") : nullptr;
+    // addHallFood runs only below 20 food, with the chance 1 - food/20: at 0 it always runs. Back to 100 after.
+    const bool starved = ue_wrap::vitals::Write(ue_wrap::vitals::Field::Food, 0.f);
     int ok = 0;
     for (int i = 0; fn && i < 5; ++i) {
         ue_wrap::ParamFrame f(fn);
         if (f.valid() && ue_wrap::Call(gm, f)) ++ok;
     }
-    UE_LOGI("[HALLFOOD] %s calls addHallFood five times: gamemode=%p fn=%p ran=%d", who, gm, fn, ok);
+    const bool fed = ue_wrap::vitals::Write(ue_wrap::vitals::Field::Food, 100.f);
+    UE_LOGI("[HALLFOOD] %s calls addHallFood five times at 0 food (set=%d, back to 100=%d): gamemode=%p fn=%p ran=%d",
+            who, starved ? 1 : 0, fed ? 1 : 0, gm, fn, ok);
 }
 
 struct Census {
