@@ -267,15 +267,17 @@ these on the peers' own copies, and its red arms withhold the send, the judge an
 
 The Ariral's float (`trigger_agrav_C`, the `agrav` event) runs on the host alone: five seconds in, the trigger gathers
 the physics bodies within 100 m of the host's camera into its `buf`, shuffles them, turns each one's gravity off and
-sets it rising at 10 cm/s with a random spin, and after its time turns each back on, one a tick. A client ran none of
-it, so only the host saw the room float. The host now watches the gravity of each body in a live trigger's `buf` that
-simulates (a frozen prop does not move) and of each it has told, five times a second while any is off or the buffer has
-just changed and once a second otherwise, and sends each switch as an `AgravState` row by host element id: lifted when
-it goes off, dropped when it comes back on. A client switches its own copy's gravity the same way and lifts it at the
-event's speed, and once a second sets each lifted copy that has stopped and no drive row holds rising again (a host
-coast of a body the float knocked ends with its copy asleep where the host's was); a dropped copy, once it rests, asks
-the host where its prop rests (`coop/props/prop_rest_sync`), so every copy comes down where the host's did. The spin is
-not sent: each copy turns by its own `[?]` (`coop/world/agrav_sync`; `coop/dev/event_probe` with `agrav`).
+sets it rising at 10 cm/s (added to its own velocity) with a random spin, and after its time turns each back on, one a
+tick. A client ran none of it, so only the host saw the room float. The host now watches each body in a live trigger's
+`buf` that simulates (a frozen prop does not move), five times a second while any waits or is lifted and once a second
+otherwise: one whose gravity went off and that it then sees rise 3 cm is sent as an `AgravState` lifted row with the
+speed it rose at, and one sent whose gravity comes back on as a dropped row, by host element id; a body that never rises
+(blocked, or asleep) is not sent. A client switches its own copy's gravity the same way and sets it rising at the host's
+speed, and once a second sets a lifted copy rising again when it has stopped and no drive row holds it (a host coast of
+a body the float knocked ends with its copy asleep where the host's was); a dropped copy, once it rests, asks the host
+where its prop rests (`coop/props/prop_rest_sync`), so every copy comes down where the host's did. The spin is not sent:
+each copy turns by its own `[?]` (`coop/world/agrav_sync`; `coop/dev/event_probe` with `agrav`, and
+`VOTVCOOP_AGRAV_TRACE=1` for each body's height at its lift and drop on every peer).
 
 ### Sounds played at a place
 

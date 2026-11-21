@@ -731,7 +731,7 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         std::memcpy(&p, msg.payload, sizeof(p));
-        if (p.count == 0 || p.count > net::kAgravEidsMax || p.lifted > 1) break;
+        if (p.count == 0 || p.count > net::kAgravRowsMax || p.lifted > 1) break;
         ::coop::agrav_sync::OnState(p);
         break;
     }

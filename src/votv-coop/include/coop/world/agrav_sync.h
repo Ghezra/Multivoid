@@ -3,11 +3,13 @@
 // The event runs on the host alone (event_fire_policy: its pick is random and its props are the host's). Five seconds
 // into it the trigger gathers the physics bodies within 100 m of the host's camera into its `buf`, shuffles them, and for
 // each turns gravity off and sets it rising at 10 cm/s with a random spin; after its time it turns each back on, one a
-// tick. A client ran none of it, so only the host saw the room float. The HOST now watches the gravity of each body in a
-// live trigger's `buf` and of each it has told: a switch off is an AgravState `lifted` row, a switch back on a `dropped`
-// one, by host element id. A CLIENT switches its own copy's gravity the same way, lifts it at the event's own speed, and
-// once a dropped copy rests asks the host where its prop rests (coop/props/prop_rest_sync), so every copy comes down
-// where the host's did. Game thread.
+// tick. A client ran none of it, so only the host saw the room float. The HOST now watches each simulating body in a live
+// trigger's `buf`: one whose gravity went off and that it then sees rise 3 cm is an AgravState `lifted` row with the
+// speed it rose at (one that never rises, blocked or asleep, is not told), and one told whose gravity comes back on a
+// `dropped` row, by host element id. A CLIENT switches its own copy's gravity the same way and sets it rising at the
+// host's speed, sets it rising again once a second when it has stopped and no drive row holds it, and once a dropped
+// copy rests asks the host where its prop rests (coop/props/prop_rest_sync), so every copy comes down where the host's
+// did. Game thread.
 
 #pragma once
 

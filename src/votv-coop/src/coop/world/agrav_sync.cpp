@@ -18,10 +18,9 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace coop::agrav_sync {
@@ -32,8 +31,10 @@ namespace R  = ue_wrap::reflection;
 namespace E  = ue_wrap::engine;
 namespace OI = ue_wrap::object_index;
 
-// The event's own lift: setPhysicsLinearVelocity((0, 0, 10), bAddToCurrent true).
-constexpr float kLiftCmPerSec = 10.f;
+// A body whose gravity went off is told lifted once it has risen this far on the host, at the speed it rose; one that
+// has not within kRiseWaitMs (blocked, or asleep) is not told.
+constexpr float kRiseCm = 3.f;
+constexpr uint64_t kRiseWaitMs = 10000;
 // A lifted copy rising slower than this has stopped, and is set rising again.
 constexpr float kStoppedCmPerSec = 2.f;
 // How often the host looks while a trigger holds bodies, and how long it keeps looking once nothing it told is off.
@@ -46,19 +47,23 @@ uint64_t g_quietSince = 0;
 // The `buf` a trigger last held (its data pointer and count): a new gather starts the scan again.
 const void* g_lastBuf = nullptr;
 int32_t g_lastNum = 0;
+
+// HOST: a body whose gravity went off, from where and when, until it is seen rising (then told) or the wait ends.
+struct Pending {
+    float z0;
+    uint64_t t0;
+};
+std::unordered_map<uint32_t, Pending> g_pending;
 // HOST: the bodies told lifted, by element id.
 std::unordered_map<uint32_t, bool> g_lifted;
 uint64_t g_rowsLifted = 0, g_rowsDropped = 0;
-// CLIENT: the switches applied, and the ones with no copy here.
-uint64_t g_applied = 0, g_missing = 0;
-// The first few lifted bodies, watched for the log on either role (their height, gravity and simulation every 2 s).
-std::vector<uint32_t> g_watch;
-uint64_t g_nextWatch = 0, g_watchUntil = 0;
-// CLIENT: the copies the host's float holds up. A drive row's end (a host coast of a body the float knocked) leaves its
-// copy asleep where the host's was, so once a second each one no row drives is set lifting again.
-std::unordered_set<uint32_t> g_clientLifted;
+
+// CLIENT: the copies the host's float holds up, each with the host's rise in cm/s. A drive row's end (a host coast of
+// a body the float knocked) leaves its copy asleep where the host's was, so once a second each one that has stopped,
+// and no row drives, is set rising again.
+std::unordered_map<uint32_t, float> g_clientLifted;
 uint64_t g_nextRelift = 0;
-uint64_t g_relifts = 0;
+uint64_t g_applied = 0, g_missing = 0, g_relifts = 0;
 
 uint64_t Now() { return ::GetTickCount64(); }
 
@@ -68,10 +73,10 @@ bool Trace() {
     return t;
 }
 
-void TraceOne(const char* what, uint32_t eid, void* actor) {
+void TraceOne(const char* what, uint32_t eid, void* actor, float vz) {
     if (!Trace() || !actor) return;
     ue_wrap::FVector at{};
-    if (E::TryGetActorLocation(actor, at)) UE_LOGI("[AGRAV] %s eid=%u z=%.1f", what, eid, at.Z);
+    if (E::TryGetActorLocation(actor, at)) UE_LOGI("[AGRAV] %s eid=%u z=%.1f vz=%.1f", what, eid, at.Z, vz);
 }
 
 uint32_t EidOf(void* actor) {
@@ -82,6 +87,11 @@ uint32_t EidOf(void* actor) {
 
 void* ActorOf(uint32_t eid) {
     return eid ? coop::element::LivePropActor(static_cast<coop::element::ElementId>(eid)) : nullptr;
+}
+
+float ZOf(void* actor) {
+    ue_wrap::FVector at{};
+    return actor && E::TryGetActorLocation(actor, at) ? at.Z : 0.f;
 }
 
 // A live trigger's `buf`: TArray<UPrimitiveComponent*>, read in place.
@@ -115,29 +125,34 @@ std::vector<void*> Triggers() {
     return out;
 }
 
-void Send(bool lifted, const std::vector<uint32_t>& eids) {
-    if (!g_session || eids.empty()) return;
-    for (size_t at = 0; at < eids.size(); at += N::kAgravEidsMax) {
+void Send(bool lifted, const std::vector<N::AgravRow>& rows) {
+    if (!g_session || rows.empty()) return;
+    for (size_t at = 0; at < rows.size(); at += N::kAgravRowsMax) {
         N::AgravStatePayload p{};
         p.lifted = lifted ? 1 : 0;
-        const size_t n = (eids.size() - at < static_cast<size_t>(N::kAgravEidsMax)) ? eids.size() - at
-                                                                                    : static_cast<size_t>(N::kAgravEidsMax);
+        const size_t n = (std::min)(rows.size() - at, static_cast<size_t>(N::kAgravRowsMax));
         p.count = static_cast<uint16_t>(n);
-        std::memcpy(p.eid, eids.data() + at, n * sizeof(uint32_t));
+        for (size_t i = 0; i < n; ++i) p.row[i] = rows[at + i];
         if (!g_session->SendReliable(N::ReliableKind::AgravState, &p, sizeof(p)))
             UE_LOGW("agrav_sync: an AgravState of %zu prop(s) was not sent", n);
     }
-    (lifted ? g_rowsLifted : g_rowsDropped) += eids.size();
-    UE_LOGI("agrav_sync: told %zu prop(s) %s (%llu lifted, %llu dropped in all)", eids.size(),
+    (lifted ? g_rowsLifted : g_rowsDropped) += rows.size();
+    UE_LOGI("agrav_sync: told %zu prop(s) %s (%llu lifted, %llu dropped in all)", rows.size(),
             lifted ? "lifted" : "dropped", static_cast<unsigned long long>(g_rowsLifted),
             static_cast<unsigned long long>(g_rowsDropped));
 }
 
+N::AgravRow Row(uint32_t eid, float vz) {
+    N::AgravRow r{};
+    r.eid = eid;
+    r.vz = static_cast<int16_t>(std::clamp(vz * 10.f, -32000.f, 32000.f));
+    return r;
+}
+
 void HostScan() {
-    const std::vector<void*> triggers = Triggers();
+    const uint64_t now = Now();
     bool fresh = false;
-    std::vector<uint32_t> lift, drop;
-    for (void* t : triggers) {
+    for (void* t : Triggers()) {
         const Buf b = BufOf(t);
         if (b.data != g_lastBuf || b.num != g_lastNum) {
             g_lastBuf = b.data;
@@ -147,60 +162,56 @@ void HostScan() {
         for (int32_t i = 0; i < b.num; ++i) {
             void* const comp = b.data[i];
             if (!comp || !R::IsLive(comp)) continue;
-            const uint32_t eid = EidOf(R::OuterOf(comp));
-            if (!eid || g_lifted.count(eid)) continue;
-            // A body that does not simulate here (a frozen prop) is not moved by the float: it is not told.
-            if (!E::IsComponentGravityEnabled(comp) && E::IsComponentSimulatingPhysics(comp)) {
-                g_lifted[eid] = true;
-                lift.push_back(eid);
-                if (g_watch.empty()) g_watchUntil = Now() + 120000;
-                if (g_watch.size() < 3) g_watch.push_back(eid);
-            }
+            void* const actor = R::OuterOf(comp);
+            const uint32_t eid = EidOf(actor);
+            if (!eid || g_lifted.count(eid) || g_pending.count(eid)) continue;
+            // A body that does not simulate here (a frozen prop) is not moved by the float.
+            if (!E::IsComponentGravityEnabled(comp) && E::IsComponentSimulatingPhysics(comp))
+                g_pending[eid] = Pending{ZOf(actor), now};
+        }
+    }
+    std::vector<N::AgravRow> lift, drop;
+    for (auto it = g_pending.begin(); it != g_pending.end();) {
+        void* const actor = ActorOf(it->first);
+        void* const root = actor ? E::RootComponentOf(actor) : nullptr;
+        const float rose = actor ? ZOf(actor) - it->second.z0 : 0.f;
+        const uint64_t waited = now - it->second.t0;
+        if (!root || E::IsComponentGravityEnabled(root) || waited > kRiseWaitMs) {
+            it = g_pending.erase(it);   // back on, gone, or never rose: nothing to tell
+        } else if (rose > kRiseCm && waited >= kScanMs) {
+            const float vz = rose * 1000.f / static_cast<float>(waited);
+            lift.push_back(Row(it->first, vz));
+            TraceOne("lift", it->first, actor, vz);
+            g_lifted[it->first] = true;
+            it = g_pending.erase(it);
+        } else {
+            ++it;
         }
     }
     for (auto it = g_lifted.begin(); it != g_lifted.end();) {
         void* const actor = ActorOf(it->first);
         void* const root = actor ? E::RootComponentOf(actor) : nullptr;
         if (!root || E::IsComponentGravityEnabled(root)) {
-            if (root) drop.push_back(it->first);
+            if (root) {
+                drop.push_back(Row(it->first, 0.f));
+                TraceOne("drop", it->first, actor, 0.f);
+            }
             it = g_lifted.erase(it);
         } else {
             ++it;
         }
     }
-    if (Trace()) {
-        for (uint32_t e : lift) TraceOne("lift", e, ActorOf(e));
-        for (uint32_t e : drop) TraceOne("drop", e, ActorOf(e));
-    }
     Send(true, lift);
     Send(false, drop);
-    const uint64_t now = Now();
-    if (fresh || !lift.empty() || !drop.empty() || !g_lifted.empty() || !g_quietSince) g_quietSince = now;
-}
-
-}  // namespace
-
-void Install(N::Session* session) { g_session = session; }
-
-void WatchLog() {
-    const uint64_t now = Now();
-    if (g_watch.empty() || now < g_nextWatch || (g_watchUntil && now > g_watchUntil)) return;
-    g_nextWatch = now + 2000;
-    for (uint32_t eid : g_watch) {
-        void* const actor = ActorOf(eid);
-        void* const root = actor ? E::RootComponentOf(actor) : nullptr;
-        ue_wrap::FVector at{};
-        if (!root || !E::TryGetActorLocation(actor, at)) continue;
-        UE_LOGI("agrav_sync: watch eid=%u z=%.1f gravity=%d simulating=%d", eid, at.Z,
-                E::IsComponentGravityEnabled(root) ? 1 : 0, E::IsComponentSimulatingPhysics(root) ? 1 : 0);
-    }
+    if (fresh || !lift.empty() || !drop.empty() || !g_lifted.empty() || !g_pending.empty() || !g_quietSince)
+        g_quietSince = now;
 }
 
 void Relift() {
     const uint64_t now = Now();
     if (g_clientLifted.empty() || now < g_nextRelift) return;
     g_nextRelift = now + 1000;
-    for (uint32_t eid : g_clientLifted) {
+    for (const auto& [eid, vz] : g_clientLifted) {
         void* const actor = ActorOf(eid);
         void* const root = actor ? E::RootComponentOf(actor) : nullptr;
         if (!root || coop::remote_prop::DrivingSlotOf(actor) >= 0) continue;
@@ -208,22 +219,26 @@ void Relift() {
         // Only a copy that has stopped (a coast's end left it asleep): one still rising keeps its own speed.
         ue_wrap::FVector lin{}, ang{};
         if (E::GetActorRootPhysicsVelocity(actor, lin, ang) && lin.Z > kStoppedCmPerSec) continue;
-        E::SetComponentLinearVelocity(root, 0.f, 0.f, kLiftCmPerSec);
+        E::SetComponentLinearVelocity(root, 0.f, 0.f, vz);
         ++g_relifts;
     }
 }
 
+}  // namespace
+
+void Install(N::Session* session) { g_session = session; }
+
 void Tick() {
-    WatchLog();
-    if (g_session && g_session->role() == N::Role::Client) {
+    if (!g_session) return;
+    if (g_session->role() == N::Role::Client) {
         Relift();
         return;
     }
-    if (!g_session || g_session->role() != N::Role::Host || !g_session->connected()) return;
+    if (g_session->role() != N::Role::Host || !g_session->connected()) return;
     const uint64_t now = Now();
     if (now < g_nextScan) return;
-    // Quiet (nothing told is off and the buffers have not changed for a while): look once a second for a new gather.
-    const bool quiet = g_lifted.empty() && g_quietSince && now - g_quietSince > kQuietMs;
+    // Quiet (nothing told or waiting, and the buffers unchanged for a while): look once a second for a new gather.
+    const bool quiet = g_lifted.empty() && g_pending.empty() && g_quietSince && now - g_quietSince > kQuietMs;
     g_nextScan = now + (quiet ? 1000 : kScanMs);
     if (quiet) {
         for (void* t : Triggers()) {
@@ -237,35 +252,33 @@ void Tick() {
 
 void OnState(const N::AgravStatePayload& p) {
     const bool lifted = p.lifted != 0;
-    int done = 0, missing = 0, simulating = 0;
-    for (int i = 0; i < p.count && i < N::kAgravEidsMax; ++i) {
-        void* const actor = ActorOf(p.eid[i]);
+    int done = 0, missing = 0;
+    for (int i = 0; i < p.count && i < N::kAgravRowsMax; ++i) {
+        const uint32_t eid = p.row[i].eid;
+        const float vz = static_cast<float>(p.row[i].vz) / 10.f;
+        void* const actor = ActorOf(eid);
         void* const root = actor ? E::RootComponentOf(actor) : nullptr;
         if (!root || !E::IsPrimitiveComponent(root)) { ++missing; continue; }
-        if (E::IsComponentSimulatingPhysics(root)) ++simulating;
-        TraceOne(lifted ? "lift" : "drop", p.eid[i], actor);
+        TraceOne(lifted ? "lift" : "drop", eid, actor, vz);
         E::SetComponentGravity(root, !lifted);
         if (lifted) {
-            if (g_watch.empty()) g_watchUntil = Now() + 120000;
-            if (g_watch.size() < 3) g_watch.push_back(p.eid[i]);
-            g_clientLifted.insert(p.eid[i]);
-            E::SetComponentLinearVelocity(root, 0.f, 0.f, kLiftCmPerSec);
+            g_clientLifted[eid] = vz;
+            E::SetComponentLinearVelocity(root, 0.f, 0.f, vz);
         } else {
-            g_clientLifted.erase(p.eid[i]);
+            g_clientLifted.erase(eid);
             coop::prop_rest_sync::NoteLocalMove(actor);
         }
         ++done;
     }
     g_applied += done;
     g_missing += missing;
-    UE_LOGI("agrav_sync: the host %s %d prop(s) here (%d simulating, %d with no copy here)",
-            lifted ? "lifted" : "dropped", done, simulating, missing);
+    UE_LOGI("agrav_sync: the host %s %d prop(s) here (%d with no copy here)", lifted ? "lifted" : "dropped", done,
+            missing);
 }
 
 void OnDisconnect() {
+    g_pending.clear();
     g_lifted.clear();
-    g_watch.clear();
-    g_watchUntil = 0;
     g_clientLifted.clear();
     g_lastBuf = nullptr;
     g_lastNum = 0;

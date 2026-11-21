@@ -1660,8 +1660,8 @@ enum class ReliableKind : uint16_t {
     // row answers. Never relayed. Not pre-world. CarChargerIntentPayload.
     CarChargerState = 318,
     CarChargerIntent = 319,
-    // The Ariral's float (trigger_agrav_C, coop/world/agrav_sync). HOST->ALL: the props whose gravity the host's event
-    // turned off (each lifted at the event's own 10 cm/s) or back on, by host element id, as the host sees each switch;
+    // The Ariral's float (trigger_agrav_C, coop/world/agrav_sync). HOST->ALL: the bodies the host's event set rising, each
+    // with the rise the host measured, and those whose gravity came back on, by host element id;
     // a client switches its own copy the same way and asks the host where a dropped one rests. Never relayed. Not
     // pre-world. Late join: none, the float lasts seconds and its props rest where the joiner's world loads them.
     // AgravStatePayload.
@@ -2797,13 +2797,20 @@ struct CarChargerIntentPayload {
 };
 static_assert(sizeof(CarChargerIntentPayload) == 16, "CarChargerIntentPayload must be 16 bytes");
 
-// AgravState. `lifted` 1: these props' gravity went off (lift them); 0: it came back on (drop them).
-inline constexpr int kAgravEidsMax = 56;   // 228 bytes in all, the reliable payload's most
+// AgravState. `lifted` 1: these bodies were seen rising on the host (lift them at `vz`); 0: their gravity came back on
+// (drop them; `vz` is zero).
+struct AgravRow {
+    uint32_t eid;     // 4 -- host element id
+    int16_t  vz;      // 2 -- the host body's rise, in tenths of a cm/s
+    uint16_t _pad;    // 2 -- zero
+};
+static_assert(sizeof(AgravRow) == 8, "AgravRow must be 8 bytes");
+inline constexpr int kAgravRowsMax = 28;   // 228 bytes in all, the reliable payload's most
 struct AgravStatePayload {
     uint8_t  lifted;                // 1 -- 1 lifted, 0 dropped
     uint8_t  _pad;                  // 1 -- zero
-    uint16_t count;                 // 2 -- 1..kAgravEidsMax
-    uint32_t eid[kAgravEidsMax];    // 224 -- host element ids; only the first `count` are read
+    uint16_t count;                 // 2 -- 1..kAgravRowsMax
+    AgravRow row[kAgravRowsMax];    // 224 -- only the first `count` are read
 };
 static_assert(sizeof(AgravStatePayload) == 228, "AgravStatePayload must be 228 bytes");
 static_assert(sizeof(AgravStatePayload) <= 256 - 20 - 8,
