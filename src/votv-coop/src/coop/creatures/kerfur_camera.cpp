@@ -14,6 +14,7 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace coop::kerfur_camera {
@@ -25,6 +26,10 @@ constexpr uint64_t kCheckMs = 2000;
 constexpr int32_t kMaxCams = 256;   // a list longer than this is unreadable garbage
 uint64_t g_nextAt = 0;
 std::unordered_set<void*> g_said;   // cameras whose put-back was said once
+// The put-backs of each camera: a saveInit that does not list it was run every 2 s for good. Past kMaxPutBacks it is
+// left off the list, said once. A camera gone is dropped from the count.
+constexpr uint8_t kMaxPutBacks = 3;
+std::unordered_map<void*, uint8_t> g_putBacks;
 
 struct Arr {
     void** data;
@@ -55,11 +60,24 @@ void Tick(coop::net::Session& session) {
     if (camsOff < 0) return;
     const auto* cams = reinterpret_cast<const Arr*>(static_cast<const uint8_t*>(gm) + camsOff);
     if (cams->num < 0 || cams->num > kMaxCams) return;
+    for (auto it = g_putBacks.begin(); it != g_putBacks.end();)
+        it = R::IsLive(it->first) ? std::next(it) : g_putBacks.erase(it);
     for (void* k : ue_wrap::kerfur::AllKerfurs()) {
         void* const cam = CameraOf(k);
         // [dev] the red arm: every camera read as off the list, and its saveInit not run, as one the game never lists.
         static const bool s_arm = coop::dev_refuse::Armed("kcam");
-        if (!cam || (Listed(cams, cam) && !s_arm)) continue;
+        if (!cam) continue;
+        if (Listed(cams, cam) && !s_arm) {
+            g_putBacks.erase(cam);   // listed: a later fall off the list starts over
+            continue;
+        }
+        uint8_t& tries = g_putBacks[cam];
+        if (tries > kMaxPutBacks) continue;
+        if (tries++ == kMaxPutBacks) {
+            UE_LOGW("kerfur_camera: an Omega's camera was put back %u times and is still off the laptop's list -- left "
+                    "off", static_cast<unsigned>(kMaxPutBacks));
+            continue;
+        }
         // Its saved index cleared, the camera's own saveInit adds it to the list and names it as it would a new one.
         const int32_t idxOff = R::FindPropertyOffset(R::ClassOf(cam), L"index_0");
         void* const fn = R::FindDispatchFunctionCached(R::ClassOf(cam), L"saveInit");
