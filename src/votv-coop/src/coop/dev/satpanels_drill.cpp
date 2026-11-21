@@ -442,7 +442,8 @@ void Slot1Reconnect() {
         g_step = 2;
         const std::wstring log = Screen();
         UE_LOGI("[SATPANELS] slot1 reenters-after-reconnect %s -- inside=%d", Inside() ? "PASS" : "FAIL", Inside() ? 1 : 0);
-        Verdict("sees-the-run-after-reconnect", Has(log, L"sd.calall") && Has(log, L"recision"), log);
+        // The run's lines: its typed line has scrolled out of the game's 3000 characters by now.
+        Verdict("sees-the-run-after-reconnect", Has(log, L"recision"), log);
         UE_LOGI("[SATPANELS] slot1 busy-after-reconnect %s", ShownBusyHere() ? "PASS" : "FAIL");
     } else if (g_step == 2 && t >= 8000u && !ShownBusyHere()) {
         g_step = 3;
