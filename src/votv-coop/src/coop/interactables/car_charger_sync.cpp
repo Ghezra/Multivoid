@@ -324,6 +324,11 @@ void ClientLook(N::Session& s) {
         const uint32_t eid = EidOf(ch);
         const auto told = g_told.find(eid);
         if (!eid || told == g_told.end()) continue;   // nothing told yet: the host's first row primes it
+        // [dev] the red arm: another writer of this client's cord reads it the other way at every look, as a cord
+        // sync of its own would.
+        static unsigned s_flipped = 0;
+        if (coop::dev_refuse::Refuse("cord", s_flipped))
+            SetB(ch, g_l.plugged, (told->second.flags & N::kCarChargerPlugged) == 0);
         const N::CarChargerRow now = ReadCharger(ch, eid);
         // Its cord is the host's: a local plug or unplug (this copy's own cord event) is put back, never asked.
         const bool cordOff = ((now.flags ^ told->second.flags) & N::kCarChargerPlugged) != 0;
@@ -345,11 +350,6 @@ void ClientLook(N::Session& s) {
                 UE_LOGI("car_charger_sync: car charger eid=%u's cord read %s here -- the host's %s put back (#%u)", eid,
                         (now.flags & N::kCarChargerPlugged) ? "in" : "out",
                         (told->second.flags & N::kCarChargerPlugged) ? "in" : "out", g_replugs);
-            // [dev] the red arm: another writer flips the cord back after each put-back, as a client's own cord sync
-            // reading its cord the other way would.
-            static unsigned s_refused = 0;
-            if (coop::dev_refuse::Refuse("cord", s_refused))
-                SetB(ch, g_l.plugged, (told->second.flags & N::kCarChargerPlugged) == 0);
         }
         if (SameClips(told->second, now)) continue;
         N::CarChargerIntentPayload p{};
