@@ -181,6 +181,7 @@
 #include "coop/dev/subclass_probe.h"  // [dev] the exact-class sweep's fixes on the rig
 #include "coop/dev/battery_probe.h"  // [dev] the battery chargers and batteries on the rig
 #include "coop/dev/issue42_probe.h"  // [dev] issue 42's session logs on the rig
+#include "coop/dev/hostmove_probe.h"  // [dev] a client's menu-spawned prop moved by the host, looked for on every peer
 #include "coop/dev/wall_fill_probe.h"  // [dev] an unfinished wall filled with bricks by both players, logged on both
 #include "coop/dev/wall_preview_probe.h"  // [dev] a client's wall builder preview, logged on both
 #include "coop/dev/tower_poof_probe.h"  // [dev] the stolen radio tower fired on the host, its tower read on both
@@ -594,6 +595,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::subclass_probe::Tick(&session);  // [dev] the sweep's subclass fixes (a latched read when off)
     coop::dev::issue42_probe::Tick(&session);   // [dev] issue 42's session logs (a latched read when off)
     coop::dev::battery_probe::Tick(&session);   // [dev] the battery chargers (a latched read when off)
+    coop::dev::hostmove_probe::Tick(&session);  // [dev] the host moves a client's prop (a latched read when off)
     coop::dev::wall_fill_probe::Tick(&session);  // [dev] an unfinished wall's bricks on both peers (a latched read when off)
     coop::dev::wall_preview_probe::Tick(&session);  // [dev] a wall builder's preview on both peers (a latched read when off)
     coop::dev::tower_poof_probe::Tick(&session);  // [dev] the radio tower on both peers (a latched read when off)
