@@ -39,7 +39,7 @@ bool On() {
 
 uint64_t g_startAt = 0, g_nextLog = 0;
 bool g_acted = false, g_restored = false;
-bool g_holdFood = false;
+bool g_holdFood = false, g_holdSleep = false;
 
 void* ReadObj(void* base, const wchar_t* field) {
     if (!base) return nullptr;
@@ -103,21 +103,27 @@ void Tick(coop::net::Session* session) {
     if (!g_acted && host && t >= 40000u) {
         g_acted = true;
         HallFood(5);
-        UE_LOGI("[HALLUC] host sleep set to 0: ok=%d", V::Write(V::Field::Sleep, 0.f) ? 1 : 0);
+        g_holdSleep = true;
+        UE_LOGI("[HALLUC] host sleep held at 3: ok=%d", V::Write(V::Field::Sleep, 3.f) ? 1 : 0);
     }
     if (!g_acted && !host && slot == 1 && t >= 60000u) {
         g_acted = true;
-        g_holdFood = true;
-        UE_LOGI("[HALLUC] slot 1 food 5 and sleep 0: ok=%d/%d", V::Write(V::Field::Food, 5.f) ? 1 : 0,
-                V::Write(V::Field::Sleep, 0.f) ? 1 : 0);
+        g_holdFood = g_holdSleep = true;
+        UE_LOGI("[HALLUC] slot 1 food held at 5 and sleep at 3: ok=%d/%d", V::Write(V::Field::Food, 5.f) ? 1 : 0,
+                V::Write(V::Field::Sleep, 3.f) ? 1 : 0);
     }
     if (g_holdFood && !g_restored) {
         float food = 0.f;
         if (V::Read(V::Field::Food, &food) && food > 5.5f) V::Write(V::Field::Food, 5.f);
     }
+    // Low enough that the spawner rolls (it weighs 20 - sleep), above the faint, whose sleep the spawner skips.
+    if (g_holdSleep && !g_restored) {
+        float sleep = 0.f;
+        if (V::Read(V::Field::Sleep, &sleep) && (sleep > 3.5f || sleep < 2.5f)) V::Write(V::Field::Sleep, 3.f);
+    }
     if (!g_restored && t >= 180000u) {
         g_restored = true;
-        g_holdFood = false;
+        g_holdFood = g_holdSleep = false;
         V::Write(V::Field::Food, 100.f);
         V::Write(V::Field::Sleep, 100.f);
         int gone = 0;
