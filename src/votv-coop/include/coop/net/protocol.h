@@ -2750,12 +2750,12 @@ static_assert(sizeof(ChargerGivePayload) == 12, "ChargerGivePayload must be 12 b
 
 // CarChargerState and CarChargerIntent. A car battery charger (prop_carBatteryCharger_C) and an ATV battery
 // (prop_atvcarbattery_C) by host element id; 0 names no battery (a clip on none).
-inline constexpr uint8_t kCarClipRedToRed = 1, kCarClipBlueToRed = 2, kCarChargeDone = 4;
+inline constexpr uint8_t kCarClipRedToRed = 1, kCarClipBlueToRed = 2, kCarChargeDone = 4, kCarChargerPlugged = 8;
 struct CarChargerRow {
     uint32_t eid;     // 4
     uint32_t red;     // 4 -- the battery the red clip is on
     uint32_t blue;    // 4 -- the battery the blue clip is on
-    uint8_t  flags;   // 1 -- kCarClipRedToRed | kCarClipBlueToRed | kCarChargeDone
+    uint8_t  flags;   // 1 -- kCarClipRedToRed | kCarClipBlueToRed | kCarChargeDone | kCarChargerPlugged (its cord in)
     uint8_t  _pad[3]; // 3 -- zero
 };
 static_assert(sizeof(CarChargerRow) == 16, "CarChargerRow must be 16 bytes");

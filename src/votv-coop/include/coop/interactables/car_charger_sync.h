@@ -6,11 +6,12 @@
 // who moved it, and the charge was only ever that machine's: a clip moved on a client reached no one, and a charge set on
 // one peer after the battery's birth stayed there.
 //
-// The host owns both. CarChargerState carries a car charger's clips (the battery each is on, its polarity, done) and a
-// loose battery's charge and pins: a charger's row when its clips change, a battery's when its pins change or its charge
-// moves (every 2 s, or at once past 5 points), and every one to a joiner. A client writes them, and its charger's tick is
-// refused, so the charge and the spark are the host's alone. A client's clip move is seen against the host's last row
-// every 250 ms and goes to the host as CarChargerIntent; the host judges the reach and the batteries and sets it.
+// The host owns both. CarChargerState carries a car charger's clips (the battery each is on, its polarity, done) and its
+// cord, and a loose battery's charge and pins: a charger's row when they change, a battery's when its pins change or its
+// charge moves (every 2 s, or at once past 5 points), and every one to a joiner. A client writes them, and its charger's
+// tick is refused, so the charge and the spark are the host's alone; its own cord event is put back to the host's. A
+// client's clip move is seen against the host's last row every 250 ms and goes to the host as CarChargerIntent; the host
+// judges the reach and the batteries and sets it.
 
 #pragma once
 

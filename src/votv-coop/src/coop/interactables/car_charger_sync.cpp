@@ -66,7 +66,7 @@ struct Layout {
     void* charger = nullptr;
     void* battery = nullptr;
     int32_t red = -1, blue = -1;     // the charger's carBatteryRed, carBatteryBlue
-    Bool redToRed, blueToRed, done;  // pluggedRedToRed, pluggedBlueToRed, doneCharging
+    Bool redToRed, blueToRed, done, plugged;  // pluggedRedToRed, pluggedBlueToRed, doneCharging, plugged (its cord)
     int32_t charge = -1;             // the battery's battery
     Bool pinRed, pinBlue;            // plugged_red, plugged_blue
 };
@@ -87,6 +87,7 @@ void Refresh() {
         g_l.redToRed = BoolOf(g_l.charger, L"pluggedRedToRed");
         g_l.blueToRed = BoolOf(g_l.charger, L"pluggedBlueToRed");
         g_l.done = BoolOf(g_l.charger, L"doneCharging");
+        g_l.plugged = BoolOf(g_l.charger, L"plugged");
     }
     if (!g_l.battery && (g_l.battery = OI::ClassByName(L"prop_atvcarbattery_C"))) {
         g_l.charge = R::FindPropertyOffset(g_l.battery, L"battery");
@@ -97,7 +98,7 @@ void Refresh() {
 
 bool ChargerReady() {
     return g_l.charger && g_l.red >= 0 && g_l.blue >= 0 && g_l.redToRed.off >= 0 && g_l.blueToRed.off >= 0 &&
-           g_l.done.off >= 0;
+           g_l.done.off >= 0 && g_l.plugged.off >= 0;
 }
 bool BatteryReady() { return g_l.battery && g_l.charge >= 0 && g_l.pinRed.off >= 0 && g_l.pinBlue.off >= 0; }
 
@@ -139,7 +140,8 @@ N::CarChargerRow ReadCharger(void* ch, uint32_t eid) {
     r.blue = EidOf(Ref(ch, g_l.blue));
     r.flags = static_cast<uint8_t>((GetB(ch, g_l.redToRed) ? N::kCarClipRedToRed : 0) |
                                    (GetB(ch, g_l.blueToRed) ? N::kCarClipBlueToRed : 0) |
-                                   (GetB(ch, g_l.done) ? N::kCarChargeDone : 0));
+                                   (GetB(ch, g_l.done) ? N::kCarChargeDone : 0) |
+                                   (GetB(ch, g_l.plugged) ? N::kCarChargerPlugged : 0));
     return r;
 }
 
@@ -169,6 +171,7 @@ void WriteCharger(void* ch, const N::CarChargerRow& r) {
     SetB(ch, g_l.redToRed, (r.flags & N::kCarClipRedToRed) != 0);
     SetB(ch, g_l.blueToRed, (r.flags & N::kCarClipBlueToRed) != 0);
     SetB(ch, g_l.done, (r.flags & N::kCarChargeDone) != 0);
+    SetB(ch, g_l.plugged, (r.flags & N::kCarChargerPlugged) != 0);   // the host's cord, which charges
     CallNoArgs(ch, L"setBulb");
 }
 
@@ -279,7 +282,7 @@ struct ParkedBattery {
 std::unordered_map<uint32_t, ParkedCharger> g_parkedCh;
 std::unordered_map<uint32_t, ParkedBattery> g_parkedBat;
 uint64_t g_nextLook = 0;
-uint32_t g_applied = 0, g_asked = 0;
+uint32_t g_applied = 0, g_asked = 0, g_replugs = 0;
 
 bool ApplyCharger(const N::CarChargerRow& r) {
     void* const ch = ActorOf(r.eid);
@@ -311,11 +314,25 @@ void ClientLook(N::Session& s) {
         const auto told = g_told.find(eid);
         if (!eid || told == g_told.end()) continue;   // nothing told yet: the host's first row primes it
         const N::CarChargerRow now = ReadCharger(ch, eid);
+        // Its cord is the host's: a local plug or unplug (this copy's own cord event) is put back, never asked.
+        if ((now.flags ^ told->second.flags) & N::kCarChargerPlugged) {
+            SetB(ch, g_l.plugged, (told->second.flags & N::kCarChargerPlugged) != 0);
+            CallNoArgs(ch, L"setBulb");
+            ++g_replugs;
+            if (g_replugs == 1 || g_replugs % 100 == 0)
+                UE_LOGI("car_charger_sync: car charger eid=%u's cord read %s here -- the host's %s put back (#%u)", eid,
+                        (now.flags & N::kCarChargerPlugged) ? "in" : "out",
+                        (told->second.flags & N::kCarChargerPlugged) ? "in" : "out", g_replugs);
+        }
         if (SameClips(told->second, now)) continue;
         N::CarChargerIntentPayload p{};
         p.row = now;
         if (s.SendReliable(N::ReliableKind::CarChargerIntent, &p, sizeof(p))) ++g_asked;
-        told->second = now;   // asked once; the host's row answers
+        // Asked once; the host's row answers. Only the clips are this player's: the cord and done stay the host's.
+        const uint8_t clips = N::kCarClipRedToRed | N::kCarClipBlueToRed;
+        told->second.red = now.red;
+        told->second.blue = now.blue;
+        told->second.flags = static_cast<uint8_t>((now.flags & clips) | (told->second.flags & ~clips));
         UE_LOGI("car_charger_sync: this player moved a clip of car charger eid=%u (red on %u, blue on %u, flags %u) -- "
                 "told the host", eid, now.red, now.blue, static_cast<unsigned>(now.flags));
     }
@@ -406,7 +423,8 @@ void OnIntent(int slot, const coop::net::CarChargerIntentPayload& p) {
     }
     N::CarChargerRow r = p.row;
     r.flags = static_cast<uint8_t>((r.flags & (N::kCarClipRedToRed | N::kCarClipBlueToRed)) |
-                                   (GetB(ch, g_l.done) ? N::kCarChargeDone : 0));
+                                   (GetB(ch, g_l.done) ? N::kCarChargeDone : 0) |
+                                   (GetB(ch, g_l.plugged) ? N::kCarChargerPlugged : 0));
     WriteCharger(ch, r);
     SetPins();
     ++g_edits;
@@ -436,7 +454,7 @@ void OnDisconnect() {
     g_parkedCh.clear();
     g_parkedBat.clear();
     g_nextPoll = g_nextLook = 0;
-    g_rowsSent = g_edits = g_refused = g_applied = g_asked = 0;
+    g_rowsSent = g_edits = g_refused = g_applied = g_asked = g_replugs = 0;
 }
 
 }  // namespace coop::car_charger_sync
