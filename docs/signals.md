@@ -280,17 +280,24 @@ what another console's running one writes is refused on the host, the asker told
 it: `sd.calall` writes every dish, so it waits for every other calibration, and `sd.cal` writes its
 own console's, so it waits only for an `sd.calall`. Every other command runs at each console on its
 own: a read, one that finishes at once, or one whose effect is its own console's server, as
-`sv.request` and `sv.eject` are. Each console's printed lines and busy state go to every peer, and a
-machine's terminal shows the console its player last used: that console's lines, then whatever this
-machine prints itself after them; moving to another console shows that console's lines and state.
-The world's broken-device alerts are the ROOT console's alone. A line runs only once its console's
-terminal is idle and set to the dish, name and panel the line carried; a busy console answers it
-busy, and a dish or a named panel the host cannot resolve, or an init that fails, answers it err
-rather than running it against another context. A line is never re-run on its own, since a command
-such as an eject has an effect in the world. A line whose effect is the typist's own -- its compass,
-its terminal, the desk's radar filter and sounds on its machine -- runs where it was typed, and
-shows on that typist's screen alone (`coop/interactables/sat_console_sync`, the command table in
-`coop/interactables/sat_console_table`; `coop/dev/satpanels_drill`).
+`sv.request` and `sv.eject` are. A console's command is the console's, not its typist's: a typist
+that ragdolls out of the console or leaves the session leaves it running, the console busy and its
+lock held until it ends, and a player back at the console, or a joiner, gets its lines and busy
+state. The host reads a console's lines and busy state only when its terminal's own watches say they
+moved -- a print, or the end of a body, which every latent continuation resumes -- and a console
+busy for ten minutes is taken as stuck: its terminal is discarded, which stops its command and frees
+its lock, and the console's next terminal starts from its lines. Each console's printed lines and
+busy state go to every peer, and a machine's terminal shows the console its player last used: that
+console's lines, then whatever this machine prints itself after them; moving to another console
+shows that console's lines and state. The world's broken-device alerts are the ROOT console's alone.
+A line runs only once its console's terminal is idle and set to the dish, name and panel the line
+carried; a busy console answers it busy, and a dish or a named panel the host cannot resolve, or an
+init that fails, answers it err rather than running it against another context. A line is never
+re-run on its own, since a command such as an eject has an effect in the world. A line whose effect
+is the typist's own -- its compass, its terminal, the desk's radar filter and sounds on its machine
+-- runs where it was typed, and shows on that typist's screen alone
+(`coop/interactables/sat_console_sync`, the command table in `coop/interactables/sat_console_table`;
+`coop/dev/satpanels_drill`).
 
 ### Upgrades
 
