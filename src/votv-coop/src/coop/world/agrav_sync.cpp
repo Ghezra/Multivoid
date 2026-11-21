@@ -10,6 +10,7 @@
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/reflection_props.h"
+#include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_attach.h"
 #include "ue_wrap/engine/engine_physics.h"
 
@@ -45,6 +46,9 @@ std::unordered_map<uint32_t, bool> g_lifted;
 uint64_t g_rowsLifted = 0, g_rowsDropped = 0;
 // CLIENT: the switches applied, and the ones with no copy here.
 uint64_t g_applied = 0, g_missing = 0;
+// CLIENT: the first few lifted copies, watched for the log (their height, gravity and simulation every 2 s).
+std::vector<uint32_t> g_watch;
+uint64_t g_nextWatch = 0;
 
 uint64_t Now() { return ::GetTickCount64(); }
 
@@ -149,7 +153,22 @@ void HostScan() {
 
 void Install(N::Session* session) { g_session = session; }
 
+void ClientWatch() {
+    const uint64_t now = Now();
+    if (g_watch.empty() || now < g_nextWatch) return;
+    g_nextWatch = now + 2000;
+    for (uint32_t eid : g_watch) {
+        void* const actor = ActorOf(eid);
+        void* const root = actor ? E::RootComponentOf(actor) : nullptr;
+        ue_wrap::FVector at{};
+        if (!root || !E::TryGetActorLocation(actor, at)) continue;
+        UE_LOGI("agrav_sync: watch eid=%u z=%.1f gravity=%d simulating=%d", eid, at.Z,
+                E::IsComponentGravityEnabled(root) ? 1 : 0, E::IsComponentSimulatingPhysics(root) ? 1 : 0);
+    }
+}
+
 void Tick() {
+    if (g_session && g_session->role() == N::Role::Client) { ClientWatch(); return; }
     if (!g_session || g_session->role() != N::Role::Host || !g_session->connected()) return;
     const uint64_t now = Now();
     if (now < g_nextScan) return;
@@ -176,6 +195,7 @@ void OnState(const N::AgravStatePayload& p) {
         if (E::IsComponentSimulatingPhysics(root)) ++simulating;
         E::SetComponentGravity(root, !lifted);
         if (lifted) {
+            if (g_watch.size() < 3) g_watch.push_back(p.eid[i]);
             E::SetComponentLinearVelocity(root, 0.f, 0.f, kLiftCmPerSec);
         } else {
             coop::prop_rest_sync::NoteLocalMove(actor);
@@ -190,6 +210,7 @@ void OnState(const N::AgravStatePayload& p) {
 
 void OnDisconnect() {
     g_lifted.clear();
+    g_watch.clear();
     g_lastBuf = nullptr;
     g_lastNum = 0;
     g_quietSince = 0;
