@@ -138,6 +138,8 @@
 #include "coop/dev/prop_accuracy_drill.h"   // a client handles props for the drift census
 #include "coop/dev/prop_census_drift.h"   // [dev] the keyed props' places on every peer
 #include "coop/dev/hunger_sleep_probe.h"   // [dev] a hungry player tries to sleep
+#include "coop/dev/beer_probe.h"   // [dev] the beer's nausea on a client, every peer watching
+#include "coop/dev/progress_probe.h"   // [dev] a timed tool's progress bar on a client, for the frame rate
 #include "coop/dev/sit_probe.h"   // the chair sit probe
 #include "coop/dev/join_stall_probe.h"   // [dev] a client's game thread held still while it joins
 #include "coop/dev/kdisc_watch.h"   // [dev] every floppy disc's place, parent and physics
@@ -555,6 +557,8 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::prop_accuracy_drill::Tick(&session);  // VOTVCOOP_PROP_ACC: slot 1 carries, shelves, throws, drags a table
     coop::dev::prop_census_drift::Tick(&session);  // [dev] the prop drift census (a latched read when off)
     coop::dev::hunger_sleep_probe::Tick(&session);  // [dev] a hungry player tries to sleep (a latched read when off)
+    coop::dev::beer_probe::Tick(&session);  // [dev] the beer's nausea on a client (a latched read when off)
+    coop::dev::progress_probe::Tick(&session);  // [dev] a progress bar on a client (a latched read when off)
     coop::dev::sit_probe::Tick(&session);  // a client sits on a chair; the host looks
     coop::dev::kdisc_watch::Tick(&session);  // [dev] VOTVCOOP_KDISC_WATCH
     coop::dev::kfollow_probe::Tick(&session);  // [dev] VOTVCOOP_KFOLLOW_PROBE
