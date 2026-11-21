@@ -89,6 +89,43 @@ void RoachLooks(int& burgers, int& roaches) {
     }
 }
 
+// Why a peer's spawner does or does not roll: its instances and tick interval, the game instance's mode byte (the
+// spawner returns unless 0 or 1), the gamemode's isSleep and insomniac, and trySpawnInsomniac's own answer.
+void InsomniacWhy(int slot) {
+    const std::vector<void*> tickers = Live(L"ticker_insomniacSpawner_C");
+    float interval = -1.f;
+    if (!tickers.empty()) {
+        ue_wrap::ParamFrame f(R::FindFunction(R::ClassOf(tickers[0]), L"GetActorTickInterval"));
+        if (f.valid() && ue_wrap::Call(tickers[0], f)) interval = f.Get<float>(L"ReturnValue");
+    }
+    void* gm = ue_wrap::world_singleton::Gamemode();
+    void* gi = nullptr;
+    for (void* o : Live(L"mainGameInstance_C")) { gi = o; break; }
+    int mode = -1;
+    if (gi) {
+        const int32_t off = R::FindPropertyOffset(R::ClassOf(gi), L"gamemode");
+        if (off >= 0) mode = *(static_cast<uint8_t*>(gi) + off);
+    }
+    int isSleep = -1;
+    if (gm) {
+        int32_t off = -1;
+        uint8_t mask = 0;
+        if (R::FindBoolProperty(R::ClassOf(gm), L"isSleep", off, mask)) isSleep = (*(static_cast<uint8_t*>(gm) + off) & mask) ? 1 : 0;
+    }
+    void* held = ReadObj(gm, L"insomniac");
+    int can = -1;
+    ue_wrap::FVector loc{};
+    if (gm) {
+        ue_wrap::ParamFrame f(R::FindFunction(R::ClassOf(gm), L"trySpawnInsomniac"));
+        if (f.valid() && ue_wrap::Call(gm, f)) {
+            can = f.Get<bool>(L"canSpawn") ? 1 : 0;
+            loc = f.Get<ue_wrap::FVector>(L"loc");
+        }
+    }
+    UE_LOGI("[HALLUC] slot %d insomniac why: spawners=%zu interval=%.1f mode=%d isSleep=%d held=%p trySpawn=%d at "
+            "(%.0f,%.0f,%.0f)", slot, tickers.size(), interval, mode, isSleep, held, can, loc.X, loc.Y, loc.Z);
+}
+
 }  // namespace
 
 void Tick(coop::net::Session* session) {
@@ -130,6 +167,11 @@ void Tick(coop::net::Session* session) {
         for (void* o : Live(L"insomniac_C")) gone += ue_wrap::engine::DestroyActor(o) ? 1 : 0;
         for (void* o : Live(L"insomniac_Child_C")) gone += ue_wrap::engine::DestroyActor(o) ? 1 : 0;
         UE_LOGI("[HALLUC] slot %d: needs back to 100, %d own Insomniac(s) destroyed", slot, gone);
+    }
+    static bool s_why = false;
+    if (!s_why && t >= 65000u) {
+        s_why = true;
+        InsomniacWhy(slot);
     }
     if (t < 30000u || t > 200000u || Now() < g_nextLog) return;
     g_nextLog = Now() + 5000u;
