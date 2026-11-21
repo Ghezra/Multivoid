@@ -7,8 +7,10 @@
 // spawner; the sky-wisp ticker spawns the sky wisps at absolute map coordinates, so the host rolls
 // and clients mirror through the source-gated catch and the variant allowlist; the roach master's
 // summon and its three looping timer entries fire independently of its tick. The tick rows: the
-// insomniac and fossilhound tickers roll inside their tick with no delay chains or reap duties, so
-// refusing the tick stops the roll and the product, and the products are host-mirrored; the roach
+// fossilhound ticker rolls inside its tick with no delay chains or reap duties, so refusing the tick
+// stops the roll and the product, and the product is host-mirrored. The insomniac ticker is not here:
+// its roll is its own player's sleep and its Insomniac walks at that player alone, so every peer runs
+// its own and none is mirrored (ue_wrap/core/sdk_profile_names, kNpcAllowlist). The roach
 // master's tick drives roach movement, the food-eat mutation and crush traces, which a client running
 // it would diverge, so it and its summoner are refused while the roach sync drives the client
 // population. The jellyfish path's spawn makes seven fish inside its graph, and the host's are
@@ -51,8 +53,6 @@ UE_FACT_FN(kRowAddRoachTimerCockroachMaster, "spawn_authority", L"cockroachMaste
 UE_FACT_FN(kRowSpawnNestTimerCockroachMaster, "spawn_authority", L"cockroachMaster_C", L"spawnNestTimer",
            Declared);
 UE_FACT_FN(kRowCustomEventCockroachMaster, "spawn_authority", L"cockroachMaster_C", L"CustomEvent", Declared);
-UE_FACT_FN(kRowReceiveTickTickerInsomniacSpawner, "spawn_authority", L"ticker_insomniacSpawner_C",
-           L"ReceiveTick", Declared);
 UE_FACT_FN(kRowReceiveTickTickerFossilhoundSpawner, "spawn_authority", L"ticker_fossilhoundSpawner_C",
            L"ReceiveTick", Declared);
 UE_FACT_FN(kRowReceiveTickCockroachMaster, "spawn_authority", L"cockroachMaster_C", L"ReceiveTick", Declared);
@@ -138,7 +138,6 @@ constexpr Row kRows[] = {
     {&kRowSpawnNestTimerCockroachMaster,  "cockroachMaster.spawnNestTimer"},
     {&kRowCustomEventCockroachMaster,     "cockroachMaster.CustomEvent"},
     // The ticks.
-    {&kRowReceiveTickTickerInsomniacSpawner,   "insomniacSpawner.ReceiveTick"},
     {&kRowReceiveTickTickerFossilhoundSpawner, "fossilhoundSpawner.ReceiveTick"},
     {&kRowReceiveTickCockroachMaster,     "cockroachMaster.ReceiveTick"},
     {&kRowReceiveTickTickerRoachSummoner, "roachSummoner.ReceiveTick"},
