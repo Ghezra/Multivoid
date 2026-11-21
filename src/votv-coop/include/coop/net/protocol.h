@@ -1660,6 +1660,14 @@ enum class ReliableKind : uint16_t {
     ChargerState = 313,
     ChargerIntent = 314,
     ChargerGive = 315,
+    // The car battery charger's clips and a loose ATV battery's charge (coop/interactables/car_charger_sync). HOST->ALL:
+    // a car charger's clips (the battery each is on and its polarity) and a loose battery's charge and pins, when they
+    // change, a charge every 2 s while it moves, and every one to a joiner; a client writes them and runs no charge of its
+    // own. Not pre-world. CarChargerStatePayload. CLIENT->HOST: this client's player moved a clip, as the charger's own
+    // used event and drag left it here; the host judges the reach and the batteries and sets it on its own copy, and its
+    // row answers. Never relayed. Not pre-world. CarChargerIntentPayload.
+    CarChargerState = 316,
+    CarChargerIntent = 317,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2739,6 +2747,39 @@ struct ChargerGivePayload {
     float    charge;   // 4 -- the battery's charge as the host's slot held it
 };
 static_assert(sizeof(ChargerGivePayload) == 12, "ChargerGivePayload must be 12 bytes");
+
+// CarChargerState and CarChargerIntent. A car battery charger (prop_carBatteryCharger_C) and an ATV battery
+// (prop_atvcarbattery_C) by host element id; 0 names no battery (a clip on none).
+inline constexpr uint8_t kCarClipRedToRed = 1, kCarClipBlueToRed = 2, kCarChargeDone = 4;
+struct CarChargerRow {
+    uint32_t eid;     // 4
+    uint32_t red;     // 4 -- the battery the red clip is on
+    uint32_t blue;    // 4 -- the battery the blue clip is on
+    uint8_t  flags;   // 1 -- kCarClipRedToRed | kCarClipBlueToRed | kCarChargeDone
+    uint8_t  _pad[3]; // 3 -- zero
+};
+static_assert(sizeof(CarChargerRow) == 16, "CarChargerRow must be 16 bytes");
+inline constexpr uint8_t kCarPinRed = 1, kCarPinBlue = 2;
+struct CarBatteryRow {
+    uint32_t eid;     // 4
+    float    charge;  // 4 -- its battery, 0..100
+    uint8_t  pins;    // 1 -- kCarPinRed | kCarPinBlue: a clip on that pin
+    uint8_t  _pad[3]; // 3 -- zero
+};
+static_assert(sizeof(CarBatteryRow) == 12, "CarBatteryRow must be 12 bytes");
+inline constexpr int kCarChargerRowsMax = 4, kCarBatteryRowsMax = 12;
+struct CarChargerStatePayload {
+    uint8_t       chargers;                        // 1 -- 0..kCarChargerRowsMax
+    uint8_t       batteries;                       // 1 -- 0..kCarBatteryRowsMax, one at least of the two
+    uint8_t       _pad[2];                         // 2 -- zero
+    CarChargerRow charger[kCarChargerRowsMax];     // 64
+    CarBatteryRow battery[kCarBatteryRowsMax];     // 144
+};
+static_assert(sizeof(CarChargerStatePayload) == 212, "CarChargerStatePayload must be 212 bytes");
+struct CarChargerIntentPayload {
+    CarChargerRow row;  // 16 -- the charger's clips as this client's copy holds them now
+};
+static_assert(sizeof(CarChargerIntentPayload) == 16, "CarChargerIntentPayload must be 16 bytes");
 
 // The 3D printer's lane (coop/props/printer_sync). A model is its folder's name, UTF-8, 1 to 95 bytes, not terminated;
 // a printed object is the host's element id of it, with its save key (an FName as text, up to 63 bytes) for a joiner's

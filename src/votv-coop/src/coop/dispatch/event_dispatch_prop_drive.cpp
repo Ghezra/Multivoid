@@ -44,6 +44,7 @@
 #include "coop/world/cave_rock_sync.h"
 #include "coop/player/chair_seat.h"
 #include "coop/interactables/battery_charger_sync.h"
+#include "coop/interactables/car_charger_sync.h"
 #include "coop/props/bucket_sync.h"
 #include "coop/props/prop_rest_sync.h"
 #include "coop/world/sound_relay.h"
@@ -680,6 +681,38 @@ bool HandlePropDriveEvent(net::Session& session,
             }
             ::coop::battery_charger_sync::OnState(p);
         }
+        break;
+    }
+    case net::ReliableKind::CarChargerState:
+    case net::ReliableKind::CarChargerIntent: {
+        // CarChargerState HOST->ALL, CarChargerIntent CLIENT->HOST (coop/interactables/car_charger_sync). Exact length,
+        // counts bounded, every charge finite and within 0..100.
+        const bool intent = msg.kind == net::ReliableKind::CarChargerIntent;
+        const size_t want = intent ? sizeof(net::CarChargerIntentPayload) : sizeof(net::CarChargerStatePayload);
+        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != want) {
+            UE_LOGW("event_feed: a car charger message the wrong way or the wrong length from slot %d -- dropping",
+                    msg.senderPeerSlot);
+            break;
+        }
+        if (intent) {
+            net::CarChargerIntentPayload p{};
+            std::memcpy(&p, msg.payload, sizeof(p));
+            ::coop::car_charger_sync::OnIntent(msg.senderPeerSlot, p);
+            break;
+        }
+        net::CarChargerStatePayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.chargers > net::kCarChargerRowsMax || p.batteries > net::kCarBatteryRowsMax ||
+            (p.chargers == 0 && p.batteries == 0))
+            break;
+        bool ok = true;
+        for (int i = 0; i < p.batteries; ++i)
+            ok = ok && std::isfinite(p.battery[i].charge) && p.battery[i].charge >= 0.f && p.battery[i].charge <= 100.f;
+        if (!ok) {
+            UE_LOGW("event_feed: CarChargerState with a charge non-finite or out of range -- dropping");
+            break;
+        }
+        ::coop::car_charger_sync::OnState(p);
         break;
     }
     case net::ReliableKind::KerfurDressState:

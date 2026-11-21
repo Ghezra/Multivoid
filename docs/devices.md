@@ -460,8 +460,13 @@ tick while powered. Its slots are the host's (`coop/interactables/battery_charge
 row when a slot fills or empties, its battery count or power changes, every 2 s while a charge moves, and to a joiner,
 and a client writes it and refuses its own tick. A client's put runs on its copy, as the game's does, and is told with
 the battery's charge; one the host refuses comes back as a battery beside the sender. A client's take is cancelled and
-asked, and the host's answer puts the battery into its inventory at the host's charge. The car battery charger's clips
-are not synced yet.
+asked, and the host's answer puts the battery into its inventory at the host's charge.
+
+The car battery charger charges an ATV battery while its cord is in and both clips sit on it the right way round. Its
+clips and every loose ATV battery's charge are the host's (`coop/interactables/car_charger_sync`): the host sends a
+charger's clips when they change and a battery's charge when it moves (every 2 s, or at once past 5 points), and a
+client writes them and refuses its charger's tick, so the charge and the spark are the host's. A client's clip move is
+seen against the host's last row and asked; the host sets it and each battery's pins from its clips.
 
 ### The computer and the economy
 
@@ -516,6 +521,7 @@ removed from its author's hand -- and a joiner gets every box's count at its wor
 | a window, the grime | any peer, minimum wins | monotone decreases |
 | a spilled liquid's decal | the host | a client's spill from its hand and its wipe are requests |
 | the drone | the host | a timed transform stream; the client's tick and physics off |
+| a car battery charger's clips, a loose ATV battery's charge | the host | a row when the clips change, and a charge every 2 s while it moves; a client's clip move is asked |
 | a battery charger's four slots | the host | a row when a slot fills or empties and every 2 s while a charge moves; a client's put is told, its take asked |
 | a woodchipper's fuel and on/off | the host | a client's pour and press are intents the host judges; the host's state when it changes and every second while its fuel moves |
 | the robot cleaner (`prop_roomba_C`, and the MX cleaner `prop_roomba_mx_C`, which runs its graph) | the host | it drives by physics, so a client refuses its tick and pickup at the script gate; the host watches `use` (the switch's press and the save's load both end in it), sends each change of `active` as `RoombaState` and claims the drive while it runs, so copies follow the pose stream; a client's press is a `RoombaIntent` the host judges by reach; a state that outruns its copy is held until the bind, and a joiner gets every cleaner's state at its ready edge (`coop/props/roomba_sync`) `[?]` (`harness/autotest/autotest_roomba.cpp`, `roomba_drill`) |
@@ -542,6 +548,7 @@ removed from its author's hand -- and a joiner gets every box's count at its wor
 | `SpillPour`, `SpillPourIntent` | the host to all; a client to the host | where a bottle poured and who poured it; a pour of a bottle in a client's hand |
 | `DroneState` | the host to all | the drone's transform and flags, among them its leave timer |
 | `DroneFlyIntent` | a client to the host | the face pressed, the keyboard or the leave timer; the host finds the console by the sender's reach |
+| `CarChargerState`, `CarChargerIntent` | the host to all; a client to the host | a car charger's clips (the battery each is on, its polarity) and a loose battery's charge and pins; a client's clips |
 | `ChargerState`, `ChargerIntent`, `ChargerGive` | the host to all; a client to the host; the host to one client | a charger's slots, battery count and power; a put with its charge or a take; a taken battery's charge |
 | `WoodchipperState`, `WoodchipperIntent` | the host to all; a client to the host | a chipper's key, its fuel and on/off, or to a joiner which are on; a client's pour (the fuel its copy gained) or press (the state it wanted) |
 
