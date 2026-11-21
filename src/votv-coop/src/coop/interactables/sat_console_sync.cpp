@@ -106,6 +106,7 @@ struct Terminal {
     std::wstring name;
     std::wstring logSent;     // the lines last told
     Clock::time_point nextShow{};
+    std::wstring running;     // the line it runs, until its busy flag falls (a line that finishes at once, a poll)
 };
 std::vector<Terminal> g_terms;
 
@@ -517,6 +518,17 @@ void HostRunLine(uint8_t slot, int32_t dish, const std::wstring& name, const std
         AnswerRefused(slot, line, readOk ? kBusyLine : kErrLine);   // an unreadable flag is not "busy"
         return;
     }
+    // A long command that writes what another console's running command writes waits for it: the host decides,
+    // and the console that asked second is told which console runs it.
+    for (const Terminal& o : g_terms) {
+        if (&o == t || o.running.empty() || !T::Conflicts(line, o.running)) continue;
+        const std::wstring who = o.name.empty() ? std::wstring(L"?") : o.name;
+        const std::wstring why = L"<r>Console '" + who + L"' is running " + T::CommandOf(o.running) + L"</>";
+        UE_LOGI("sat_console: HOST '%ls' at console '%ls' waits: console '%ls' runs '%ls'", Printable(line).c_str(),
+                used.c_str(), o.panel.c_str(), Printable(o.running).c_str());
+        AnswerRefused(slot, line, why.c_str());
+        return;
+    }
     // The line runs only in the context it names. One that cannot be set up is answered err and not
     // retried: a command with an effect in the world must not run twice.
     const Context ctx = ApplyContext(*t, dish < kNoDish ? kNoDish : dish, name);
@@ -549,6 +561,7 @@ void HostRunLine(uint8_t slot, int32_t dish, const std::wstring& name, const std
         AnswerRefused(slot, line, kErrLine);
         return;
     }
+    t->running = line;
     if (slot != 0) ++g_counts.linesRun;
 }
 
@@ -599,6 +612,8 @@ void DrainHostWork() {
     }
     if (!g_rootLines.empty()) {
         Terminal* t = RootTerminal();
+        UE_LOGI("sat_console: HOST %zu alert line(s) onto the ROOT console%s", g_rootLines.size(),
+                t ? "" : " -- no ROOT console here, dropped");
         while (!g_rootLines.empty()) {
             if (t) SC::CallWriteToLog(t->pin.Raw(), g_rootLines.front().first, g_rootLines.front().second);
             g_rootLines.pop_front();
@@ -612,7 +627,9 @@ void HostTellConsoles() {
     for (Terminal& t : g_terms) {
         void* term = t.pin.Raw();
         bool busy = false;
-        if (SC::ReadProcessing(term, busy) && busy != t.busySent) {
+        const bool read = SC::ReadProcessing(term, busy);
+        if (read && !busy) t.running.clear();
+        if (read && busy != t.busySent) {
             t.busySent = busy;
             ToReadyClients([&](uint8_t slot) { SendBusy(slot, t.panel, busy); });
             ApplyBusy(t.panel, busy);
