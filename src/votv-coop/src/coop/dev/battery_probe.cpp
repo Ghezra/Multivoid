@@ -2,7 +2,7 @@
 // (VOTVCOOP_BATTERY_PROBE=1 on every peer). Times run from the probe's arm; the host ends with `[BATT] DONE`.
 //   60 s  the host spawns a battery charger, plugs it in (its cordPlugged), and a rechargeable battery at 30, and
 //         drains the first loose ATV battery to 20 on its own copy.
-//   70 s  slot 1 puts a rechargeable battery at 10 from its hand into slot 0 (the charger's putIn, as the press does).
+//   70 s  slot 1 puts a rechargeable battery at 10 from its hand into slot 0 (actionOptionIndex 4, as its press does).
 //   75 s  the host puts one at 40 into slot 1.
 //  110 s  slot 1 takes slot 0 out (putIn on a full slot: a battery into its inventory); 115 s the host takes slot 1 out.
 //  130 s  slot 1 clips the car battery charger to the first loose ATV battery, red to red and blue to blue, as its used
@@ -103,19 +103,19 @@ bool SetBool(void* obj, const wchar_t* name, bool v) {
     return true;
 }
 
-bool CallWith(void* obj, const wchar_t* fn, const wchar_t* param, void* value) {
-    void* const f = obj ? R::FindDispatchFunctionCached(R::ClassOf(obj), fn) : nullptr;
-    ue_wrap::ParamFrame frame(f);
-    if (!f || !frame.valid()) return false;
-    if (param && !frame.Set<void*>(param, value)) return false;
-    return ue_wrap::Call(obj, frame);
-}
-
 // The charger's own plug event, with no cord: it sets powered, runs upd and turns its tick on.
 bool PlugIn(void* charger) {
     void* const f = R::FindDispatchFunctionCached(R::ClassOf(charger), L"cordPlugged");
     ue_wrap::ParamFrame frame(f);
     return f && frame.valid() && ue_wrap::Call(charger, frame);
+}
+
+// The press on the slot looked at, as the player's use key runs it: actionOptionIndex(player, action 4), into putIn.
+bool Press(void* charger, void* me) {
+    void* const f = R::FindDispatchFunctionCached(R::ClassOf(charger), L"actionOptionIndex");
+    ue_wrap::ParamFrame frame(f);
+    return f && frame.valid() && frame.Set<void*>(L"player", me) && frame.Set<uint8_t>(L"action", 4) &&
+           ue_wrap::Call(charger, frame);
 }
 
 std::wstring RowOf(const wchar_t* cls) {
@@ -137,8 +137,8 @@ void PutFromHand(void* me, void* charger, int slot, float energy, const char* wh
     float* const e = Field<float>(held, L"energy");
     if (e) *e = energy;
     if (int32_t* const look = Field<int32_t>(charger, L"lookingAt")) *look = slot;
-    const bool ran = CallWith(charger, L"putIn", L"inputPin", me);
-    UE_LOGI("[BATT] %s: a rechargeable battery at %.0f into slot %d (hand %d, held %p, energy written %d, putIn %d)", who,
+    const bool ran = Press(charger, me);
+    UE_LOGI("[BATT] %s: a rechargeable battery at %.0f into slot %d (hand %d, held %p, energy written %d, pressed %d)", who,
             energy, slot, taken ? 1 : 0, held, e ? 1 : 0, ran ? 1 : 0);
 }
 
@@ -146,8 +146,8 @@ void TakeOut(void* me, void* charger, int slot, const char* who) {
     const wchar_t* const names[] = {L"b1", L"b2", L"b3", L"b4"};
     const float before = GetF(charger, names[slot]);
     if (int32_t* const look = Field<int32_t>(charger, L"lookingAt")) *look = slot;
-    const bool ran = CallWith(charger, L"putIn", L"inputPin", me);
-    UE_LOGI("[BATT] %s: slot %d (at %.1f) taken out into the inventory (putIn %d)", who, slot, before, ran ? 1 : 0);
+    const bool ran = Press(charger, me);
+    UE_LOGI("[BATT] %s: slot %d (at %.1f) taken out into the inventory (pressed %d)", who, slot, before, ran ? 1 : 0);
 }
 
 void* g_charger = nullptr;
