@@ -2798,14 +2798,16 @@ struct CarChargerIntentPayload {
 static_assert(sizeof(CarChargerIntentPayload) == 16, "CarChargerIntentPayload must be 16 bytes");
 
 // AgravState. `lifted` 1: these props' gravity went off (lift them); 0: it came back on (drop them).
-inline constexpr int kAgravEidsMax = 120;
+inline constexpr int kAgravEidsMax = 56;   // 228 bytes in all, the reliable payload's most
 struct AgravStatePayload {
     uint8_t  lifted;                // 1 -- 1 lifted, 0 dropped
     uint8_t  _pad;                  // 1 -- zero
     uint16_t count;                 // 2 -- 1..kAgravEidsMax
-    uint32_t eid[kAgravEidsMax];    // 480 -- host element ids; only the first `count` are read
+    uint32_t eid[kAgravEidsMax];    // 224 -- host element ids; only the first `count` are read
 };
-static_assert(sizeof(AgravStatePayload) == 484, "AgravStatePayload must be 484 bytes");
+static_assert(sizeof(AgravStatePayload) == 228, "AgravStatePayload must be 228 bytes");
+static_assert(sizeof(AgravStatePayload) <= 256 - 20 - 8,
+              "AgravStatePayload must fit in one reliable datagram (kMaxReliablePayload)");
 
 // AtvSpawnAsk: where the client's spawn menu put its ATV, and its yaw.
 struct AtvSpawnAskPayload {

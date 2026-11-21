@@ -98,7 +98,8 @@ void Send(bool lifted, const std::vector<uint32_t>& eids) {
                                                                                     : static_cast<size_t>(N::kAgravEidsMax);
         p.count = static_cast<uint16_t>(n);
         std::memcpy(p.eid, eids.data() + at, n * sizeof(uint32_t));
-        g_session->SendReliable(N::ReliableKind::AgravState, &p, sizeof(p));
+        if (!g_session->SendReliable(N::ReliableKind::AgravState, &p, sizeof(p)))
+            UE_LOGW("agrav_sync: an AgravState of %zu prop(s) was not sent", n);
     }
     (lifted ? g_rowsLifted : g_rowsDropped) += eids.size();
     UE_LOGI("agrav_sync: told %zu prop(s) %s (%llu lifted, %llu dropped in all)", eids.size(),
