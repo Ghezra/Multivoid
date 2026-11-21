@@ -113,12 +113,6 @@ bool g_saidNoContext[kMaxPeers] = {};
 bool g_mirrorBusy = false;
 bool g_localHolds = false;
 
-// HOST: the lines a typist's terminal printed, owed to the host's own terminal, written from Tick (never from inside
-// the watch of another terminal's writeToLog), and whether such a write is in progress: it is the lane's, so it is
-// not sent back out as the host's own line.
-std::deque<std::pair<std::wstring, uint8_t>> g_hostShow;
-bool g_showing = false;
-
 coop::net::Session* SessionIf(coop::net::Role role) {
     auto* s = g_session.load(std::memory_order_acquire);
     return (s && s->running() && s->role() == role) ? s : nullptr;
@@ -462,57 +456,17 @@ void HostAfterBody(Terminal& t) {
     SendBusy(static_cast<uint8_t>(t.slot), busy);
 }
 
-// Every client whose world is ready, but `except`, gets the line: the screen is one screen, as the game's terminal is
-// one terminal every panel shows.
-void ShowToClients(const std::wstring& text, uint8_t type, int except) {
-    auto* s = g_session.load(std::memory_order_acquire);
-    if (!s || !s->connected()) return;
-    for (int slot = 1; slot < kMaxPeers; ++slot) {
-        if (slot == except || !s->IsSlotWorldReady(slot)) continue;
-        SendLog(static_cast<uint8_t>(slot), text, type);
-        ++g_counts.linesShown;
-    }
-}
-
-// What a terminal prints on the host. A typist's line goes to its typist, to every other client and to the host's own
-// screen; a line the host's own terminal prints, other than one this lane wrote there, goes to every client. So every
-// player's SAT console shows what any player ran there.
 sg::Verdict OnWritePre(const sg::Call& c) {
     if (!SessionIf(coop::net::Role::Host)) return sg::Verdict::Run;
     Terminal* t = ByObject(c.object);
-    const bool mine = !t && c.object && c.object == SC::LocalTerminal();
-    if (!t && (!mine || g_showing)) return sg::Verdict::Run;
+    if (!t || t->slot < 0) return sg::Verdict::Run;  // the host's own terminal, or no typist to show it to
     std::wstring text;
     uint8_t type = 0;
     if (!SC::ReadWriteToLogArgs(c.locals, text, type)) return sg::Verdict::Run;
     if (text.size() > kMaxLogChars) text.resize(kMaxLogChars);
-    if (mine) {
-        ShowToClients(text, type, -1);
-        return sg::Verdict::Run;
-    }
-    if (t->slot >= 0) {
-        SendLog(static_cast<uint8_t>(t->slot), text, type);
-        ++g_counts.linesReturned;
-    }
-    ShowToClients(text, type, t->slot);
-    if (g_hostShow.size() < kOutboxCap) g_hostShow.emplace_back(std::move(text), type);
+    SendLog(static_cast<uint8_t>(t->slot), text, type);
+    ++g_counts.linesReturned;
     return sg::Verdict::Run;
-}
-
-// The typists' lines owed to the host's own screen, in the order they were printed.
-void DrainHostShow() {
-    if (g_hostShow.empty()) return;
-    void* const mine = SC::LocalTerminal();
-    if (!mine) {
-        g_hostShow.clear();  // no screen here yet: the lines are not kept for one made later
-        return;
-    }
-    g_showing = true;
-    while (!g_hostShow.empty()) {
-        SC::CallWriteToLog(mine, g_hostShow.front().first, g_hostShow.front().second);
-        g_hostShow.pop_front();
-    }
-    g_showing = false;
 }
 
 void OnBodyPost(const sg::Call& c) {
@@ -553,7 +507,6 @@ void Tick() {
     const auto now = Clock::now();
     for (int i = 0; i < kMaxPeers; ++i)
         if (!g_out[i].q.empty() && now >= g_out[i].nextTry) Flush(static_cast<uint8_t>(i));
-    if (SessionIf(coop::net::Role::Host)) DrainHostShow();
     // A terminal holds its world's desk, dish and panel: one made in a world that is known and no longer
     // the current one goes. An unknown world keeps it.
     if (void* world = WI::CurrentWorld()) {
@@ -615,8 +568,6 @@ void OnDisconnect() {
     if (g_mirrorBusy && !g_localHolds)
         if (void* term = SC::LocalTerminal()) SC::WriteProcessing(term, false);
     g_mirrorBusy = g_localHolds = false;
-    g_hostShow.clear();
-    g_showing = false;
     while (!g_terms.empty()) DiscardAt(g_terms.size() - 1);
     for (auto& o : g_out) o = Outbox{};
     for (bool& b : g_saidRefused) b = false;

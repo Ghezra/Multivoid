@@ -266,21 +266,17 @@ on the host, and the state comes back as rows (`coop/interactables/serverbox_syn
 A machine has one SAT console terminal, the widget every SAT console panel in the world shows; a
 panel points it at its dish, or at ROOT. A line a client types there whose command rests on the
 shared world -- a dish's calibration, a floppy's export or eject, a gift box, a server's or a
-tower's state, the debug and joke commands that spawn or destroy things -- is refused on the client
-and sent to the host with the terminal's context. The host keeps a terminal of the game's own class
-for each typist, never shown, and runs the line there, so the command happens once, in the host's
-world, and its results cross by their own lanes; every line that terminal prints comes back to its
-typist, and so does its busy state. Each of those lines also goes to every other client and onto the
-host's own terminal, and a line the host's own terminal prints goes to every client, so the screen
-is one screen, as the game's one terminal is: every player's SAT console shows what any player ran
-there (`coop/dev/satlog_probe` logs each peer's screen). A line runs only once the host's terminal
-is idle and set to the dish, name and panel the line carried; a terminal still running a command
-answers it busy, and a dish or a named panel the host cannot resolve, or an init that fails, answers
-it err rather than running it against another context. A line is never re-run on its own, since a
-command such as an eject has an effect in the world. A line whose effect is the typist's own -- its
+tower's state, the debug and joke commands that spawn or destroy things -- is refused on the
+client and sent to the host with the terminal's context. The host keeps a terminal of the game's
+own class for each typist, never shown, and runs the line there, so the command happens once, in
+the host's world, and its results cross by their own lanes; every line that terminal prints comes
+back to its typist alone, and so does its busy state. A line runs only once the host's terminal is
+idle and set to the dish, name and panel the line carried; a terminal still running a command
+answers it busy, and a dish or a named panel the host cannot resolve, or an init that fails,
+answers it err rather than running it against another context. A line is never re-run on its own, since a command such as an
+eject has an effect in the world. A line whose effect is the typist's own -- its
 compass, its terminal, the desk's radar filter and sounds on its machine -- runs where it was typed
-(`coop/interactables/sat_console_sync`, the command table in
-`coop/interactables/sat_console_table`).
+(`coop/interactables/sat_console_sync`, the command table in `coop/interactables/sat_console_table`).
 
 ### Upgrades
 
@@ -382,7 +378,7 @@ arrive with the save and never again.
 | The red phone's ring is per-peer randomness with no lane | `[V]` no lane exists |
 | A client's own write to a drive whose row is still its class default is neither put back nor sent; no client-side writer of such a drive exists in the game (every writer is a verb the host runs, or a drive the client brings in) | `[RD]` the writer census of `prop_drive_C.data_0`; `coop/interactables/drive_payload_sync` |
 | A SAT console command that spawns or destroys a class no lane carries (the rufus, the thiccfus, the llama's soul, the madness, the centipede, the murder kerfur) acts in the host's world only; its typist does not see it | `[V]` no lane exists for those classes |
-| A SAT console line whose effect is its typist's own (its compass, its terminal, the desk's radar filter and sounds) runs and prints on that typist's screen alone; a joiner's screen starts empty, without the lines printed before it joined | `[V]` `coop/interactables/sat_console_sync` shares the lines the host's terminals print |
+| Each player's SAT console screen and log are its own; another player's typing is not shown | `[V]` by design until decided |
 | A client's cheat menu (`uncalib`, `summonvirus`) and a virus its own save starts change only its copy of the dishes' precision, and the copy is put back at its next poll; the virus itself waits on a lane for the desk's `virusEvent` | `[V]` `coop/interactables/dish_calib_sync`; no lane carries `virusEvent` |
 | The fakeGrays event's level trigger (`trigger_fakeLmaos`) breaks its dish's server and zeroes the dish on the machine where an allowed actor enters its volume; on a client the zero is put back and the break stays that client's | `[V]` the chain: the eventer's fakeGrays event arms the volume, whose first object is the trigger; `[?]` whether a client's body on the host's copy fires it |
 
