@@ -5,6 +5,9 @@
 // game's own unsit. Every 2 s from 30 s to 76 s: its actor, the box, the half height and sittingOn (`[SIT]`).
 // THE HOST, from 40 s: it stands 2 m off the chair, lit, and looks at the body until 50 s; screenshots at 48 s (seated) and 70 s
 // (stood). Every 2 s: the body's location and its AnimBP seat pose.
+// VOTVCOOP_SIT_PROBE_WHO=host: the host sits instead, by the same steps, and every client logs, every 2 s from 30 s to
+// 76 s, the seat it sits on (the box's actor, its class, place and yaw) and how many props within 3 m moved more than
+// 5 cm since 30 s, the farthest of them by name (`[SIT] watch`).
 
 #include "coop/dev/sit_probe.h"
 
@@ -18,6 +21,7 @@
 #include "ue_wrap/actors/puppet.h"
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/core/log.h"
+#include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/devices/atv.h"
@@ -33,6 +37,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace coop::dev::sit_probe {
 namespace {
@@ -115,6 +120,60 @@ uint64_t g_startAt = 0, g_nextLog = 0;
 void* g_box = nullptr;
 int g_try = 0;
 bool g_seated = false, g_unsat = false, g_placed = false, g_shot1 = false, g_shot2 = false;
+
+bool HostSits() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_SIT_PROBE_WHO") == "host";
+    return v;
+}
+
+// A client watching the host sit: the seat nearest the host's body once it sits, and the props around it.
+struct Seen { void* obj; FVector at; };
+std::vector<Seen> g_around;
+void* g_seat = nullptr;
+FVector g_seatAt0{};
+
+void PropsAround(const FVector& c, std::vector<Seen>& out) {
+    struct Ctx { FVector c; std::vector<Seen>* out; } ctx{c, &out};
+    if (void* base = ue_wrap::object_index::ClassByName(L"prop_C"))
+        ue_wrap::object_index::ForEachInstanceOfKind(base, [](void* p, void* obj, int32_t) {
+            auto* x = static_cast<Ctx*>(p);
+            if (!obj || !R::IsLive(obj) || R::NameStartsWith(R::NameOf(obj), L"Default__")) return;
+            FVector a{};
+            if (E::TryGetActorLocation(obj, a) && Dist(a, x->c) < 300.f) x->out->push_back({obj, a});
+        }, &ctx);
+}
+
+void WatchTick(uint64_t t) {
+    coop::RemotePlayer* const hp = coop::players::Registry::Get().Puppet(0);
+    void* const body = hp && hp->valid() ? hp->actor() : nullptr;
+    if (!body || t < 30000u || t >= 76000u || Now() < g_nextLog) return;
+    g_nextLog = Now() + 2000;
+    FVector at{};
+    E::TryGetActorLocation(body, at);
+    if (!g_seat && t >= 30000u) {
+        if (void* box = NearestBox(at)) E::GetAttachParentActor(box, g_seat);
+        if (g_seat) { E::TryGetActorLocation(g_seat, g_seatAt0); PropsAround(g_seatAt0, g_around); }
+    }
+    FVector s{};
+    if (g_seat) E::TryGetActorLocation(g_seat, s);
+    ue_wrap::FRotator rot{};
+    if (g_seat) E::TryGetActorRotation(g_seat, rot);
+    const float yaw = rot.Yaw;
+    int moved = 0;
+    float most = 0.f;
+    std::string farName = "-";
+    for (const Seen& p : g_around) {
+        FVector a{};
+        if (!R::IsLive(p.obj) || !E::TryGetActorLocation(p.obj, a)) continue;
+        const float d = Dist(a, p.at);
+        if (d > 5.f) ++moved;
+        if (d > most) { most = d; farName = Narrow(R::ClassNameOf(p.obj)); }
+    }
+    UE_LOGI("[SIT] watch t=%llu: host body (%.0f,%.0f,%.0f); seat %s at (%.1f,%.1f,%.1f) yaw %.1f, %.1f cm from where it "
+            "stood; %d of %zu props within 3 m moved > 5 cm, the most %s %.1f cm",
+            t / 1000ull, at.X, at.Y, at.Z, g_seat ? Narrow(R::ClassNameOf(g_seat)).c_str() : "-", s.X, s.Y, s.Z, yaw,
+            g_seat ? Dist(s, g_seatAt0) : -1.f, moved, g_around.size(), farName.c_str(), most);
+}
 
 void ClientTick(uint64_t t) {
     void* const me = coop::players::Registry::Get().Local();
@@ -230,6 +289,11 @@ void Tick(coop::net::Session* session) {
         UE_LOGI("[SIT] probe armed role=%s", host ? "host" : "client");
     }
     const uint64_t t = Now() - g_startAt;
+    if (HostSits()) {
+        if (host) ClientTick(t);
+        else WatchTick(t);
+        return;
+    }
     if (host) HostTick(t);
     else ClientTick(t);
 }
