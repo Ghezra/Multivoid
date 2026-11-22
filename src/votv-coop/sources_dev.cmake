@@ -450,6 +450,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/week3_drill.cpp
     src/coop/dev/week4_drill.cpp
     src/coop/dev/week5_drill.cpp
+    src/coop/dev/week6_drill.cpp
     src/coop/dev/cleansound_drill.cpp
     src/coop/dev/satperf_probe.cpp
     src/coop/dev/sit_probe.cpp
