@@ -60,6 +60,19 @@ own process where the host cannot see the trigger; a validator that refused a di
 refuse a legitimate game event. A discontinuity costs trust in the movement ledger
 (`coop/player/movement_ledger`), never display, and any bound is client-scoped.
 
+### Riding a mover
+A pose also names what its player stands on when that is a registered mover (`coop/player/pose_bases`; today the cargo lift's
+platform): a base id (FNV-1a 32 of the lift's interactable key) and the offset from the platform, beside the absolute position
+every other reader still reads (`PoseSnapshot`, 52 bytes). The sender asks its own engine
+(`BasedMovement.MovementBase`, `ue_wrap/actors/character_base`); any other base goes as none. A receiver that resolves the id
+attaches the puppet's root to the platform, as a seated body is to its ATV, so the engine carries it, and interpolates the offset
+(`remote_player_based`). Before, a puppet placed at the rider's last absolute pose lagged the rising platform and its capsule made
+the lift's own block test reverse it (once in each of 2 measured runs). `[?]` The base is a claim, checked with no tolerance tied
+to the link: XY gap within 30 cm, absolute Z within the lift's stops (minus 50, plus 250 cm), offset Z 0..250 cm; else the absolute
+pose places the puppet, counted. A ragdolled or seated body never rides; a joiner needs no state (the pose is a stream). MTA's
+contact entity is the precedent (`CNetAPI.cpp:1117-1168`, `:859-991`): world-axis offsets, so a rotating mover needs its own row.
+Drill `coop/dev/basedmove_drill`; red `basedmove_base_off`. `[?]`
+
 ### Ragdoll and faint
 
 A state bit says the sender is ragdolled: fainted, knocked out or dropped on purpose, not dead.
@@ -121,28 +134,25 @@ The two-peer drill is `coop/dev/hand_record_drill`
 (`hand_record_drill=can|hand|joiner|forge|hostile|keyless|oversize|bounds|nonfinite|box|display`, the host's one verdict, four
 red arms: `display`'s is `hand_display_redo_off`).
 
-A fire extinguisher (`prop_fireExt_C`) sprays from the hand: its `fire`, the hand's LMB press and
-release, turns its spray effect and sound on, and its tick aims the spray along that machine's camera,
-drains the charge and casts the game's `extinguishRay`, which puts out what it touches. Hit hard or
-burnt in the world, its `shoot` sends it thrusting with its own foam and rays until the charge is
-gone. Each ran on the one machine, so the other players saw no foam. Every peer now shows it: a
-player's spray goes to the host (`FireExtIntent`), which spends one of the sender's spray tokens,
-checks the sender's hand holds an extinguisher, shows the spray on its mirror of that hand and tells
-every peer (`FireExtState`), each showing it on its mirror of that hand. Every peer casts the game's
-extinguishing ray from its mirror of the sprayer's hand, from the puppet's synced eye along its
-synced aim, each frame the spray is on, and the sprayer's own tick casts its own, so the fire in a
-peer's own world goes out when that peer's ray reaches it. Each peer rolls its own scatter and aims
-along the puppet's interpolated aim, a frame or more behind the sprayer's camera, so a fire at the
-edge of the reach can go out on one machine and burn on another. That is transitional: fire runs on
-every peer separately until fire itself is synced, and a peer's own ray is the only way its fire goes
-out; once fire is the host's, the host's ray becomes the only one. A hand's let-go and this player's own hold change end the spray
-as events, and the host's count of a client's charge starts afresh with each new hold.
-The runaway thrust is the host's: a client's copy never runs its `shoot` (a client's own held
-extinguisher is refused too, and its damage reaches nobody), and a client's damage to a world copy
-asks the host (`FireExtIntent` op 3), which judges the sender's ask budget, its reach and the copy
-and runs the game's own verb on its copy. The host says each thrust and its charge to every peer
-(`FireExtState` op 0), when it begins, twice a second while it runs and when it ends, and a client's
-copy shows the thrust's foam and sound (`coop/props/fireext_sync`, `coop/props/fireext_thrust_sync`)
+A fire extinguisher (`prop_fireExt_C`) sprays from the hand: its `fire`, the hand's LMB press and release, turns its
+spray effect and sound on, and its tick aims the spray along that machine's camera, drains the charge and casts the
+game's `extinguishRay`, which puts out what it touches. Hit hard or burnt in the world, its `shoot` sends it thrusting
+with its own foam and rays until the charge is gone. Each ran on the one machine, so the other players saw no foam.
+Every peer now shows it: a player's spray goes to the host (`FireExtIntent`), which spends one of the sender's spray
+tokens, checks the sender's hand holds an extinguisher, shows the spray on its mirror of that hand and tells every peer
+(`FireExtState`), each showing it on its mirror of that hand. Every peer casts the game's extinguishing ray from its
+mirror of the sprayer's hand, from the puppet's synced eye along its synced aim, each frame the spray is on, and the
+sprayer's own tick casts its own, so the fire in a peer's own world goes out when that peer's ray reaches it. Each peer
+rolls its own scatter and aims along the puppet's interpolated aim, a frame or more behind the sprayer's camera, so a
+fire at the edge of the reach can go out on one machine and burn on another. That is transitional: fire runs on every
+peer separately until fire itself is synced, and a peer's own ray is the only way its fire goes out; once fire is the
+host's, the host's ray becomes the only one. A hand's let-go and this player's own hold change end the spray as events,
+and the host's count of a client's charge starts afresh with each new hold. The runaway thrust is the host's: a client's
+copy never runs its `shoot` (a client's own held extinguisher is refused too, and its damage reaches nobody), and a
+client's damage to a world copy asks the host (`FireExtIntent` op 3), which judges the sender's ask budget, its reach
+and the copy and runs the game's own verb on its copy. The host says each thrust and its charge to every peer
+(`FireExtState` op 0), when it begins, twice a second while it runs and when it ends, and a client's copy shows the
+thrust's foam and sound (`coop/props/fireext_sync`, `coop/props/fireext_thrust_sync`)
 `[V]` (`coop/dev/fireext_drill`'s spray, spray_join and runaway arms each PASS on the rig and each
 red arm FAILs). A joiner is told, at its ready edge, every spray under way (the host's own, read off
 its hand, and each client's) and every extinguisher that thrusts or has lost charge; a client's ask in
@@ -203,22 +213,19 @@ a converter that needs no editor; the starter bundle is `assets/paks/README.md`.
 
 ### Vitals, damage and death
 
-Vitals are per peer: each machine computes its own health, food and sleep and streams them as
-fractions for the nameplate's bar. Damage is victim-authoritative, MTA's shape. A physical
-impact (a vehicle, a thrown prop, a coin) dispatches the game's impact events on the body that
-was hit, and the game's health is a per-machine singleton, so an impact resolving against a
-puppet in the host's world would drain the host; an interceptor cancels the three impact entries
-on any body that is not the local possessed player, and the victim's own machine computes the
-same contact natively (`coop/player/player_damage`). The damage verb itself is refused on a
-peer's puppet the same way: fire and the other status effects tick it from the burning body's own
-graph, and a puppet set alight by a fire only this machine shows burned on and shook this
-machine's camera once a second. The body's own ignite is refused on a puppet too, the one way a
-fire sets a player alight: its burn loop turns this machine's view and plays its pain sound every
-second, and only its own tick, which a puppet does not run, would put it out. The fire is not yet
-a shared hazard: the owner does not burn from a fire only another machine shows, until fire itself
-is host-authored world state. A burning owner's flame is shown: its burning time rides the pose
-stream as a display bit, and the puppet switches the body's own flame on and off, nothing else. A
-peer that joins sees it from the next pose, since the bit is level, not an edge.
+Vitals are per peer: each machine computes its own health, food and sleep and streams them as fractions for the
+nameplate's bar. Damage is victim-authoritative, MTA's shape. A physical impact (a vehicle, a thrown prop, a coin)
+dispatches the game's impact events on the body that was hit, and the game's health is a per-machine singleton, so an
+impact resolving against a puppet in the host's world would drain the host; an interceptor cancels the three impact
+entries on any body that is not the local possessed player, and the victim's own machine computes the same contact
+natively (`coop/player/player_damage`). The damage verb itself is refused on a peer's puppet the same way: fire and the
+other status effects tick it from the burning body's own graph, and a puppet set alight by a fire only this machine
+shows burned on and shook this machine's camera once a second. The body's own ignite is refused on a puppet too, the one
+way a fire sets a player alight: its burn loop turns this machine's view and plays its pain sound every second, and only
+its own tick, which a puppet does not run, would put it out. The fire is not yet a shared hazard: the owner does not
+burn from a fire only another machine shows, until fire itself is host-authored world state. A burning owner's flame is
+shown: its burning time rides the pose stream as a display bit, and the puppet switches the body's own flame on and off,
+nothing else. A peer that joins sees it from the next pose, since the bit is level, not an edge.
 
 The hit verbs (`addDamage`, `punch`, `ragdollMode`) are refused on a puppet the same way, whoever calls them.
 Creature hits are the one relay: the host runs the creatures. A creature of a parked family (the zombies, the
@@ -288,24 +295,20 @@ like a client's. The clients' line names the mode, and is said again if the host
 The host's own nightmare roll is the game's, 500 s of world time, so while the host rests at 1 it
 comes 500 real seconds into the sleep.
 
-A nightmare is one player's. The game rolls once per sleep, 500 s of world time after the sleeper
-falls asleep, and the host's sleep runs the world at 20, so a host rolls 25 real seconds into a
-rest. A client's rest keeps its world at 1, so the same wait would end after 500 real seconds. The
-timing is the one piece the mod owns: it rolls once, 25 real seconds (500 over the same factor 20)
-into a rest the client's sleep watch announces, and the rest ends on the game's own wake, which a
-second watch announces. The chance is the game's: the bed's own, 0.15 with no bed, none when the
-save turns nightmares off. The game's own roll stays held at zero on a client, so it never rolls a
-second time 500 real seconds into a long rest. A win
-runs the game's own wake and dream, on that player's machine alone: only that player is woken and
-teleported into the dream, and every other player sleeps on. A dream is spawned far outside the
-map, so on every other machine the dreamer's copy is hidden while its rest state says it dreams:
-the hide is taken from the sleep lane's announcement of a state change and from the puppet's
-spawn, so a copy born after the dream began is hidden at once (`coop/player/nightmare_roll`). The
-dream's own spawns are a mannequin (`dream_mann`) and boulders (`dream_boulders`), neither a prop
-nor a lane actor, so no lane carries them to another peer: they stay on the dreamer's machine
-(read from the dream scripts, `[?]`). Any running event ends a dream, the game's own rule, and a
-client counts the host world's events too. `[?]` until the nightmare drill (`nightmare_drill`,
-one run, two reds) has run on the rig.
+A nightmare is one player's. The game rolls once per sleep, 500 s of world time after the sleeper falls asleep, and the
+host's sleep runs the world at 20, so a host rolls 25 real seconds into a rest. A client's rest keeps its world at 1, so
+the same wait would end after 500 real seconds. The timing is the one piece the mod owns: it rolls once, 25 real seconds
+(500 over the same factor 20) into a rest the client's sleep watch announces, and the rest ends on the game's own wake,
+which a second watch announces. The chance is the game's: the bed's own, 0.15 with no bed, none when the save turns
+nightmares off. The game's own roll stays held at zero on a client, so it never rolls a second time 500 real seconds
+into a long rest. A win runs the game's own wake and dream, on that player's machine alone: only that player is woken
+and teleported into the dream, and every other player sleeps on. A dream is spawned far outside the map, so on every
+other machine the dreamer's copy is hidden while its rest state says it dreams: the hide is taken from the sleep lane's
+announcement of a state change and from the puppet's spawn, so a copy born after the dream began is hidden at once
+(`coop/player/nightmare_roll`). The dream's own spawns are a mannequin (`dream_mann`) and boulders (`dream_boulders`),
+neither a prop nor a lane actor, so no lane carries them to another peer: they stay on the dreamer's machine (read from
+the dream scripts, `[?]`). Any running event ends a dream, the game's own rule, and a client counts the host world's
+events too. `[?]` until the nightmare drill (`nightmare_drill`, one run, two reds) has run on the rig.
 
 ### Another map: the backrooms
 
@@ -377,46 +380,40 @@ the visitor came back with its hand item every time. The drill is `level_visit_d
 
 ### Inventory
 
-Per player and private: the contents never cross the wire as gameplay. The host stores each
-peer's inventory per save under the identity the peer proved at admission and hands it back at
-the next join, before the world exists (`coop/items/player_inventory_sync`). The hand-back is a
-substitution, not an addition: a joiner's world is built from a capture of the host's save
-object, and that object is where the game keeps what a player carries (`GObjStack[0]`), wears
-and holds, so whatever is not replaced there is the host's. A first join gets the three
-starter items as copies under fresh keys, because the game's key index holds one object per
-key and a copy under its source's key aliases the original the moment either is dropped. What a player wears is a fixed row of slots the hand-back
-fills to the save object's count, and the game equips only into a slot that is byte-for-byte its own empty one (a
-default record, with an identity transform), so every blank the hand-back writes is that empty, read from the save
-object's own `equipment_def` and `hold_def` (the defaults the game's reset copies back), never typed: a blank written with a
-zeroed transform was never free, and a joiner could wear only as many new items as slots it had emptied itself. A
-profile that stored such blanks is healed at its next join (`ue_wrap/actors/inventory`). `[?]` on the rig
-(`coop/dev/equip_drill`): measured on the first version of the fix, which typed the identity transform, every empty slot
-of a fresh joiner and of a returning one took an item, as the host's do, and without the empty blank none of the client's
-five did; the version that reads the game's own blank is not yet re-proved. The
-same profile carries the player's vitals (health, food, sleep, the flashlight charge, the food
-tolerances and the buffs), which the game keeps in place on that same save object, and where
-the player stood: a first join starts from the game's own defaults at the start point (the KPP gate in a fresh game, day 0 to 2; beside the
-base's bed from day 3), a
-returning player gets their numbers back and appears at the last spot they were standing on
-(on the ground, not ragdolled, not seated: a position read while driving the ATV is not a place
-a body can be put back), and one who left dead starts a fresh life. The vitals and the position ride a change of the items at once and otherwise go every
-30 seconds. The host holds the newest profile of every player in memory for as long as the hosted
-world lives, so a rejoin gets back what the player left with, and writes the profiles to disk
-only with its own world save (`coop/player/player_profile_store`): a pocketed item has left the
-world and entered the profile, so a stored profile newer than the saved world would hold that
-item twice after a host restart, and an older one would lose it. A host that quits without
-saving takes its players' profiles back to its last save together with its world. The copy that
-is written is the one taken when the game gathered the world into its save object, which during
-a game event is not the moment of the save (see [join.md](join.md), the save transfer). The
-profiles are keyed by the file the world is in: they stand under `coop_players/<save slot>/` in the
-mod's own folder (`Mods\Multivoid`), and one world is written under more than one name: a quicksave writes a new subsave file,
-and a plain save made after loading a subsave writes the main slot, so a save to another slot
-first copies the whole set beside that file. A profile reaches the host up to a second after the
-pickup it reports, so a save inside that second holds a profile one pickup behind its world. That identity is
-a key file in the mod's own folder, bound to the machine it was made on, under a private access list that admits only the
-account that made it (`coop/net/peer_identity`; [install.md](install.md) says where and
-what a second account on the same PC gets). The world-side effect of a pickup or a drop is
-on the props lane.
+Per player and private: the contents never cross the wire as gameplay. The host stores each peer's inventory per save
+under the identity the peer proved at admission and hands it back at the next join, before the world exists
+(`coop/items/player_inventory_sync`). The hand-back is a substitution, not an addition: a joiner's world is built from a
+capture of the host's save object, and that object is where the game keeps what a player carries (`GObjStack[0]`), wears
+and holds, so whatever is not replaced there is the host's. A first join gets the three starter items as copies under
+fresh keys, because the game's key index holds one object per key and a copy under its source's key aliases the original
+the moment either is dropped. What a player wears is a fixed row of slots the hand-back fills to the save object's
+count, and the game equips only into a slot that is byte-for-byte its own empty one (a default record, with an identity
+transform), so every blank the hand-back writes is that empty, read from the save object's own `equipment_def` and
+`hold_def` (the defaults the game's reset copies back), never typed: a blank written with a zeroed transform was never
+free, and a joiner could wear only as many new items as slots it had emptied itself. A profile that stored such blanks
+is healed at its next join (`ue_wrap/actors/inventory`). `[?]` on the rig (`coop/dev/equip_drill`): measured on the
+first version of the fix, which typed the identity transform, every empty slot of a fresh joiner and of a returning one
+took an item, as the host's do, and without the empty blank none of the client's five did; the version that reads the
+game's own blank is not yet re-proved. The same profile carries the player's vitals (health, food, sleep, the flashlight
+charge, the food tolerances and the buffs), which the game keeps in place on that same save object, and where the player
+stood: a first join starts from the game's own defaults at the start point (the KPP gate in a fresh game, day 0 to 2;
+beside the base's bed from day 3), a returning player gets their numbers back and appears at the last spot they were
+standing on (on the ground, not ragdolled, not seated: a position read while driving the ATV is not a place a body can
+be put back), and one who left dead starts a fresh life. The vitals and the position ride a change of the items at once
+and otherwise go every 30 seconds. The host holds the newest profile of every player in memory for as long as the hosted
+world lives, so a rejoin gets back what the player left with, and writes the profiles to disk only with its own world
+save (`coop/player/player_profile_store`): a pocketed item has left the world and entered the profile, so a stored
+profile newer than the saved world would hold that item twice after a host restart, and an older one would lose it. A
+host that quits without saving takes its players' profiles back to its last save together with its world. The copy that
+is written is the one taken when the game gathered the world into its save object, which during a game event is not the
+moment of the save (see [join.md](join.md), the save transfer). The profiles are keyed by the file the world is in: they
+stand under `coop_players/<save slot>/` in the mod's own folder (`Mods\Multivoid`), and one world is written under more
+than one name: a quicksave writes a new subsave file, and a plain save made after loading a subsave writes the main
+slot, so a save to another slot first copies the whole set beside that file. A profile reaches the host up to a second
+after the pickup it reports, so a save inside that second holds a profile one pickup behind its world. That identity is
+a key file in the mod's own folder, bound to the machine it was made on, under a private access list that admits only
+the account that made it (`coop/net/peer_identity`; [install.md](install.md) says where and what a second account on the
+same PC gets). The world-side effect of a pickup or a drop is on the props lane.
 
 With the host's rule `net.hunger_shared` (Slower hunger in larger groups; off by default) each player's hunger runs at
 players^-0.44 of the game's rate, 74% for two and 54% for four, written on each peer's own player through the game's own
@@ -532,7 +529,7 @@ is mirrored by the balance lane; an event is broadcast by the event watch.
 
 | Kind | Direction | Carries |
 |---|---|---|
-| `PoseSnapshot` (stream) | each peer | position, yaw, pitch, head delta, speed, state bits, three vitals |
+| `PoseSnapshot` (stream) | each peer | position, yaw, pitch, head delta, speed, state bits, three vitals, and the mover the player stands on (a base id and the offset from it; the host checks the claim) |
 | `ChairSeatIntent`, `ChairSeatState` | a client to the host; the host to all | a sit on or a stand from a chair, by its element id; who sits where, and the word to get up |
 | `RagdollPose` (stream) | each peer, while ragdolled | pelvis transform and velocity |
 | `Join`, `RosterRow` | each peer; the host | identity, nickname, skin, preferences; who occupies each slot |

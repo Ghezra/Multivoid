@@ -93,6 +93,7 @@ bool RemotePlayer::Spawn(const std::string& skinName, uint8_t peerSlot) {
     actor_ = nullptr;
     internalIdx_ = -1;
     ResetBurning();   // a new body owes no flame state to the one before it
+    ForgetBase();     // nor a base: a world change leaves the old body invalid with no Destroy
     // Registry::Local() first (controller-filtered: the genuine local, not a puppet, which is also
     // a mainPlayer_C); FindObjectByClass as the fallback during the splash and pre-possession
     // window, where no controller is attached and no puppet exists yet. Without it Spawn failed
@@ -294,7 +295,10 @@ void RemotePlayer::SetTargetPose(const coop::net::PoseSnapshot& snap) {
 
     ShowBurning((snap.stateBits & coop::net::kStateBitBurning) != 0);
 
-    const ue_wrap::FVector tgtPos{snap.x, snap.y, snap.z};
+    // The base this pose names, if this peer resolves one: the puppet rides it and every position below is an offset from it.
+    UpdateBase(snap);
+    const ue_wrap::FVector tgtPos = riding_ ? ue_wrap::FVector{snap.bx, snap.by, snap.bz}
+                                            : ue_wrap::FVector{snap.x, snap.y, snap.z};
 
     // The first packet: the puppet sits at the placeholder placement, so snap rather than
     // interpolate across the whole vector.
@@ -502,6 +506,7 @@ void RemotePlayer::Destroy() {
     internalIdx_ = -1;
     hasPose_ = false;
     chairPose_ = false;
+    ForgetBase();
     window_.Close();
     dirty_ = false;
     bodyYaw_.Reset(0.f);    // clears the latch + dt clock; re-seeded at the next Spawn
@@ -573,7 +578,7 @@ void RemotePlayer::ApplyToEngine() {
         // The wire carries the source's actor Z (the capsule centre, MTA's vPos shape, unaffected by BP
         // init transients), and the puppet's actor is the wire pose unchanged: both ends are
         // mainPlayer_C, so no actor-level Z or yaw offset exists.
-        ue_wrap::FVector at = curPos_;
+        ue_wrap::FVector at = WorldPosForWrite();
         if (chair) {
             const float yawRad = shownYaw * 0.01745329252f;
             at.X += std::cos(yawRad) * kChairBodyAheadCm;
@@ -652,6 +657,7 @@ void RemotePlayer::ApplyToEngine() {
         // default step's volume is the skin layer's call: a replace-mode variant mutes it to 0, and
         // lib step still runs its trace, water and friction side effects.
         const bool crouched = (curStateBits_ & coop::net::kStateBitCrouched) != 0;
+        const ue_wrap::FVector stepAt = WorldPos();
         if (footsteps_.StepDue(curPos_, curSpeed_, !inAir, crouched)) {
             // A step whose ground trace finds nothing is silent. The trace's hit is read back and said only under
             // step_ground_log: the first step, every 25th and every 25th miss, a line no normal run carries.
@@ -663,9 +669,9 @@ void RemotePlayer::ApplyToEngine() {
             const bool sayStep = (stepsPlayed_++ % 25) == 0;
             if (sayGround && ((!ground && (stepMisses_++ % 25) == 0) || sayStep))
                 UE_LOGI("puppet_footsteps: slot %u stepped at (%.0f,%.0f,%.0f), ground %s (%u steps, %u silent)",
-                        static_cast<unsigned>(slot_), curPos_.X, curPos_.Y, curPos_.Z, ground ? "hit" : "missed",
+                        static_cast<unsigned>(slot_), stepAt.X, stepAt.Y, stepAt.Z, ground ? "hit" : "missed",
                         stepsPlayed_, stepMisses_);
-            coop::skin_effects::OnStep(actor_, curPos_);
+            coop::skin_effects::OnStep(actor_, stepAt);
         }
     }
 

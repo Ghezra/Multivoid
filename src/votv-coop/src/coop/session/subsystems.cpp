@@ -357,6 +357,7 @@ void Install(coop::net::Session& session) {
     coop::agrav_sync::Install(&session);  // the Ariral's float, the props it lifts on every peer
     coop::car_charger_sync::Install(&session);  // the car charger's clips and a loose ATV battery's charge
     coop::props::prop_can_state::Install(&session);  // a canned food's lid and contents: its record on a change
+    coop::sound_relay::Install(&session);       // a player's own sounds at a place (a melee hit)
     coop::desk_short_sync::Install(&session);  // the base computer's short circuit is the host's
     coop::world_sound_sync::Install(&session);  // the sky's two sounds, a faucet's click
     coop::sound_relay::Install(&session);       // a player's own sounds at a place (a melee hit)
@@ -563,6 +564,7 @@ DisconnectStats DisconnectAll() {
     coop::vent_crawler_sync::OnDisconnect();
     coop::hand_record_sync::OnDisconnect();  // the hands' records and half-assemblies
     coop::cover_sync::OnDisconnect();  // the covers sent, the asks and states queued
+    coop::sound_relay::OnDisconnect();
     coop::desk_short_sync::OnDisconnect();
     coop::build_sync::OnDisconnect();
     coop::kitchen_sync::OnDisconnect();
@@ -648,7 +650,6 @@ DisconnectStats DisconnectAll() {
     coop::portable_pc_lid::OnDisconnect();
     coop::laptop_buffer_sync::OnDisconnect();  // quad shadow + assembler
     coop::floppybox_sync::OnDisconnect();  // box shadows + taken-ring + canonical retries
-    coop::bucket_sync::OnDisconnect();  // what it knew of the buckets, and its counters
     coop::battery_charger_sync::OnDisconnect();  // what it told of the chargers, and its counters
     coop::atv_spawn_ask::OnDisconnect();  // the asks and removals
     coop::agrav_sync::OnDisconnect();  // the props told lifted

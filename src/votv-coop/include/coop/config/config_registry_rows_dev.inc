@@ -767,6 +767,8 @@ CFG_FLAG(class_resolve_lookup_only, "class_resolve_lookup_only", "dev", false, "
 #include "coop/config/config_registry_rows_dev_woodchipper.inc"
 // The world-sound lane's drill and red arms: their own file, one concept.
 #include "coop/config/config_registry_rows_dev_world_sound.inc"
+// The sound relay's red arms: their own file, one concept.
+#include "coop/config/config_registry_rows_dev_sound_relay.inc"
 // The prop-properties tool's red arms: their own file, one concept.
 #include "coop/config/config_registry_rows_dev_prop_props.inc"
 // The held item's record drill and its red arms: their own file, one concept.
@@ -800,3 +802,4 @@ CFG_FLAG(class_resolve_lookup_only, "class_resolve_lookup_only", "dev", false, "
 // The remote player's footsteps: the ground line, the crouch drill and its red arm: their own file, one concept.
 #include "coop/config/config_registry_rows_dev_footsteps.inc"
 #include "coop/config/config_registry_rows_dev_flood.inc"  // the basement flood's drill and red arms: their own file
+#include "coop/config/config_registry_rows_dev_basedmove.inc"

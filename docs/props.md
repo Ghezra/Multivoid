@@ -2,11 +2,10 @@
 
 ## Purpose
 
-Everything a player can pick up, carry, throw, drop, stick to a wall, put in a pocket or take out
-of a container: how it is named across peers, where the mod catches its birth and death, who
-owns it at rest and in a hand, and what happens to a prop whose own Blueprint keeps changing
-it. Trash piles and clumps are a family of their own on [piles.md](piles.md); the item in a
-player's hand is on [players.md](players.md); the tools that leave a persistent actor behind, the
+Everything a player can pick up, carry, throw, drop, stick to a wall, put in a pocket or take out of a container: how it
+is named across peers, where the mod catches its birth and death, who owns it at rest and in a hand, and what happens to
+a prop whose own Blueprint keeps changing it. Trash piles and clumps are a family of their own on [piles.md](piles.md);
+the item in a player's hand is on [players.md](players.md); the tools that leave a persistent actor behind, the
 grappling hook and rope among them, are on [deployables.md](deployables.md).
 
 ## How it works
@@ -211,17 +210,16 @@ The toolgun's prop-properties tool (`tool_propProps_C`) sets a prop's static, fr
 press, calling the prop's own `setPropProps` with the four values the spawn menu gave the tool, and it then destroys
 itself. A client's press is cancelled at the script gate and goes to the host as `PropPropsIntent`: the element it hit,
 its camera point, the shot's hit point and the tool's four values. A hit on a keyed prop with no element id is refused
-with a notice, as the remover refuses it; an actor the session does not share runs natively. The
-host judges the press in the remover's order (`coop/props/prop_tool_flags`): the sender's world and posed body, a live
-prop element that is not trash or a kerfur, the right `multivoid.gameplay.toolgun.propprops` (granted by default), a
-toolgun in the sender's hand, no other peer holding the prop, and a shot the host's eye could have made
-(`coop/props/toolgun_sight`, with the limits it shares with the remover). It runs the game's setter on its own copy, so
-a class that overrides it (a landmine, a TV) takes its own path as in single player, and publishes the static, frozen and
-sleep it reads back from the actor, with the active value it ran the setter with, as `PropPropsState` to every peer.
-The host's own press is published from the tool's
-post row. A refused press returns the reason to its sender alone, with the host's current flags when the host had resolved
-the prop (a press on an element that is no prop, or before the host is ready, carries none): the client shows the
-reason and puts its copy back through `prop_C`'s own setter if it differs.
+with a notice, as the remover refuses it; an actor the session does not share runs natively. The host judges the press
+in the remover's order (`coop/props/prop_tool_flags`): the sender's world and posed body, a live prop element that is
+not trash or a kerfur, the right `multivoid.gameplay.toolgun.propprops` (granted by default), a toolgun in the sender's
+hand, no other peer holding the prop, and a shot the host's eye could have made (`coop/props/toolgun_sight`, with the
+limits it shares with the remover). It runs the game's setter on its own copy, so a class that overrides it (a landmine,
+a TV) takes its own path as in single player, and publishes the static, frozen and sleep it reads back from the actor,
+with the active value it ran the setter with, as `PropPropsState` to every peer. The host's own press is published from
+the tool's post row. A refused press returns the reason to its sender alone, with the host's current flags when the host
+had resolved the prop (a press on an element that is no prop, or before the host is ready, carries none): the client
+shows the reason and puts its copy back through `prop_C`'s own setter if it differs.
 
 Every peer that receives `PropPropsState`, the sender included, replays the press on its copy through the same setter
 with the host's four values, each state a press, so the collision follows a static flag and an override runs its own
@@ -402,8 +400,8 @@ drifts; a prop whose change is derived from the shared clock does not. The rule 
 progression, in one of three shapes chosen per prop: park the brain and let the host author the progression through the
 existing lanes (the pile shape); a host corrector that re-snaps a deterministic, clamped accrual when the game keeps
 re-enabling the tick (the tape reel, at one hertz); or an anchor, a start stamp every peer computes from, valid only
-while the rate is constant ([architecture.md](architecture.md), where the authority is going). The reel corrector, the
-food's tick gate and the buckets' lane are built.
+while the rate is constant ([architecture.md](architecture.md), where the authority is going). The reel corrector and
+the food's tick gate and the buckets' lane are built.
 
 A world food takes the first shape (`coop/props/prop_food_sync`), cooking progress included. Its tick rolls temperature and spoilage and, at the
 ends of the range, spawns a burnt or frozen copy and destroys itself, so a client's copy is refused its tick at the
@@ -477,6 +475,9 @@ chain: the base's mop bucket, `prop_bucket_mop_C`, a `prop_bucket_C` with nothin
 under an exact match (Ghezra/Multivoid issue 42) `[V]` (`VOTVCOOP_BUCKET_CLASS`, `VOTVCOOP_BUCKET_EXACT=1` its red arm:
 a client's fill read 35 there and 0 elsewhere; now every step matches on all three).
 
+A world bucket's water, a concrete bucket's concrete and a cement bag's units are the host's, the base's mop bucket among them,
+and a client's verbs on them are asked of the host ([props-buckets.md](props-buckets.md)).
+
 ## Who owns what
 
 | State | Owner | Shape |
@@ -495,7 +496,7 @@ a client's fill read 35 there and 0 elsewhere; now every step matches on all thr
 | notebook page text | the editing peer; the host takes it from the claim's holder, or from anyone while it is free | the notebook's own save record on the record lane, at the editor's commit and at the close |
 | a keyed prop's fire | the host | its flame on every copy; a client's light is a request |
 | the robot cleaner | the host | its drive on the drive stream; its switch a request; a client's tick and pickup refused |
-| a mop bucket's water, a concrete bucket's concrete, a cement bag's units | the host | rows when they change; a client's verb is a request; a client's concrete bucket tick refused |
+| a world bucket's water, a concrete bucket's concrete, a cement bag's units | the host | rows when they change; a client's verb is an asked family; a client's water bucket copy ticks on the host's last row |
 | a client's shared-world spawners | the host | refused on a client at the script-body gate; shared-world content arrives only from the host |
 | a starving player's food hallucination (`prop_burgerHallucinate_C`) | that player's machine | per-player: never broadcast or snapshot-expressed; before, the host's became a real prop on every client `[V]` (`coop/props/prop_lifecycle`) |
 
@@ -508,7 +509,7 @@ a client's fill read 35 there and 0 elsewhere; now every step matches on all thr
 | `PropRelease` | the holder to all | the prop's transform, its inherited linear and angular velocity and its frozen and sleep at the edge, the hold it closes and the throw sequence (0 = not a throw); a client's goes through the host, which clamps it and sends it on |
 | `PropFireState`, `PropFireRequest` | the host to all; a client to the host | a keyed prop's flame, its fuel and speed, or that it went out; a client's light with its fuel |
 | `RoombaState`, `RoombaIntent` | the host to all; a client to the host | a robot cleaner's id and whether it runs; a client's press with the state it wants |
-| `BucketState`, `BucketIntent` | the host to all; a client to the host | the rows of the host's buckets and cement bags that changed; a client's water after its verb, its mix, or its trowel's take |
+| `BucketState` | the host to all | the rows of the host's water buckets, concrete buckets and cement bags that changed, numbered per element; every one to a joiner |
 | `PropHoldRefused` | the host to every client | a hold the host refused, by its holder's slot and generation, the prop's key, and the slot whose hold keeps the prop |
 | `FoodState`, `FoodBite`, `FoodRelease`, `FoodHand` | the host to all; a client to the host; a client to the host; the holder to all | a world food's temperature, ripeness, uses and poison; a client's bite; the condition of a food a client let go; the condition of the food in a hand |
 | `PropPropsIntent`, `PropPropsState` | a client to the host; the host to all, or to the sender alone for a refusal | a client's press of the prop-properties tool with the tool's four values; a prop's static, frozen and sleep read back from the host's copy, or the reason the press was refused `[?]` |
@@ -526,26 +527,25 @@ a client's fill read 35 there and 0 elsewhere; now every step matches on all thr
 
 ## Late join
 
-The join page owns the mechanism: explicit deletes for the props the joiner's save had that are
-gone from the host's world, then the snapshot bracket with one spawn per live keyed prop (adopted by
-key, created when missing, transform converged), then position corrections for what the host moved
-during the window, then the membership sweep that removes the locals the host never claimed. A keyed
-prop's frozen and sleep converge with its snapshot row and its correction (static with the correction), and a flag change without
-a move gets a correction too, so an extinguisher taken off its mount during the window is loose on
-the joiner; a wall-attach component's owner converges its stuck state there through the component's
-own unstick or force-stick, so a sign pried in the window is off its wall. A stuck prop otherwise
-reaches a joiner through the save, which carries the frozen and static state. A glowstick's stick comes with its record behind its spawn row, a stick whose struck prop is not bound at the joiner waits for it (`coop/props/glowstick_struck`), and a hold of it that began before the join reaches the joiner as the host's freed record. A prop's nametag comes with the save, and a tag put on after the save's cut with the host's connect replay: each prop
-whose tag the session published is named to the joiner alone with the tag it carries then, ahead of the snapshot's
-props, so a copy the save loaded takes it at once and a prop the snapshot births takes it when it appears: the client
-keeps the tag by key until the key index shows the prop, and drops it with its world or session. A prop the host's
-index could not answer for is asked again each tick `[?]`.
-Container slices are
-sent per live container at the ready edge. A joiner gets no held-prop or driven-prop pose until its
-world is ready, since the release and the end edge that close them are not sent to a world that is
-not ready either: a prop held at the join resolves on the first pose after it, and at the ready edge
-the host re-sends every driven prop's pose, the resting ones included, which the delta gate would
-otherwise never send. An end edge that reaches a joiner before the prop it names is kept until the
-prop resolves.
+The join page owns the mechanism: explicit deletes for the props the joiner's save had that are gone from the host's
+world, then the snapshot bracket with one spawn per live keyed prop (adopted by key, created when missing, transform
+converged), then position corrections for what the host moved during the window, then the membership sweep that removes
+the locals the host never claimed. A keyed prop's frozen and sleep converge with its snapshot row and its correction
+(static with the correction), and a flag change without a move gets a correction too, so an extinguisher taken off its
+mount during the window is loose on the joiner; a wall-attach component's owner converges its stuck state there through
+the component's own unstick or force-stick, so a sign pried in the window is off its wall. A stuck prop otherwise
+reaches a joiner through the save, which carries the frozen and static state. A glowstick's stick comes with its record
+behind its spawn row, a stick whose struck prop is not bound at the joiner waits for it (`coop/props/glowstick_struck`),
+and a hold of it that began before the join reaches the joiner as the host's freed record. A prop's nametag comes with
+the save, and a tag put on after the save's cut with the host's connect replay: each prop whose tag the session
+published is named to the joiner alone with the tag it carries then, ahead of the snapshot's props, so a copy the save
+loaded takes it at once and a prop the snapshot births takes it when it appears: the client keeps the tag by key until
+the key index shows the prop, and drops it with its world or session. A prop the host's index could not answer for is
+asked again each tick `[?]`. Container slices are sent per live container at the ready edge. A joiner gets no held-prop
+or driven-prop pose until its world is ready, since the release and the end edge that close them are not sent to a world
+that is not ready either: a prop held at the join resolves on the first pose after it, and at the ready edge the host
+re-sends every driven prop's pose, the resting ones included, which the delta gate would otherwise never send. An end
+edge that reaches a joiner before the prop it names is kept until the prop resolves.
 
 ## Known limits
 
@@ -560,7 +560,7 @@ prop resolves.
 | A keyed prop a client creates outside the intent door (a place after a pickup, the whitelisted births, a container extract, a player's own spawn verb) never reaches the host. It is logged now: the drain names its exit, and `[dev] prop_birth_key_probe` tallies every exit by name | `[V]` `coop/props/prop_drop_intent` drops it at the drain; `coop/dev/prop_birth_key_probe` |
 | Two peers changing one canned food inside one round trip each publish a whole record, and the last to reach the host stands, so a bite can be lost; a can's `health` travels only with those records, so impact damage short of opening it stays on each peer | `[RD]` `coop/props/prop_can_state` publishes the record and takes no claim |
 | Local-accumulator props other than the tape reel, the world food and the buckets drift between peers | `[V]` `coop/interactables/tape_caddy_sync`, `coop/props/prop_food_sync`, `coop/props/bucket_sync` |
-| The water a client throws out of a mop bucket, and the drops it pours while tipping one, are drawn on that client alone; its bucket's level is the host's | `[RD]` `getFromWater` and the tick spawn `prop_sponge_bucketpour_C` locally, a world birth that does not cross |
+| The drops a tipped or dipped bucket pours (`prop_sponge_bucketpour_C`) are a world birth that each peer's own tick makes: the host's cross, a client's local ones are matched to them and rekeyed | `[?]` `prop_sponge_bucketpour_C` |
 | A hot food's ignition is the host's alone, since a client's copy is refused its tick, so a client sees no flame on it | `[RD]` `prop_food_C.ReceiveTick`; `ue_wrap/actors/food` |
 | A client's food's frost, impact material and freeze sound are painted but only its frozen flag and steam were read back | `[RD]` `ue_wrap/actors/food`, `coop/props/prop_food_sync` |
 | A food subclass's own counter (the shrimp's `shrimps`) and its own tick are not carried, and a heating device's work on a client's copy is local until the host's next value | `[RD]` `coop/props/prop_food_sync` |
@@ -590,7 +590,7 @@ prop resolves.
 | a world food's condition | `coop/props/prop_food_sync`, `ue_wrap/actors/food` |
 | a keyed prop's fire | `coop/props/prop_fire_sync`, `ue_wrap/actors/prop_fire` |
 | the robot cleaner | `coop/props/roomba_sync`; `coop/dev/roomba_probe` |
-| a mop bucket's water and a concrete bucket's concrete | `coop/props/bucket_sync`; `coop/dev/bucket_drill` |
+| a world bucket, a concrete bucket and a cement bag | `coop/props/bucket_sync`, `bucket_pin`, `bucket_record_gate`, `bucket_hold_ledger`, `prop_act_bucket*`; `ue_wrap/actors/bucket` |
 | a record that changes in place | `coop/props/prop_record_refresh` (the drive box, the reel case), `coop/props/prop_can_state` (the canned food) |
 | notebook sync | `coop/interactables/notebook_sync`, `coop/props/prop_save_data`, `ue_wrap/actors/notebook` |
 | the pocket blip | `coop/items/inventory_pickup_sync` |

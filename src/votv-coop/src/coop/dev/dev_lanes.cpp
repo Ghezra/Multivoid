@@ -205,7 +205,9 @@
 #include "coop/dev/vent_probe.h"   // [dev] a crouched player's steps counted on the other peer
 #include "coop/dev/dingus_drill.h"   // [dev] the dingus drill: a dingus found on one peer is found on every peer
 #include "coop/dev/flood_drill.h"   // [dev] the basement flood is the host's on every peer: burst, mend, far, join
+#include "coop/dev/basedmove_drill.h"   // [dev] what a client riding the cargo lift does to the host's lift, measured
 #include "coop/dev/kdress_drill.h"   // [dev] an Omega's outfit and its pat: put-on, take-off, pat, birth and join judged on both peers
+#include "coop/dev/sound_drill.h"   // [dev] the sound relay's drill: a melee hit, the vent knock, and sounds the host must refuse
 #include "coop/dev/native_spawn_probe.h"  // [dev] every allowlisted creature a Blueprint graph spawns here
 #include "coop/dev/hand_record_drill.h"  // [dev] a held item's record on the other players' mirrors of that hand, judged by the host
 #include "coop/dev/miner_drill.h"  // [dev] the mining rig drill: use, claim, record and join, judged by the host
@@ -241,6 +243,7 @@
 #include "coop/dev/perf_probe.h"
 #include "coop/dev/crowbarpry_drill.h"   // [dev] a client pries a board, its crowbar judged on the host
 #include "coop/dev/clean_drill.h"  // [dev] the grime lane's clean and leaves drill arms
+#include "coop/dev/bucket_drill.h"  // [dev] a bucket's water and a bag's units are the host's: each verb judged on both peers
 #include "coop/net/session.h"
 
 #include "ue_wrap/core/walk_timer.h"
@@ -400,6 +403,7 @@ void EndSession() {
     coop::dev::dingus_drill::OnDisconnect();  // [dev] back to the first step
     coop::dev::flood_drill::OnDisconnect();  // [dev] back to the first step (the join arm's burst stands)
     coop::dev::kdress_drill::OnDisconnect();  // [dev] back to the first step
+    coop::dev::bucket_drill::OnDisconnect();  // [dev] back to the first step
     coop::dev::miner_drill::OnDisconnect();  // [dev] back to the first step
     coop::dev::body_push_drill::OnDisconnect();  // [dev] a rejoin runs the drill again
     coop::dev::coast_drill::OnDisconnect();  // [dev] a rejoin runs the drill again
@@ -551,6 +555,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::pause_menu_probe::Tick(&session);  // [dev] the pause-menu probe (a latched read when off)
     coop::dev::crowbarpry_drill::Tick(&session);  // [dev] the crowbar pry drill (a latched read when off)
     coop::dev::clean_drill::Tick(&session);  // [dev] the grime lane's clean and leaves arms (a latched enum read when off)
+    coop::dev::bucket_drill::Tick(&session);  // [dev] the bucket drill (a latched enum read when off)
     coop::dev::drive_selftest::Tick();  // [dev] rack-lane e2e circles (single bool read when off; 5 s self-throttle)
     coop::dev::rack_birth_drill::Tick();  // [dev] the rack birth drill (a latched read when off)
     coop::dev::burn_revive_drill::Tick();  // [dev] the burn revive drill (a latched read when off)
@@ -636,7 +641,9 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::vent_probe::Tick(&session);  // [dev] the vent crawl drill (a latched read when off)
     coop::dev::miner_drill::Tick(&session);  // [dev] the mining rig drill (a latched enum read when off)
     coop::dev::flood_drill::Tick(&session);  // [dev] the basement flood drill (a latched enum read when off)
+    coop::dev::basedmove_drill::Tick(&session);  // [dev] the based-movement drill (a latched bool read when off)
     coop::dev::kdress_drill::Tick(&session);  // [dev] the Omega outfit drill (a latched enum read when off)
+    coop::dev::sound_drill::Tick(&session);  // [dev] the sound relay's drill (a latched read when off)
     coop::dev::death_seam_census::Tick();  // [dev] every element end the death seam announces (latched read when off)
     coop::dev::damage_probe::Tick();  // [dev] every player damage verb call: whose body, source, caller (latched read when off)
     coop::dev::hand_record_drill::Tick(&session);  // [dev] the held item's record drill (a latched read when off)

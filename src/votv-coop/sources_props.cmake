@@ -54,8 +54,17 @@ set(VOTVCOOP_PROPS_SOURCES
     src/coop/props/miner_judge.cpp
     src/coop/props/miner_record.cpp
     src/coop/props/food_tick_gate.cpp
+    src/coop/props/mirror_gate.cpp
     src/coop/props/prop_record_refresh.cpp
     src/coop/props/prop_record_wire.cpp
+    src/coop/props/bucket_sync.cpp
+    src/coop/props/bucket_pin.cpp
+    src/coop/props/bucket_record_gate.cpp
+    src/coop/props/bucket_hold_ledger.cpp
+    src/coop/props/prop_act_bucket_soap.cpp
+    src/coop/props/prop_act_bucket_dip.cpp
+    src/coop/props/prop_act_bucket_concrete.cpp
+    src/coop/props/prop_act_bucket_bag.cpp
     src/coop/props/prop_can_state.cpp
     src/coop/props/pack_trash_intent.cpp
     src/coop/props/prop_drop_intent.cpp

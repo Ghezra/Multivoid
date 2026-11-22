@@ -18,7 +18,10 @@ namespace {
 namespace R = reflection;
 
 std::atomic<bool> g_resolved{false};
-int32_t g_dirOff = -1, g_movingOff = -1, g_ignoreOff = -1, g_compOff = -1;
+int32_t g_dirOff = -1, g_movingOff = -1;
+// The measure fields, optional: -1 when the class lacks one (its reader then returns false).
+int32_t g_attachOff = -1, g_compOff = -1, g_ignoreOff = -1, g_speedOff = -1;
+uint8_t g_ignoreMask = 0;
 void* g_failedCls = nullptr;
 
 // cargoLift_C as this world holds it, looked up by name again after a world gave the class a new object.
@@ -34,6 +37,12 @@ bool ReadBool(void* lift, int32_t off, bool& out) {
     if (!lift || off < 0 || !IsCargoLift(lift)) return false;
     out = *(static_cast<const uint8_t*>(lift) + off) != 0;
     return true;
+}
+
+void* ReadObj(void* lift, int32_t off) {
+    if (!lift || off < 0 || !IsCargoLift(lift)) return nullptr;
+    void* const o = *reinterpret_cast<void* const*>(static_cast<const uint8_t*>(lift) + off);
+    return o && R::IsLive(o) ? o : nullptr;
 }
 
 }  // namespace
@@ -52,13 +61,19 @@ bool EnsureResolved() {
     }
     g_dirOff = dirOff;
     g_movingOff = movingOff;
-    g_ignoreOff = R::FindPropertyOffset(cls, L"ignoreCheck");
+    g_attachOff = R::FindPropertyOffset(cls, L"attach");
     g_compOff = R::FindPropertyOffset(cls, L"comp");
-    if (g_ignoreOff < 0 || g_compOff < 0)
-        UE_LOGW("cargo_lift: ignoreCheck@%d comp@%d -- a remote rider can still block the lift", g_ignoreOff, g_compOff);
+    g_speedOff = R::FindPropertyOffset(cls, L"speed");
+    int32_t ignoreOff = -1;
+    uint8_t ignoreMask = 0;
+    if (R::FindBoolProperty(cls, L"ignoreCheck", ignoreOff, ignoreMask) && ignoreOff >= 0 && ignoreMask != 0) {
+        g_ignoreOff = ignoreOff;
+        g_ignoreMask = ignoreMask;
+    }
     g_resolved.store(true, std::memory_order_release);
-    UE_LOGI("cargo_lift: resolved cargoLift_C=%p dir@0x%04X moving@0x%04X (identity=level-export FName)", cls, dirOff,
-            movingOff);
+    UE_LOGI("cargo_lift: resolved cargoLift_C=%p dir@0x%04X moving@0x%04X (identity=level-export FName); measure fields "
+            "attach@%d comp@%d ignoreCheck@%d mask 0x%02X", cls, dirOff, movingOff, g_attachOff, g_compOff, g_ignoreOff,
+            g_ignoreMask);
     return true;
 }
 
@@ -76,18 +91,6 @@ std::wstring GetNameKey(void* lift) {
 
 bool ReadDir(void* lift, bool& up) { return ReadBool(lift, g_dirOff, up); }
 
-bool WriteIgnoreCheck(void* lift, bool on) {
-    if (!lift || g_ignoreOff < 0 || !IsCargoLift(lift)) return false;
-    *(static_cast<uint8_t*>(lift) + g_ignoreOff) = on ? 1 : 0;
-    return true;
-}
-
-bool PlatformLocation(void* lift, FVector& out) {
-    if (!lift || g_compOff < 0 || !IsCargoLift(lift)) return false;
-    void* const comp = *reinterpret_cast<void* const*>(static_cast<const uint8_t*>(lift) + g_compOff);
-    return comp && R::IsLive(comp) && ue_wrap::engine::TryGetComponentLocation(comp, out);
-}
-
 bool ReadMoving(void* lift, bool& moving) { return ReadBool(lift, g_movingOff, moving); }
 
 bool WriteDir(void* lift, bool up) {
@@ -101,6 +104,53 @@ bool Press(void* lift) {
     void* fn = R::FindDispatchFunctionCached(R::ClassOf(lift), L"actionOptionIndex");
     ParamFrame pf(fn);
     return fn && pf.valid() && pf.Set<uint8_t>(L"action", kPressAction) && Call(lift, pf);
+}
+
+bool ReadIgnoreCheck(void* lift, bool& ignore) {
+    if (!lift || g_ignoreOff < 0 || !IsCargoLift(lift)) return false;
+    ignore = (*(static_cast<const uint8_t*>(lift) + g_ignoreOff) & g_ignoreMask) != 0;
+    return true;
+}
+
+void* PlatformComponent(void* lift) { return ReadObj(lift, g_compOff); }
+
+void* PlatformActor(void* lift) {
+    void* const comp = PlatformComponent(lift);
+    void* const owner = comp ? R::OuterOf(comp) : nullptr;
+    return owner && R::IsLive(owner) ? owner : nullptr;
+}
+
+bool ReadAttachZ(void* lift, float& z) {
+    FVector at{};
+    void* const attach = ReadObj(lift, g_attachOff);
+    if (!attach || !engine::TryGetComponentLocation(attach, at)) return false;
+    z = at.Z;
+    return true;
+}
+
+bool ReadStopsZ(void* lift, float& lowZ, float& highZ) {
+    ue_wrap::FVector at{};
+    void* const attach = ReadObj(lift, g_attachOff);
+    if (!attach || !engine::TryGetComponentLocation(attach, at)) return false;
+    lowZ = at.Z - engine::GetComponentRelativeLocation(attach).Z;
+    highZ = lowZ + kTravelCm;
+    return true;
+}
+
+bool ReadMaxSpeedCmS(void* lift, float& cmPerSec) {
+    if (!lift || g_speedOff < 0 || !IsCargoLift(lift)) return false;
+    const float speed = *reinterpret_cast<const float*>(static_cast<const uint8_t*>(lift) + g_speedOff);
+    if (!(speed > 0.f)) return false;
+    cmPerSec = 2.f * kTravelCm / speed;
+    return true;
+}
+
+bool ReadPlatformZ(void* lift, float& z) {
+    FVector at{};
+    void* const comp = PlatformComponent(lift);
+    if (!comp || !engine::TryGetComponentLocation(comp, at)) return false;
+    z = at.Z;
+    return true;
 }
 
 }  // namespace ue_wrap::cargo_lift

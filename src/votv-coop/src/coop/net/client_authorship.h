@@ -50,7 +50,6 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::CoverIntent:
     case ReliableKind::ChairSeatIntent:
     case ReliableKind::PropRestQuery:
-    case ReliableKind::BucketIntent:
     case ReliableKind::ChargerIntent:
     case ReliableKind::CarChargerIntent:
     case ReliableKind::KerfurColorIntent:
@@ -232,7 +231,6 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::CaveRockState:
     case ReliableKind::ChairSeatState:
     case ReliableKind::PropRestPose:
-    case ReliableKind::BucketState:
     case ReliableKind::ChargerState:
     case ReliableKind::ChargerGive:
     case ReliableKind::CarChargerState:
@@ -329,6 +327,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::CheatResult:
     case ReliableKind::PryState:
     case ReliableKind::DingusFound:
+    case ReliableKind::BucketState:
         return ClientAuthorship::Host;
     }
     return ClientAuthorship::NotAKind;  // a value that names no kind: refused like Host

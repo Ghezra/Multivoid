@@ -32,7 +32,9 @@ set(VOTVCOOP_SOURCES
     ${VOTVCOOP_SOURCES_UE_WRAP_2}
     src/coop/player/movement_ledger.cpp
     src/coop/player/remote_player.cpp
+    src/coop/player/pose_bases.cpp
     src/coop/player/puppet_seat.cpp
+    src/coop/player/remote_player_based.cpp
     src/coop/player/remote_player_ragdoll.cpp
     src/coop/player/client_model.cpp
     src/coop/player/skin_effects.cpp
@@ -79,6 +81,9 @@ set(VOTVCOOP_SOURCES
     src/coop/interactables/woodchipper_sync.cpp
     src/coop/world/flood_sync.cpp
     src/coop/creatures/kerfur_dress_sync.cpp
+    src/coop/world/sound_relay.cpp
+    src/coop/world/sound_catalog.cpp
+    src/coop/world/sound_judge.cpp
     src/coop/interactables/woodchipper_gate.cpp
     src/coop/interactables/atv_gate.cpp
     src/coop/interactables/atv_host_judge.cpp

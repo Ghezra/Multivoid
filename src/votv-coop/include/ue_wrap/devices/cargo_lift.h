@@ -9,8 +9,6 @@
 #include <cstdint>
 #include <string>
 
-#include "ue_wrap/core/types.h"
-
 namespace ue_wrap::cargo_lift {
 
 // The use action, the one the call buttons offer.
@@ -37,11 +35,34 @@ bool ReadMoving(void* lift, bool& moving);
 // The lift's own press: actionOptionIndex with the use action. True when the call ran.
 bool Press(void* lift);
 
-// `ignoreCheck`: while set, the move loop does not test whether its platform keeps up with its target, the test whose
-// failure it takes for a blocked platform and answers by reversing. The Blueprint sets it for a second after each reversal.
-bool WriteIgnoreCheck(void* lift, bool on);
+// The fields its move loop compares each frame (the Blueprint reverses the lift when its platform lags the point it eases
+// by 10 cm or more, unless `ignoreCheck` is set), for a drill that measures a rider's effect on the platform. Each is
+// resolved on its own, so a missing one fails only its reader and never the lift lane.
 
-// The world place of the platform the lift moves (its `comp`, the `lift` child actor's root). False when unresolved.
-bool PlatformLocation(void* lift, FVector& out);
+// `ignoreCheck`: the move loop's skip of that comparison, held for a second after each reversal.
+bool ReadIgnoreCheck(void* lift, bool& ignore);
+
+// The platform's primitive component (`comp`, the root of the `lift` child actor, set at begin play), or null.
+void* PlatformComponent(void* lift);
+
+// The platform's actor (`comp`'s owner), or null.
+void* PlatformActor(void* lift);
+
+// World Z of the `attach` sphere the move loop eases 0..500 cm up, and of the platform component. False when unread.
+bool ReadAttachZ(void* lift, float& z);
+bool ReadPlatformZ(void* lift, float& z);
+
+// How far the move loop eases `attach` up from its low stop: its relative height runs 0..500 cm (cargoLift.cpp:116-118,
+// VLerp((0,0,0), (0,0,500), Ease)).
+inline constexpr float kTravelCm = 500.f;
+
+// The lift's two stops as the world Z of the platform component: the low one is `attach`'s world Z less its current relative
+// height (the loop sets that to 0..kTravelCm), the high one kTravelCm over it. False when `attach` does not read.
+bool ReadStopsZ(void* lift, float& lowZ, float& highZ);
+
+// The fastest the platform moves, cm/s: the move loop adds dt / `speed` x `spd` to `alpha` (cargoLift.cpp:48-56) and
+// Ease(0, 1, alpha, EaseInOut, 2, 2) (:114) maps it onto kTravelCm; EaseInOut with exponent 2 peaks at twice the mean rate, so the
+// peak is 2 x kTravelCm / `speed` (the field, 12 by default) for the timeline's `spd` of at most 1 (assumed, not measured). False when `speed` does not read.
+bool ReadMaxSpeedCmS(void* lift, float& cmPerSec);
 
 }  // namespace ue_wrap::cargo_lift

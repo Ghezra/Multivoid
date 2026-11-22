@@ -16,6 +16,7 @@
 #include "coop/player/players_registry.h"  // kPeerIdUnknown
 #include "coop/player/puppet_footsteps.h"
 #include "coop/player/remote_player_ragdoll.h"
+#include "ue_wrap/core/cached_obj_ref.h"
 #include "ue_wrap/core/types.h"
 
 #include <cstdint>
@@ -60,6 +61,7 @@ public:
     // the next packet) and applies the pose to the engine. Speed is not interpolated; the AnimBP's
     // locomotion blend smooths it.
     void SetTargetPose(const coop::net::PoseSnapshot& snap);
+
     void Tick();
 
     // Ragdoll physics sync, on each fresh RagdollPose packet while the peer ragdolls: slaves the
@@ -184,6 +186,41 @@ private:
     static constexpr float kSnapPerSpeedSec = 0.5f;
 
     void* actor_ = nullptr;  // the engine puppet actor, a mainPlayer_C orphan; owned by the engine
+
+    // The mover this puppet rides while its pose names one (coop/player/pose_bases): the puppet's root is attached to the mover's
+    // platform actor (KeepWorld), so the engine carries it with the platform in the same update, and curPos_, targetPos_ and
+    // errorPos_ are then OFFSETS from the platform's current location, not world positions. Set and cleared only by ChangeBase
+    // (remote_player_based.cpp), which re-expresses the puppet's real place in the new space so nothing jumps. Never held
+    // across a tick as a bare pointer: base_ is a CachedObjRef.
+    struct BaseClaim {
+        void* actor = nullptr;        // the platform actor, null for no base
+        uint32_t id = 0;
+        ue_wrap::FVector origin{};    // its location at the claim
+    };
+    ue_wrap::CachedObjRef base_;
+    bool riding_ = false;
+    uint32_t baseId_ = 0;
+    ue_wrap::FVector baseOrigin_{};   // the platform's location at the last write, for leaving a base that died
+    // A base this puppet did not take (the attach was refused) or lost (another attachment replaced it): its claim is treated as
+    // none, so the absolute pose places the puppet, until the pose names another base or none.
+    ue_wrap::CachedObjRef refusedBase_;
+    // Judges the base `snap` names and rides it or leaves it (one attach attempt per change of base).
+    void UpdateBase(const coop::net::PoseSnapshot& snap);
+    // The base `snap` names that this puppet may ride now: none for a pose naming none or one this peer does not resolve, one
+    // refused, and while the body is ragdolled or seated (those attachments own its transform).
+    BaseClaim ClaimOf(const coop::net::PoseSnapshot& snap);
+    // Rides `to` (an empty claim: the world), re-expressing the puppet's real place in the new space; closes the window.
+    void ChangeBase(const BaseClaim& to);
+    // The world position curPos_ stands for, and the one an engine write takes (a base that died is left here).
+    ue_wrap::FVector WorldPos() const;
+    ue_wrap::FVector WorldPosForWrite();
+    // The body is gone, or its base is: no base is ridden and none is refused.
+    void ForgetBase() {
+        riding_ = false;
+        base_.Reset();
+        baseId_ = 0;
+        refusedBase_.Reset();
+    }
 
     // The peer slot Spawn registers the puppet under, read by OnBeforeFinish during the spawn call.
     uint8_t pendingSlot_ = players::kPeerIdUnknown;

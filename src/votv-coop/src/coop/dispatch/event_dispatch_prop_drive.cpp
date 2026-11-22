@@ -48,7 +48,6 @@
 #include "coop/interactables/battery_charger_sync.h"
 #include "coop/interactables/car_charger_sync.h"
 #include "coop/world/agrav_sync.h"
-#include "coop/props/bucket_sync.h"
 #include "coop/props/prop_rest_sync.h"
 #include "coop/world/sound_relay.h"
 #include "coop/interactables/woodchipper_sync.h"
@@ -66,6 +65,7 @@
 #include "coop/world/cover_sync.h"  // the desk's back plates and the stations' doors
 #include "coop/props/fireext_sync.h"  // an extinguisher's thrust and a player's spray
 #include "coop/props/prop_syncer.h"        // the client's answer receiver
+#include "coop/props/bucket_sync.h"        // a bucket's water and concrete: the host's rows, a client's asks
 #include "coop/props/prop_syncer_host.h"   // the host's claim judge and a client's End
 
 #include "coop/world/sus_hole_intent.h"
@@ -649,39 +649,6 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         break;
     }
-    case net::ReliableKind::BucketState:
-    case net::ReliableKind::BucketIntent: {
-        // BucketState HOST->ALL, BucketIntent CLIENT->HOST (coop/props/bucket_sync). Exact length, counts and ops bounded,
-        // every float finite.
-        const bool intent = msg.kind == net::ReliableKind::BucketIntent;
-        const size_t want = intent ? sizeof(net::BucketIntentPayload) : sizeof(net::BucketStatePayload);
-        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != want) {
-            UE_LOGW("event_feed: a bucket message the wrong way or the wrong length from slot %d -- dropping",
-                    msg.senderPeerSlot);
-            break;
-        }
-        auto rowOk = [](const net::BucketRow& r) {
-            return r.type <= net::kBucketBag && std::isfinite(r.level) && std::isfinite(r.progress);
-        };
-        if (intent) {
-            net::BucketIntentPayload p{};
-            std::memcpy(&p, msg.payload, sizeof(p));
-            if (p.op > net::kBucketIntentTake || !rowOk(p.bucket)) break;
-            ::coop::bucket_sync::OnIntent(msg.senderPeerSlot, p);
-        } else {
-            net::BucketStatePayload p{};
-            std::memcpy(&p, msg.payload, sizeof(p));
-            if (p.count == 0 || p.count > net::kBucketRowsMax) break;
-            bool ok = true;
-            for (int i = 0; i < p.count; ++i) ok = ok && rowOk(p.rows[i]);
-            if (!ok) {
-                UE_LOGW("event_feed: BucketState with a row of an unknown type or a non-finite value -- dropping");
-                break;
-            }
-            ::coop::bucket_sync::OnState(p);
-        }
-        break;
-    }
     case net::ReliableKind::ChargerState:
     case net::ReliableKind::ChargerIntent:
     case net::ReliableKind::ChargerGive: {
@@ -863,16 +830,6 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         break;
     }
-    case net::ReliableKind::SoundAt: {
-        if (msg.payloadLen < sizeof(net::SoundAtPayload)) {
-            UE_LOGW("event_feed: a SoundAt too short from slot %d -- dropping", msg.senderPeerSlot);
-            break;
-        }
-        net::SoundAtPayload p{};
-        std::memcpy(&p, msg.payload, sizeof(p));
-        ::coop::sound_relay::OnSoundAt(msg.senderPeerSlot, p);
-        break;
-    }
     case net::ReliableKind::FloodState:
     case net::ReliableKind::FloodIntent: {
         // FloodState HOST->ALL, FloodIntent CLIENT->HOST.
@@ -889,6 +846,22 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         if (intent) ::coop::flood_sync::OnIntent(msg.senderPeerSlot, p);
         else ::coop::flood_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::SoundAt: {
+        // Exact length, and the layout's zero pad. The direction is OnSoundAt's: the host hears clients, a client the host.
+        if (msg.payloadLen != sizeof(net::SoundAtPayload)) {
+            UE_LOGW("event_feed: a SoundAt of %zu bytes from slot %d -- dropping", static_cast<size_t>(msg.payloadLen),
+                    msg.senderPeerSlot);
+            break;
+        }
+        net::SoundAtPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.pad != 0) {
+            UE_LOGW("event_feed: a SoundAt with a nonzero pad from slot %d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        ::coop::sound_relay::OnSoundAt(msg.senderPeerSlot, p);
         break;
     }
     case net::ReliableKind::WoodchipperState:
@@ -1201,6 +1174,9 @@ bool HandlePropDriveEvent(net::Session& session,
         coop::prop_pry_sync::OnState(p);
         break;
     }
+    case net::ReliableKind::BucketState:
+        ::coop::bucket_sync::OnStateWire(msg.payload, msg.payloadLen, msg.senderPeerSlot);   // HOST->ALL: checked there
+        break;
     default:
         return false;  // not a driven-prop kind -> event_feed tries the next family
     }

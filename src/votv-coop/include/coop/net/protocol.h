@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 349;
+inline constexpr uint16_t kProtocolVersion = 350;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1587,10 +1587,6 @@ enum class ReliableKind : uint16_t {
     // host, which judges it and runs it on its copy (GeneratorIntent). Not pre-world. GeneratorPayload.
     GeneratorState = 296,
     GeneratorIntent = 297,
-    // A sound the game played at a place on one machine alone (coop/world/sound_relay): a melee hit's impact sound. Its
-    // player's machine sends it; the host plays a client's and relays it to the other clients. Not pre-world.
-    // SoundAtPayload.
-    SoundAt = 298,
     // HOST->ALL: the Antibreather cave's entrance rock shut or open (coop/world/cave_rock_sync), when it changes and to a
     // joiner. Not pre-world. CaveRockPayload.
     CaveRockState = 299,
@@ -1607,13 +1603,6 @@ enum class ReliableKind : uint16_t {
     // off by over 2 cm or 3 degrees there. To one client. Trust: from the host alone. PropRestPosePayload.
     PropRestQuery = 302,
     PropRestPose = 303,
-    // A mop bucket's water and a concrete bucket's concrete (coop/props/bucket_sync). HOST->ALL: rows of the host's buckets
-    // and cement bags that changed, and every one to a joiner at its world-ready. Not pre-world. BucketStatePayload. CLIENT->HOST: this
-    // client's player changed a mop bucket's water (op 0, the bucket's water and soap after the verb), mixed cement into
-    // one (op 1) or took concrete out with the trowel (op 2); the host judges the reach and the items and runs it on its
-    // own, and its BucketState answers. Never relayed. Not pre-world. BucketIntentPayload.
-    BucketState = 304,
-    BucketIntent = 305,
     // A custom-colour Kerfur Omega's or Kerfus's colour, its `hsv` (coop/creatures/kerfur_color_sync). HOST->ALL: an
     // actor's colour when the host's picker applied one, when a kerfur changed form, and every one to a joiner; a client
     // writes it and repaints. Not pre-world. KerfurColorPayload. CLIENT->HOST: this client's player picked a colour for
@@ -1756,6 +1745,17 @@ enum class ReliableKind : uint16_t {
     // take-off of an outfit item ride PropActRequest. Not pre-world. KerfurDressPayload (272), KerfurDressPatPayload (273).
     KerfurDressState = 272,
     KerfurDressIntent = 273,
+    // A world bucket's water, a concrete bucket's concrete and a cement bag's units (coop/props/bucket_sync). HOST->ALL: rows of
+    // the host's water buckets (the mop bucket among them), concrete buckets and cement bags that changed, and every one to a
+    // joiner at its world-ready. A client's verbs on them ride PropActRequest (families 6..11). Not pre-world. BucketStatePayload.
+    BucketState = 283,
+    // A sound the game played at a place on one machine alone (coop/world/sound_relay), named by its index into the sound
+    // table (coop/world/sound_catalog): a melee hit's impact sound, the vent knocker's knock, the church's bell. BOTH
+    // WAYS, and not relayed: a client's is an ask to the host (a melee hit's impact sound from the sender's own player,
+    // where its body is), which judges it (coop/world/sound_judge) and, when it holds, plays it and sends it to every
+    // other client; the host's own goes to every client, which plays it as it stands. Not pre-world. Late join: none, a
+    // sound is a one-shot. SoundAtPayload.
+    SoundAt = 282,
 };
 
 #pragma pack(push, 1)
@@ -1843,8 +1843,20 @@ struct PoseSnapshot {
     uint8_t healthFrac;  // health / maxHealth, quantized 0..255 (maxHealth is per-peer)
     uint8_t foodFrac;    // food  / kVitalScalarMax, quantized 0..255
     uint8_t sleepFrac;   // sleep / kVitalScalarMax, quantized 0..255
+    // The base the player stands on (coop/player/pose_bases): a registered mover, today the cargo lift's platform; any other
+    // base is sent as none. baseId is the FNV-1a 32 of the mover's portable interactable key, meaningful with kMover only;
+    // bx, by, bz the player's position minus the mover's reference location, world axes, no rotation (MTA's contact offset,
+    // CNetAPI.cpp:1160-1168) -- x, y, z stay the absolute position, so a reader that knows no base reads the pose as before.
+    // All zero with kNone; _pad is zero. A bad base field drops the claim, never the pose (BaseFieldsValid).
+    uint32_t baseId;
+    float   bx, by, bz;
+    uint8_t baseKind;
+    uint8_t _pad[3];
 };
-static_assert(sizeof(PoseSnapshot) == 32, "PoseSnapshot must be 32 bytes");
+static_assert(sizeof(PoseSnapshot) == 52, "PoseSnapshot must be 52 bytes");
+
+// PoseSnapshot.baseKind values.
+namespace pose_base_kind { constexpr uint8_t kNone = 0; constexpr uint8_t kMover = 1; }
 
 // PropSpawnPayload.hasMatchPos values.
 namespace match_form { constexpr uint8_t kNone = 0; constexpr uint8_t kPile = 1; constexpr uint8_t kClump = 2; }
@@ -1878,7 +1890,7 @@ struct PosePacket {
     PacketHeader header;
     PoseSnapshot pose;
 };
-static_assert(sizeof(PosePacket) == 52, "PosePacket must be 52 bytes");
+static_assert(sizeof(PosePacket) == 72, "PosePacket must be 72 bytes");
 
 // A reliable message: the standard header (type Reliable) + ReliableHeader + the payload. `kind` took the first of
 // the three pad bytes that followed it when it was one byte; the builder zeroes the header, so a kind below 256 is
@@ -2694,37 +2706,6 @@ struct PropRestPosePayload {
 };
 static_assert(sizeof(PropRestPosePayload) == 220, "PropRestPosePayload must be 220 bytes");
 
-// BucketState and BucketIntent. A bucket by host element id. A mop bucket (prop_bucket_C): `level` its Height, `count`
-// its soap, `progress` its alcoholP, kBucketAlcohol and kBucketAlcReady its alcohol and alcReady. A concrete bucket
-// (prop_concreteBucket_C): `count` its units, `progress` its dryTimer, kBucketDry its dry. A cement bag (prop_cementBag_C,
-// what a mix takes from): `count` its units.
-inline constexpr uint8_t kBucketMop = 0, kBucketConcrete = 1, kBucketBag = 2;
-inline constexpr uint8_t kBucketAlcohol = 1, kBucketAlcReady = 2, kBucketDry = 4;
-struct BucketRow {
-    uint32_t eid;       // 4
-    uint8_t  type;      // 1 -- kBucketMop, kBucketConcrete, kBucketBag
-    uint8_t  flags;     // 1 -- kBucketAlcohol | kBucketAlcReady | kBucketDry
-    int16_t  count;     // 2
-    float    level;     // 4
-    float    progress;  // 4
-};
-static_assert(sizeof(BucketRow) == 16, "BucketRow must be 16 bytes");
-inline constexpr int kBucketRowsMax = 13;
-struct BucketStatePayload {
-    uint8_t   count;                  // 1 -- 1..kBucketRowsMax
-    uint8_t   _pad[3];                // 3 -- zero
-    BucketRow rows[kBucketRowsMax];   // 208
-};
-static_assert(sizeof(BucketStatePayload) == 212, "BucketStatePayload must be 212 bytes");
-inline constexpr uint8_t kBucketIntentWater = 0, kBucketIntentConcrete = 1, kBucketIntentTake = 2;
-struct BucketIntentPayload {
-    uint8_t   op;          // 1 -- kBucketIntent*
-    uint8_t   _pad[3];     // 3 -- zero
-    uint32_t  itemEid;     // 4 -- the cement bag (op 1) or the trowel (op 2); 0 for op 0
-    BucketRow bucket;      // 16 -- the bucket; op 0 carries its level and count after the verb
-};
-static_assert(sizeof(BucketIntentPayload) == 24, "BucketIntentPayload must be 24 bytes");
-
 // KerfurColorState. An actor by host element id and its `hsv` (H in degrees, S, V), as the game's RGBToHSV left it.
 struct KerfurColorPayload {
     uint32_t eid;     // 4
@@ -2936,17 +2917,6 @@ struct CaveRockPayload {
 };
 static_assert(sizeof(CaveRockPayload) == 36, "CaveRockPayload must be 36 bytes");
 
-// SoundAt. The Sound and the attenuation as object paths ("/Game/audio/x.x", ASCII, NUL-padded; an empty attenuation
-// plays with none), the place, the volume and the pitch, as the original call passed them.
-struct SoundAtPayload {
-    char  sound[96];         // 96
-    char  attenuation[64];   // 64
-    float loc[3];            // 12
-    float volume;            // 4
-    float pitch;             // 4
-};
-static_assert(sizeof(SoundAtPayload) == 180, "SoundAtPayload must be 180 bytes");
-
 // A burning prop (PropFireState), or a client's light (PropFireRequest).
 struct PropFirePayload {
     WireKey key;        // 32 -- the prop's key
@@ -3024,6 +2994,20 @@ struct KerfurDressPatPayload {
     uint32_t elementId;   // 4 -- the Omega's NPC element id
 };
 static_assert(sizeof(KerfurDressPatPayload) == 4, "KerfurDressPatPayload must be 4 bytes");
+
+// SoundAt. The sound as its 1-based index into the table every peer builds the same way (coop/world/sound_catalog; 0 is
+// none), the place, the volume and the pitch as the original call passed them, and the digest of the sender's table: a
+// receiver whose own differs drops the sound. The attenuation and the callers that may play the sound are the table
+// entry's, never the sender's.
+struct SoundAtPayload {
+    uint16_t sound;       // 2
+    uint16_t pad;         // 2, zero
+    float    loc[3];      // 12
+    float    volume;      // 4
+    float    pitch;       // 4
+    uint32_t catalogue;   // 4
+};
+static_assert(sizeof(SoundAtPayload) == 28, "SoundAtPayload must be 28 bytes");
 
 // A client's press of the toolgun's prop-properties tool (PropPropsIntent): the element it hit, the camera point it
 // looked from and the point its shot struck in world centimetres, and the tool's own four values as the spawn menu set
@@ -3711,8 +3695,34 @@ struct DingusReportPayload {
     WireKey key;     // 32 -- the save key of the dingus this client's touch found
 };
 static_assert(sizeof(DingusReportPayload) == 32, "DingusReportPayload must be 32 bytes");
+// BucketState. A bucket or bag by host element id. A water bucket (kBucketPlain: prop_bucket_C and the mop bucket under it):
+// `level` its height, `count` its soap, `progress` its alcoholP, kBucketAlcohol and kBucketAlcReady its alcohol and alcReady.
+// A concrete bucket (prop_concreteBucket_C): `count` its units, `progress` its dryTimer, kBucketDry its dry. A cement bag
+// (prop_cementBag_C): `count` its units. `seq` numbers the element's rows, rising by one per row the host sends for it.
+inline constexpr uint8_t kBucketPlain = 0, kBucketConcrete = 1, kBucketBag = 2;
+inline constexpr uint8_t kBucketAlcohol = 1, kBucketAlcReady = 2, kBucketDry = 4;
+struct BucketRow {
+    uint32_t eid;       // 4
+    uint8_t  type;      // 1 -- kBucketPlain, kBucketConcrete, kBucketBag
+    uint8_t  flags;     // 1 -- kBucketAlcohol | kBucketAlcReady | kBucketDry
+    int16_t  count;     // 2
+    float    level;     // 4
+    float    progress;  // 4
+    uint32_t seq;       // 4 -- the element's row number
+};
+static_assert(sizeof(BucketRow) == 20, "BucketRow must be 20 bytes");
+inline constexpr int kBucketRowsMax = 10;
+struct BucketStatePayload {
+    uint8_t   count;                  // 1 -- 1..kBucketRowsMax
+    uint8_t   _pad[3];                // 3 -- zero
+    BucketRow rows[kBucketRowsMax];   // 200
+};
+static_assert(sizeof(BucketStatePayload) == 204, "BucketStatePayload must be 204 bytes");
+static_assert(sizeof(BucketStatePayload) <= 256 - 20 - 8,
+              "BucketStatePayload must fit in one reliable datagram (kMaxReliablePayload)");
 
-// A client's ask to pocket, hold or use a world prop, or to put on or take off an Omega's outfit item (PropActRequest),
+// A client's ask to pocket, hold or use a world prop, to put on or take off an Omega's outfit item, or to use a held item on a
+// bucket or a cement bag (PropActRequest),
 // the host's answer (PropActReply) and the client's closing word (PropActCommit). `id` is the client's own, nonzero, and
 // pairs the three; `eid` is the prop's element id on the sender.
 // The family byte names the verb, and the host judges each verb by its own conditions (the game's pocket test, its
@@ -3720,8 +3730,15 @@ static_assert(sizeof(DingusReportPayload) == 32, "DingusReportPayload must be 32
 // The Omega families (an Omega's put-on of the held outfit item, and its take-off of a worn one) name an Omega by its NPC
 // element id and a list_kerfurDrip row in `verb`, the family-neutral argument every family beyond the three prop verbs
 // carries in its own way (coop/props/prop_act_families).
+// The bucket families name a world bucket or cement bag by its prop element id and carry the verb's word in `verb` (the first
+// bytes, little-endian, the rest zero): BucketSoap (a held soap into a water bucket) the soap's amount, an int32 0..10;
+// BucketJar (a held clean jar filled from a brewed bucket) nothing; BucketDip (a held sponge dipped in a water bucket) one byte,
+// 1 when the client's copy has soap in it; BucketMix (a held cement bag onto a water bucket) the units the mix takes, an int32
+// 1..20; BucketTrowel (a held trowel into a concrete bucket) nothing; BagTransfer (a held cement bag against a world bag) one
+// byte, 0 a unit from the held bag to the world bag, 1 a unit from the world bag to the held bag.
 inline constexpr uint8_t kPropActVerbBytes = 28;
-enum class PropActFamily : uint8_t { Pocket = 1, Use = 2, Hold = 3, OmegaPutOn = 4, OmegaTakeOff = 5 };
+enum class PropActFamily : uint8_t { Pocket = 1, Use = 2, Hold = 3, OmegaPutOn = 4, OmegaTakeOff = 5, BucketSoap = 6, BucketJar = 7,
+                                     BucketDip = 8, BucketMix = 9, BucketTrowel = 10, BagTransfer = 11 };
 enum class PropActReason : uint8_t { Granted = 0, Gone = 1, WrongFamily = 2, Held = 3, Reach = 4, QueueFull = 5 };
 inline constexpr uint8_t kPropActReasons = 6;   // Granted..QueueFull: the per-reason counter width
 
@@ -5841,6 +5858,8 @@ inline constexpr int kMaxReliablePayload = kMaxPacketBytes - 20 - 8;
 // is a few km; +/-1e6 cm (10 km) is generous headroom.
 inline constexpr float kMaxCoord = 1.0e6f;
 inline constexpr float kMaxSpeed = 1.0e5f;  // cm/s (well above any real walk/sprint)
+// The farthest a pose's base offset may name (cm, per axis): a player stands on a mover's slab, within its own bounds and a body's height.
+inline constexpr float kMaxBaseOffsetCm = 1000.f;
 
 // Fill a header in place. senderEpoch is the sender's per-process epoch; senderSlot the logical
 // origin (direct sends pass their own slot, the relay passes the true origin).
@@ -5898,9 +5917,26 @@ inline bool ValidatePose(const PoseSnapshot& p) {
     // The engine's control rotation is unnormalised (looking down reads 350), so the range is the
     // full axis, not a small pitch band.
     if (p.yaw          < -180.f || p.yaw          > 180.f) return false;
-    if (p.pitch        < -180.f || p.pitch        > 180.f) return false;
     if (p.headYawDelta < -180.f || p.headYawDelta > 180.f) return false;
+    if (p.pitch        < -180.f || p.pitch        > 180.f) return false;
     return true;
+}
+
+// The base claim of a pose ValidatePose passed: a known kind, a finite offset no farther than a player can stand from its mover,
+// zero pad. A pose that fails keeps its place and loses only the claim (DropBase), as every receiver does to its own copy.
+inline bool BaseFieldsValid(const PoseSnapshot& p) {
+    if (p.baseKind > pose_base_kind::kMover) return false;
+    const float offs[3] = {p.bx, p.by, p.bz};
+    for (float v : offs)
+        if (!std::isfinite(v) || std::fabs(v) > kMaxBaseOffsetCm) return false;
+    return p._pad[0] == 0 && p._pad[1] == 0 && p._pad[2] == 0;
+}
+
+inline void DropBase(PoseSnapshot& p) {
+    p.baseKind = pose_base_kind::kNone;
+    p.baseId = 0;
+    p.bx = p.by = p.bz = 0.f;
+    p._pad[0] = p._pad[1] = p._pad[2] = 0;
 }
 
 // The world bounds of a held or driven prop's pose, for a pose already known finite: |xyz| within kMaxCoord and

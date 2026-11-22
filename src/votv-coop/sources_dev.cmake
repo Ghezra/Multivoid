@@ -81,6 +81,7 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/hostile_drill_kdress.cpp
     src/coop/dev/hostile_drill_kdress_client.cpp
     src/coop/dev/hostile_drill_kdress_host.cpp
+    src/coop/dev/hostile_drill_bucket.cpp
     src/coop/dev/hostile_drill_atv.cpp
     src/coop/dev/hostile_drill_atv_client.cpp
     src/coop/dev/hostile_drill_atv_host.cpp
@@ -485,7 +486,6 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/deathhand_probe.cpp
     src/coop/dev/blackfog_probe.cpp
     src/coop/dev/droneunhook_probe.cpp
-    src/coop/dev/bucket_drill.cpp
     src/coop/dev/clean_drill.cpp
     src/coop/dev/kgamer_probe.cpp
     src/coop/dev/kprint_probe.cpp
@@ -520,6 +520,12 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/flood_drill.cpp
     src/coop/dev/flood_drill_host.cpp
     src/coop/dev/flood_drill_client.cpp
+    src/coop/dev/basedmove_drill.cpp
+    src/coop/dev/basedmove_drill_host.cpp
+    src/coop/dev/basedmove_drill_client.cpp
+    src/coop/dev/basedmove_drill_sides.cpp
+    src/coop/dev/basedmove_drill_rider.cpp
+    src/coop/dev/basedmove_drill_watch.cpp
     src/coop/dev/kdress_drill.cpp
     src/coop/dev/kdress_drill_host.cpp
     src/coop/dev/kdress_drill_host_arms.cpp
@@ -529,6 +535,18 @@ set(VOTVCOOP_DEV_SOURCES
     src/coop/dev/hostmove_probe.cpp
     src/coop/dev/rejoininv_probe.cpp
     src/coop/dev/atvspawn_probe.cpp
+    src/coop/dev/bucket_drill.cpp
+    src/coop/dev/bucket_drill_stage.cpp
+    src/coop/dev/bucket_drill_spots.cpp
+    src/coop/dev/bucket_drill_walk.cpp
+    src/coop/dev/bucket_drill_verbs.cpp
+    src/coop/dev/bucket_drill_concrete.cpp
+    src/coop/dev/bucket_drill_tick.cpp
+    src/coop/dev/bucket_drill_drop.cpp
+    src/coop/dev/bucket_drill_join.cpp
+    src/coop/dev/bucket_drill_alc.cpp
+    src/coop/dev/bucket_drill_watch.cpp
+    src/coop/dev/sound_drill.cpp
 )
 # Per-developer local sources: a gitignored file on this box may append its own entries to
 # VOTVCOOP_DEV_SOURCES and add its own include root. Absent from the public tree; a no-op without it.
