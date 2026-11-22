@@ -148,6 +148,7 @@
 #include "coop/dev/deskneedle_probe.h"   // [dev] the desk's needle and save latch on every peer
 #include "coop/dev/satpanels_drill.h"   // [dev] two SAT consoles at once, seen from three peers
 #include "coop/dev/halluc_probe.h"   // [dev] the hallucinations are their player's own
+#include "coop/dev/week2_drill.h"   // [dev] the story's second week on three peers
 #include "coop/dev/sit_probe.h"   // the chair sit probe
 #include "coop/dev/join_stall_probe.h"   // [dev] a client's game thread held still while it joins
 #include "coop/dev/kdisc_watch.h"   // [dev] every floppy disc's place, parent and physics
@@ -575,6 +576,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::deskneedle_probe::Tick(&session);  // [dev] the desk's needle (a latched read when off)
     coop::dev::satpanels_drill::Tick(&session);  // [dev] two SAT consoles at once (a latched read when off)
     coop::dev::halluc_probe::Tick(&session);  // [dev] the hallucinations (a latched read when off)
+    coop::dev::week2_drill::Tick(&session);  // [dev] the story's second week (a latched read when off)
     coop::dev::sit_probe::Tick(&session);  // a client sits on a chair; the host looks
     coop::dev::kdisc_watch::Tick(&session);  // [dev] VOTVCOOP_KDISC_WATCH
     coop::dev::kfollow_probe::Tick(&session);  // [dev] VOTVCOOP_KFOLLOW_PROBE

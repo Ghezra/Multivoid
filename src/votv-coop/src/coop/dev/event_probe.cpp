@@ -20,6 +20,7 @@
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_attach.h"
+#include "ue_wrap/world/email.h"
 #include "ue_wrap/world/world_singleton.h"
 
 #include <windows.h>
@@ -83,6 +84,9 @@ void Census(const char* when) {
         }, &ctx);
     }
     UE_LOGI("[EVPROBE] %s: %d actor(s) of a class holding '%ls'", when, n, sub.c_str());
+    // VOTVCOOP_EVENT_PROBE_EMAILS=1: this peer's inbox size, the rows its own game added included.
+    if (!coop::config::ReadEnv("VOTVCOOP_EVENT_PROBE_EMAILS").empty() && ue_wrap::email::EnsureResolved())
+        UE_LOGI("[EVPROBE] %s: %d email(s) in this peer's inbox", when, ue_wrap::email::EmailCount());
     // VOTVCOOP_EVENT_PROBE_CAMS=1: the gamemode's `cams`, the laptop's camera list (each camera adds itself).
     if (coop::config::ReadEnv("VOTVCOOP_EVENT_PROBE_CAMS").empty()) return;
     void* const gm = ue_wrap::world_singleton::Gamemode();
