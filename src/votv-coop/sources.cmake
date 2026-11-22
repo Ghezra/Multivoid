@@ -686,6 +686,7 @@ set(VOTVCOOP_SOURCES
     src/coop/world/media_device_sync.cpp
     src/coop/world/obelisk_sync.cpp
     src/coop/world/soltomia_sync.cpp
+    src/coop/world/flyover_sync.cpp
     src/coop/world/sound_relay.cpp
     src/ue_wrap/devices/kitchen.cpp
     src/ue_wrap/world/media_device.cpp

@@ -156,7 +156,9 @@ struct ExSpawnSource {
     const wchar_t* cls;
     const wchar_t* const* outputs;   // null-terminated; null: any allowlisted output
 };
-constexpr const wchar_t* kEventerOutputs[] = {L"ventCrawler_C", L"superEgger_C", nullptr};
+// The sixth week's flyovers are mirrored with a lane for what their actor pose does not carry (coop/world/flyover_sync).
+constexpr const wchar_t* kEventerOutputs[] = {L"ventCrawler_C",     L"superEgger_C",     L"morningUfo_C", L"rozitBorg_C",
+                                              L"ufoDropper_body_C", L"ufoDropper_car_C", nullptr};
 // The lantern prank's notepad mints the Ariral that bashes the door (a follower child) when it is used, on the host.
 constexpr const wchar_t* kBusterNoteOutputs[] = {L"arirSlapper_C", nullptr};
 // The gamemode mints many classes besides these, and most of its other spawners are not refused on a client yet,

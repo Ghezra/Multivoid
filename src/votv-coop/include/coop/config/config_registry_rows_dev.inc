@@ -760,6 +760,7 @@ CFG_FLAG(class_resolve_lookup_only, "class_resolve_lookup_only", "dev", false, "
 #include "coop/config/config_registry_rows_dev_week3.inc"
 #include "coop/config/config_registry_rows_dev_week4.inc"
 #include "coop/config/config_registry_rows_dev_week5.inc"
+#include "coop/config/config_registry_rows_dev_week6.inc"
 
 // The cremator probe's and lever lane's rows: their own file, one concept, included as _dev_vulkan.inc is above.
 #include "coop/config/config_registry_rows_dev_cremator.inc"
