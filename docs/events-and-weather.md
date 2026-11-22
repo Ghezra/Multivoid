@@ -260,6 +260,30 @@ client's copy as well, leaving that client a gun of its own beside the host's. A
 `coop/world/event_box_authority` is refused, so only the host's runs. `[V]` (arm `gun`, red `week4_red=box_local`: slot
 1's walk-in into its own garage box left it a gun nobody else had; after, its box was refused and it had none.)
 
+The Rozital scouts (day 32, `tentacleBall_C`, five from `tentacleBallsFollower_C`) run on the host alone, and a client
+holds mirrors. A hostile ball traces from its light to each body within 150 m and, at a player, chases player 0 and calms
+its buddies; within 40 m it pins the first player its sphere finds, once player 0's camera has open sky above it: that
+player's `firstPersonBodyAnimation("pindown")`, and the ball lunges half way to player 0. A client's puppet on the host
+was seen, and the chase went to the host; a pinned puppet played the pin on the host's copy alone. Each hostile ball still
+looking is now served the nearest player (`coop/creatures/served_player`, its `GetPlayerPawn(0)`), kept while it chases
+and pins, so its chase, its sky checks and its lunge go to that player; its camera read answers the same body. A pin of
+a client's puppet is refused on the host and sent to that client (`EventCue` 109), whose own player plays it
+(`coop/creatures/scout_target`). `[V]` (`coop/dev/week5_drill`, arm `scouts`, red `week5_red=scouts_host`: slot 1 15 m
+from the scouts was seen, and before the chase walked 470 m to the host and pinned nobody; after, the balls hunted slot 1,
+one pinned it, and its own player played the pin for 762 frames.)
+
+The garage Soltomia (day 34, `soltomiaCleaning_C`) is spawned in the garage by its event on the host alone, hidden; its
+begin play cleans the ATV. A player in its box shows it, pulls the ATV into the garage, shuts the garage door and unjams
+the base's doors; the door opened, it plays its montage, whose throw hides its mesh and throws a `prop_sponge_solto_C`,
+and it ends at the montage's end. The ATV, the doors and the sponge reach a client through their own lanes; the
+Soltomia did not, so a client saw its ATV move and a sponge appear from nothing. The host sends its box's run once it is
+shown (`EventCue` 111 its yaw, then 110 its place) and its `opened` (112). A client spawns a copy there, its begin play,
+box and end refused, and shows it as the box's run does (its mesh, squeak, dust and talk); at 112 the copy plays the
+montage, and the sponge its throw makes is ended at its birth, since the host's crosses (`coop/world/soltomia_sync`). A
+joiner after it left gets the sponge. `[V]` (`coop/dev/week5_drill`, arm `solto`, red `week5_red=solto_host`: before, the
+host's Soltomia showed and threw and slot 1 had none; after, slot 1's copy showed at the host's place and yaw, played the
+throw, its own sponge was ended, and it ended with the host's one sponge.)
+
 ### The ambient UFOs
 
 The gamemode arms five timers at begin play, each rolling and re-arming itself: the ball (high over player 0's
@@ -456,6 +480,8 @@ ending. Tests:
 | the base alarm | whoever transitions | polled; the host canonicalises |
 | the basement's pipes and flood | the host | a client's `addDamage`, `addWater` and `setLevel` refused outside the lane's apply; the bit and the level sent as they change; a client's repair asked |
 | the radio tower's Ariral ship | the host | its `appear` sent and rolled for every player in its box; a client's own refused |
+| the Rozital scouts' hunt and pin | the host | each hostile ball serves the nearest player; a client's pin is sent to it |
+| the garage Soltomia | the host | its show and its opened sent; a client's copy shows and throws, its gameplay refused |
 | the warning obelisk's fall | the host | its begin play sent; a client's own copy falls and lands, its push off and its prop births ended |
 | a story box whose walk-in makes shared props | the host | the host's box sees a client's puppet; a client's own copy of a listed box refused |
 | the lantern prank's notepad | the host | a client's use asked and run on the host's copy; the Ariral it sends mirrored |
@@ -537,6 +563,8 @@ bit and the flood's level are sent to the joiner at its ready edge, and the host
 | the alarm, emails, the task | `coop/world/alarm_sync`, `coop/world/email_sync`, `coop/world/daily_task_sync`, `ue_wrap/world/email` |
 | the basement flood | `coop/world/flood_sync`; `coop/dev/flood_drill` |
 | the Arirals' shrimp and reputation | `coop/props/shrimp_eater_authority`, `coop/world/arir_rep_sync`; `coop/dev/week2_drill` |
+| the Rozital scouts | `coop/creatures/scout_target`, `coop/creatures/served_player`; `coop/dev/week5_drill` |
+| the garage Soltomia | `coop/world/soltomia_sync`; `coop/dev/week5_drill` |
 | the warning obelisk, the garage box | `coop/world/obelisk_sync`, `coop/world/event_box_authority`; `coop/dev/week4_drill` |
 | the radio tower's ship, the lantern prank | `coop/world/arir_tower_ship_sync`; `coop/props/prop_act_host`, `coop/props/prop_act_request`, `coop/creatures/npc_world_enum`; `coop/dev/week3_drill` |
 | a host-only event's count | `coop/world/host_event_presence` (fed by `coop/world/event_active_sync`) |
