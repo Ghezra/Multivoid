@@ -20,6 +20,7 @@
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_attach.h"
+#include "ue_wrap/world/daynightcycle.h"
 #include "ue_wrap/world/email.h"
 #include "ue_wrap/world/world_singleton.h"
 
@@ -53,6 +54,29 @@ std::wstring Lower(std::wstring s) {
 uint64_t g_startAt = 0;
 int g_census = 0;
 bool g_fired = false;
+bool g_unpassed = false;
+
+// VOTVCOOP_EVENT_PROBE_UNPASS=1, on every peer at 10 s: the event's row taken out of this peer's passed events, so a
+// past row the save carries is replayed as its first fire is, not skipped as history.
+void Unpass() {
+    void* const ss = ue_wrap::daynightcycle::SaveSlotOfCycle(ue_wrap::daynightcycle::Cycle());
+    const int32_t off = ss ? R::FindPropertyOffset(R::ClassOf(ss), L"passEvents") : -1;
+    if (off < 0) return;
+    struct Arr { R::FName* data; int32_t num, max; };
+    auto* a = reinterpret_cast<Arr*>(static_cast<uint8_t*>(ss) + off);
+    const std::wstring want(Event().begin(), Event().end());
+    int removed = 0;
+    for (int32_t i = 0; a->data && i < a->num;) {
+        if (R::ToString(a->data[i]) == want) {
+            a->data[i] = a->data[a->num - 1];
+            --a->num;
+            ++removed;
+        } else {
+            ++i;
+        }
+    }
+    UE_LOGI("[EVPROBE] '%s' taken out of this peer's passed events (%d)", Event().c_str(), removed);
+}
 
 void Census(const char* when) {
     const std::string narrow = coop::config::ReadEnv("VOTVCOOP_EVENT_PROBE_CLASS");
@@ -136,6 +160,11 @@ void Tick(coop::net::Session* session) {
         UE_LOGI("[EVPROBE] armed role=%s event=%s", host ? "host" : "client", Event().c_str());
     }
     const uint64_t t = Now() - g_startAt;
+    static const bool s_unpass = !coop::config::ReadEnv("VOTVCOOP_EVENT_PROBE_UNPASS").empty();
+    if (s_unpass && !g_unpassed && t >= 10000u) {
+        g_unpassed = true;
+        Unpass();
+    }
     static const uint64_t kCensusAt[] = {20000u, 34000u, 50000u, 150000u};
     static const char* const kWhen[] = {"before", "after", "later", "final"};
     if (g_census < 4 && t >= kCensusAt[g_census]) {
