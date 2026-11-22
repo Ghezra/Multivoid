@@ -16,6 +16,7 @@
 #include "coop/world/vent_crawler_sync.h"
 #include "coop/world/arir_rep_sync.h"
 #include "coop/world/arir_ship_sync.h"
+#include "coop/world/arir_tower_ship_sync.h"
 #include "coop/world/host_event_presence.h"
 #include "coop/world/world_sound_sync.h"
 
@@ -272,6 +273,7 @@ void OnReliable(const coop::net::EventCuePayload& payload) {
     if (coop::arir_ship_sync::OnCue(payload)) return;  // the Ariral ship's appearance
     if (coop::host_event_presence::OnCue(payload)) return;  // a host-only event's count
     if (coop::arir_rep_sync::OnCue(payload)) return;  // the Arirals' reputation
+    if (coop::arir_tower_ship_sync::OnCue(payload)) return;  // the tower's Ariral ship
     if (payload.cueId >= static_cast<uint32_t>(kCueCount)) {
         UE_LOGW("event_cue: OnReliable unknown cueId=%u (have %d cues) -- dropping (newer host?)",
                 payload.cueId, kCueCount);

@@ -669,6 +669,7 @@ set(VOTVCOOP_SOURCES
     src/coop/voice/camcorder_voice.cpp
     src/coop/world/arir_rep_sync.cpp
     src/coop/world/arir_ship_sync.cpp
+    src/coop/world/arir_tower_ship_sync.cpp
     src/coop/world/build_sync.cpp
     src/coop/world/cave_rock_sync.cpp
     src/coop/world/cover_sync.cpp
