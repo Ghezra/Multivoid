@@ -9,8 +9,9 @@
 //           arrows. Red: week2_red=no_ships.
 //   knock   HOST, 30 s: its own player 300 m off; 40 s: the knocker fired. SLOT 1, 60 s: its player into the
 //           knocker's box. Every peer, each 2 s to 120 s (`[WEEK2] knock`): whether a knocker stands here.
-//   rep     HOST, 40 s: +7 Ariral reputation through lib_C.addAriralRep. SLOT 1, 50 s: +100 of its own. Every peer,
-//           each 5 s to 100 s (`[WEEK2] rep`): its reputation. Red: week2_red=rep_open.
+//   rep     HOST, 40 s: +7 Ariral reputation through lib_C.addAriralRep. SLOT 1, 50 s: +100 of its own; 60 s: its
+//           wake's +5; 70 s and 75 s: a photo of the visit ship, +15, twice. Every peer, each 5 s to 100 s (`[WEEK2]
+//           rep`): its reputation. Red: week2_red=rep_open.
 // The inbox count of the Ariral ship's mails is coop/dev/event_probe's (VOTVCOOP_EVENT_PROBE_EMAILS).
 
 #pragma once

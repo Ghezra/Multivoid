@@ -19,6 +19,7 @@
 #include "ue_wrap/world/active_events.h"
 #include "ue_wrap/world/daynightcycle.h"
 #include "ue_wrap/world/economy.h"
+#include "ue_wrap/world/world_singleton.h"
 
 #include <windows.h>
 
@@ -214,11 +215,11 @@ void TickKnock(bool host, int slot, uint64_t t) {
             static_cast<unsigned long long>(t / 1000), Live(L"kocker_C").size(), d, static_cast<int>(events));
 }
 
-// lib_C's addAriralRep, as a caller in the world runs it.
-bool AddRep(float v) {
+// lib_C's addAriralRep, as a caller in the world runs it: `ctx` is the caller (this player when null).
+bool AddRep(float v, void* ctx = nullptr) {
     void* const lib = R::FindClassDefaultObject(L"lib_C");
     void* const cls = ue_wrap::object_index::ClassByName(L"lib_C");
-    void* ctx = coop::players::Registry::Get().Local();
+    if (!ctx) ctx = coop::players::Registry::Get().Local();
     ue_wrap::ParamFrame f(cls ? R::FindFunction(cls, L"addAriralRep") : nullptr);
     return lib && ctx && f.valid() && f.Set<float>(L"rep", v) && f.Set<void*>(L"__WorldContext", ctx) &&
            ue_wrap::Call(lib, f);
@@ -240,6 +241,18 @@ void TickRep(bool host, int slot, uint64_t t) {
     if (!host && slot == 1 && g_step == 0 && t >= 50000u) {
         g_step = 1;
         UE_LOGI("[WEEK2] slot 1: +100 reputation of its own (ran=%d)", AddRep(100.f) ? 1 : 0);
+    }
+    // What its own player does, as the game's own callers make it: a wake (the gamemode's, +5), then a photo of the
+    // visit ship (the ship's, +15), then that photo again, which the game's do-once would not pay.
+    if (!host && slot == 1 && g_step == 1 && t >= 60000u) {
+        g_step = 2;
+        UE_LOGI("[WEEK2] slot 1: its wake's +5 (ran=%d)", AddRep(5.f, ue_wrap::world_singleton::Gamemode()) ? 1 : 0);
+    }
+    if (!host && slot == 1 && (g_step == 2 || g_step == 3) && t >= (g_step == 2 ? 70000u : 75000u)) {
+        ++g_step;
+        void* ship = nullptr;
+        for (void* o : Live(L"arirShipAppear_C")) ship = o;
+        UE_LOGI("[WEEK2] slot 1: a photo of the visit ship, +15 (ran=%d)", ship && AddRep(15.f, ship) ? 1 : 0);
     }
     if (t < 30000u || t > 100000u || Now() < g_nextLog) return;
     g_nextLog = Now() + 5000u;
