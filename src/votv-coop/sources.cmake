@@ -673,10 +673,12 @@ set(VOTVCOOP_SOURCES
     src/coop/world/build_sync.cpp
     src/coop/world/cave_rock_sync.cpp
     src/coop/world/cover_sync.cpp
+    src/coop/world/event_box_authority.cpp
     src/coop/world/flood_sync.cpp
     src/coop/world/ground_hose_sync.cpp
     src/coop/world/host_event_presence.cpp
     src/coop/world/media_device_sync.cpp
+    src/coop/world/obelisk_sync.cpp
     src/coop/world/sound_relay.cpp
     src/ue_wrap/devices/kitchen.cpp
     src/ue_wrap/world/media_device.cpp
