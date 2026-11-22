@@ -220,6 +220,26 @@ own player. `[V]` (`coop/dev/week2_drill`, arm `ships`, with the rig save's left
 picnic took every peer from 0 arrows to 2, a joiner after it had the same 2, and the clearing took all three to 0;
 before, a client saw none of the picnic's.)
 
+The ship beside the radio tower's top from day 20 is another: `arirShip_tower_C` is placed there, and its begin play
+loops every 5 s. A shown ship fades out (its fade's end leaves a `ufoDreamer_C` and ends it), and a hidden one fades in on
+a 10% roll from 21:00 to 03:00 while player 0 stands in its box and has not just seen it; a radial force then pushes the
+props near it. Every peer rolled it for its own player, so a client's ship showed on that client alone and pushed its
+own copies of the props. The ship is the host's (`coop/world/arir_tower_ship_sync`): the host sends its `appear` as it
+changes the ship (`EventCue` 106), and to a joiner while it is up, and every 5 s it rolls the game's own odds for each
+client's player in the box who is not looking at it; a client's own `appear` is refused, and the host's runs on its copy.
+`[V]` (`coop/dev/week3_drill`, arm `tower`, red `week3_red=tower_open`: with slot 1's player in the box, the host's roll
+showed the ship on all three peers and took it away from all three, and slot 1's own `appear` was refused; before, slot
+1's own showed on slot 1 alone.)
+
+The lantern prank (day 15, `arirBuster`) leaves two crates and a notepad (`prop_notebook_busterSpawner_C`) at the
+buildings by the Hole; they are props, and cross as any prop. Any use of the notepad swaps it for a plain notebook and
+sends an Ariral at the door (`arirSlapper_C`, a follower child). A client's use ran on its own copy: the notepad went
+for everyone through the destroy seam, and the Ariral stood on that client alone. A client's use is now asked of the
+host, which runs it on its own copy as it converts a raw patty (`coop/props/prop_act_host`), and the Ariral the host's
+notepad mints is caught at its spawn and mirrored (`coop/creatures/npc_world_enum`). `[V]` (`coop/dev/week3_drill`, arm
+`lantern`, red `week3_red=note_local`: slot 1's use was granted and converted on the host, and the Ariral stood on all
+three peers; before, on slot 1 alone, with the notepad gone everywhere.)
+
 ### The ambient UFOs
 
 The gamemode arms five timers at begin play, each rolling and re-arming itself: the ball (high over player 0's
@@ -406,6 +426,8 @@ ending. Tests:
 | the pyramid's brain | the host | timers cancelled on the mirror; the gather relayed |
 | the base alarm | whoever transitions | polled; the host canonicalises |
 | the basement's pipes and flood | the host | a client's `addDamage`, `addWater` and `setLevel` refused outside the lane's apply; the bit and the level sent as they change; a client's repair asked |
+| the radio tower's Ariral ship | the host | its `appear` sent and rolled for every player in its box; a client's own refused |
+| the lantern prank's notepad | the host | a client's use asked and run on the host's copy; the Ariral it sends mirrored |
 | the picnic's warp arrows | the host | each by its place and its end, on the fixture lane; a loaded one bound by place |
 | the Arirals' shrimp eater | the host | a client's `eat` refused; the host's refused near or in view of a client's player |
 | the Arirals' reputation | the host | sent as it moves and to a joiner; a client's own `addAriralRep` refused |
@@ -483,6 +505,7 @@ bit and the flood's level are sent to the joiner at its ready edge, and the host
 | the alarm, emails, the task | `coop/world/alarm_sync`, `coop/world/email_sync`, `coop/world/daily_task_sync`, `ue_wrap/world/email` |
 | the basement flood | `coop/world/flood_sync`; `coop/dev/flood_drill` |
 | the Arirals' shrimp and reputation | `coop/props/shrimp_eater_authority`, `coop/world/arir_rep_sync`; `coop/dev/week2_drill` |
+| the radio tower's ship, the lantern prank | `coop/world/arir_tower_ship_sync`; `coop/props/prop_act_host`, `coop/props/prop_act_request`, `coop/creatures/npc_world_enum`; `coop/dev/week3_drill` |
 | a host-only event's count | `coop/world/host_event_presence` (fed by `coop/world/event_active_sync`) |
 | the Ariral's float | `coop/world/agrav_sync`, `ue_wrap/engine/engine_physics` (the gravity switch); `coop/dev/event_probe` |
 | sounds played at a place | `coop/world/sound_relay`; `coop/dev/hit_probe` |
