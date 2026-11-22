@@ -148,6 +148,14 @@ index, and a client spawns the same emitter (`coop/world/event_cue_sync`). A cue
 at its emitter's birth: the host sees the particle component born, reads its template at the next tick and
 sends the component's own place (the growth area's glow at the plant it fertilizes) `[?]`.
 
+An event whose actor stands on the host alone never registers on a client, and the game's `activeEvents` count is what
+its threat music, the meta paranoia, plays on: while any event is registered, `mainGamemode.threatMusic` fades the threat
+ambience in. The host tells every client when the first of its live registrations of such a class begins and when the
+last ends (`EventCue` 104, `x` 1 or 0), and a joiner while one runs; a client registers one stand-in event, its eventer
+(which never registers itself), through the game's own `setEvent`, and ends it (`coop/world/host_event_presence`). The
+classes are listed there as each is measured: the vent knocker so far. `[V]` (`coop/dev/week2_drill`, arm `knock`, red
+`week2_red=no_host_event`: slot 1 counted one event more from the knocker's spawn to the host's end; before, none.)
+
 ### The actors an event flies in
 
 The saucers, the mothership, the ariral ships, the sky objects, the jellyfish, the fire tank and
@@ -181,13 +189,16 @@ timeline, and the swing through the engine's own transform math, so the vent sto
 starts the crawl with its own player; its door closes and loses its power, 23 sounds and the burst play, and the
 doors, keypads and vent end as the host's).
 
-The ship that appears high over the radio tower is not one of them: `arirShipAppear_C` is placed in the level, and the
-arirShip event's box runs its `appear(true)`, which fades it in and lights its radar point. That box runs on the host
-alone (its other spawns have no lane), so a client never saw the ship (Ghezra/Multivoid#39). The host's post watch on
-`appear` sends `EventCue` 103 when it comes up, and again to a joiner while it is up; a client runs its own copy's
-`appear(true)` (`coop/world/arir_ship_sync`). Each copy's own tick then fades its ship out once that copy's player has
-looked at it, as the game does for whoever sees it. `[V]` (`coop/dev/event_probe`, `VOTVCOOP_EVENT_PROBE=arirShip`: the
-host's forced box raised the client's ship in the same second.)
+The Ariral ship that shows outside the signal lab on day 13 (the arirShip event) is not one of them either:
+`arirShipAppear_C` is placed in the level, 270 m out, and the arirShip event's box runs its `appear(true)`, which fades
+it in and lights its radar point; its fade's end mails the sixteen OUTSIDE emails. That box runs on the host alone (its
+other spawns have no lane), so a client never saw the ship (Ghezra/Multivoid#39). The host's post watch on `appear` sends
+`EventCue` 103 when it comes up, and again to a joiner while it is up; a client runs its own copy's `appear(true)`
+(`coop/world/arir_ship_sync`). Each copy's own tick then fades its ship out once that copy's player has looked at it, as
+the game does for whoever sees it. `[V]` (`coop/dev/event_probe`, `VOTVCOOP_EVENT_PROBE=arirShip`: the host's forced box
+raised the client's ship in the same second.) A client's copy's fade end is refused, since the host's mails reach every
+inbox and a client's own emails are never sent: before, a client's inbox held the sixteen twice (63 rows where the host
+had 47) `[V]` (`VOTVCOOP_EVENT_PROBE_EMAILS=1`).
 
 The Antibreather's cave is shut by its spawner's rock (`antibreatherSPawner_C`'s `blockRock`, shown with its collision
 on). The spawner's `block` timer, every 5 s, hides the rock while its Antibreather lives and shows it again once player 0
@@ -198,6 +209,16 @@ client shows or hides its rock, collision with it. A host `block` that shuts the
 50 m of the spawner is undone, so a player near it is not shut out (`coop/world/cave_rock_sync`). `[V]` (`coop/dev/event_probe`:
 the host's own spawner opened its cave at night, and a client that joined after found its shut cave opened as the host's;
 the keep-open for a near client is `[?]`.)
+
+The picnic's two Ariral warp arrows (day 8, `arirShipVanishing_C`) are not world actors either: the picnic is a
+`trigger_spawnProp_C`, which spawns its prop row's class, and an arrow is a saved actor that stands where it is put and
+fades for whoever comes near. It ran on the host alone, so a client saw only arrows its save already held, and kept them
+after the host's picnic was cleared. An arrow now crosses by its place on the fixture lane, as a dirt hole does, and its
+end crosses with it: a client binds a loaded arrow that stands where the host's does, spawns a copy only when none is, and
+the joiner's census-end ends the loaded arrows nothing named (`coop/world/ambient_fixture_sync`). Each copy fades for its
+own player. `[V]` (`coop/dev/week2_drill`, arm `ships`, with the rig save's leftover arrows cleared first: the host's
+picnic took every peer from 0 arrows to 2, a joiner after it had the same 2, and the clearing took all three to 0;
+before, a client saw none of the picnic's.)
 
 ### The ambient UFOs
 
@@ -279,6 +300,31 @@ where its prop rests (`coop/props/prop_rest_sync`), so every copy comes down whe
 each copy turns by its own `[?]` (`coop/world/agrav_sync`; `coop/dev/event_probe` with `agrav`, and
 `VOTVCOOP_AGRAV_TRACE=1` for each body's height at its lift and drop on every peer).
 
+### The Arirals' shrimp
+
+From day 11 the Arirals eat a shrimp pack left out: `shrimpEaterMaster_C`'s `eat`, every 15 s, takes the shrimp nearest
+the last one it ate and, unless player 0 is within 100 m of that spot or the shrimp was rendered in the last 5 s, plays
+the eat sound, leaves an empty pack and destroys the shrimp (a loyal reputation stops it). Every peer ran its own against
+its own player: a client's eat destroyed the shrimp for everyone through the prop destroy seam, its empty pack stayed on
+that client, and a shrimp beside a client was eaten by the host's. The eater is the host's
+(`coop/props/shrimp_eater_authority`): a client's `eat` is refused, and the host's is refused as well for a shrimp a client's player is
+within 100 m of the spot, or had in view in the last 5 s (its streamed eye and aim, read twice a second); the host's own
+player stays the game's check. `[V]` (`coop/dev/week2_drill`, arm `shrimp`, red `week2_red=shrimp_open`: a shrimp beside
+slot 1 was eaten within 15 s before and kept after; one 150 m from every player was eaten once, by the host, and all three
+peers ended on the same 2 shrimps and 9 empty packs, where before they ended on 10 and 11).
+
+### The Arirals' reputation
+
+The reputation is one float in the save slot, `arirReputation`, and lib_C's `addAriralRep` (clamped) is its only writer.
+Its callers are the world's: the treehouse's anti-steal box and its surroundings check, a graffiti's end, a fire tank's, a
+gray boar's and theEvil's deaths, the follower's pickups, the ship and float photos, the player's wake. Every peer ran
+them against its own copy, so each machine drifted to its own value, and what a client read from it (a brownie trail's
+note, the eaters' tier) was its own. The value is the host's (`coop/world/arir_rep_sync`): the host sends it (`EventCue`
+105, the value in `x`) when an `addAriralRep` moves it, once a second when another route moved it, and to a joiner; a
+client's own `addAriralRep` is refused, and the host's value is written in. `[V]` (`coop/dev/week2_drill`, arm `rep`, red
+`week2_red=rep_open`: the host's +7 reached every peer and a joiner, and slot 1's own +100 was refused; before, the host
+held 7 and slot 1 100.)
+
 ### Sounds played at a place
 
 `PlaySoundAtLocation` is a local one-shot, so a sound a Blueprint plays at a place on one machine is heard there alone:
@@ -296,7 +342,9 @@ a sponge's dip, a bucket's scoop, its water thrown out or poured on a plant): a 
 sound at the player, with the game's `att_default` `[V]` (`coop/dev/clean_drill`, three peers, a client and then the host
 cleaning: each of the 18 to 20 scrubs, and the hand bucket's `wade_Cue` and `water_splash_Cue`, played on both other
 peers; before the change, none). Whether a
-client's puppet in the vent trips the host's knocker is not measured `[?]`. The wandering church (`church_C`) is on the list as
+client's player trips the host's knocker: its box is a metre cube in front of the main computer, and a client's puppet
+stepping in starts the knocks on the host three seconds later, the knocker's own delay, heard on the client `[V]`
+(`coop/dev/week2_drill`, arm `knock`). The wandering church (`church_C`) is on the list as
 the host's world too: its tick moves it, unseen, to a random place on the navigation mesh and rings its bell there, which a
 client's copy never did; the host's bells now play on every peer at the host's church `[V]` (`coop/dev/event_probe`,
 `church_C.bell`: each of the host's strikes played on the client in the same second).
@@ -358,6 +406,10 @@ ending. Tests:
 | the pyramid's brain | the host | timers cancelled on the mirror; the gather relayed |
 | the base alarm | whoever transitions | polled; the host canonicalises |
 | the basement's pipes and flood | the host | a client's `addDamage`, `addWater` and `setLevel` refused outside the lane's apply; the bit and the level sent as they change; a client's repair asked |
+| the picnic's warp arrows | the host | each by its place and its end, on the fixture lane; a loaded one bound by place |
+| the Arirals' shrimp eater | the host | a client's `eat` refused; the host's refused near or in view of a client's player |
+| the Arirals' reputation | the host | sent as it moves and to a joiner; a client's own `addAriralRep` refused |
+| a host-only event's count | the host | its first begin and last end sent; a client registers one stand-in event |
 | the Ariral's float | the host | the bodies its trigger lifts and drops sent as each switches; a client's copy switched the same way and put where the host's rests |
 | emails, the daily task | the host | one reflected append; a change-hash poll |
 
@@ -400,6 +452,7 @@ bit and the flood's level are sent to the joiner at its ready edge, and the host
 | Limit | Evidence |
 |---|---|
 | The sky's earth teleport plays its two sounds on every client (`coop/world/world_sound_sync`, EventCue ids from 100, found by the sound the host's `PlaySound2D` is given); its black hole and its light ride SkyState | `[?]` `harness/autotest/autotest_world_sound.cpp`: the cue received and the play call made on the client (the rewritten drill has not run yet); `[RD]` for the rest |
+| A client's own reputation changes are refused, not yet asked of the host: its player's wake (the gamemode's `wakeup`, five either way) and its swing at the follower (two off) change nothing, and a photo a client takes of the Ariral ship or the float earns none, since only the host's copies bind the photo | `[RD]` `lib_C.addAriralRep`'s callers; `arirShipAppear_C.runTrigger` and `trigger_agrav_C` bind `photoTaken` on the host's copy alone |
 | The alien sounds are each player's own: the event is replayed, and each peer's three noisers walk around its own player, sound and leave when that player sees one. A player does not hear the noisers around another. A joiner whose world is up while the host's noisers are out is sent the event once at its ready edge (the join snapshot, one row for the three noisers) and gets noisers of its own | `[?]` `harness/autotest/autotest_world_sound.cpp`: three noisers on each peer, and on a rejoined client (the rewritten drill has not run yet) |
 | A harvest's sound is the harvester's alone: no other peer plays it | `[RD]` the harvest half of #104 waits for the host to perform every harvest (#115): the host's own `growingPlant_C::harvestSound` call then sends an EventCue id 102 at the plant |
 | A joiner who arrives during a black fog gets a whole one, from its fade-in | `[?]` `coop/world/weather_fog` |
@@ -429,6 +482,8 @@ bit and the flood's level are sent to the joiner at its ready edge, and the host
 | the ambient UFOs | `coop/world/ufo_sync`, `coop/world/spawn_authority` (the gamemode's five timers); `harness/autotest/autotest_ufo.cpp` (`ufo_drill`) |
 | the alarm, emails, the task | `coop/world/alarm_sync`, `coop/world/email_sync`, `coop/world/daily_task_sync`, `ue_wrap/world/email` |
 | the basement flood | `coop/world/flood_sync`; `coop/dev/flood_drill` |
+| the Arirals' shrimp and reputation | `coop/props/shrimp_eater_authority`, `coop/world/arir_rep_sync`; `coop/dev/week2_drill` |
+| a host-only event's count | `coop/world/host_event_presence` (fed by `coop/world/event_active_sync`) |
 | the Ariral's float | `coop/world/agrav_sync`, `ue_wrap/engine/engine_physics` (the gravity switch); `coop/dev/event_probe` |
 | sounds played at a place | `coop/world/sound_relay`; `coop/dev/hit_probe` |
 | tests | `harness/autotest/autotest_weather.cpp`, `autotest_fog_probe.cpp`, `autotest_eventforce.cpp`, `autotest_alarmforce.cpp`, `autotest_piramidforce.cpp`, `autotest_vent_crawler.cpp`; the event drill, `coop/dev/event_drill`; the world roll drill, `coop/dev/world_roll_drill` |
