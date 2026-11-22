@@ -63,7 +63,16 @@ void Census(const char* when) {
     int n = 0;
     for (void* cls : classes) {
         const std::wstring name = R::ToString(R::NameOf(cls));
-        if (Lower(name).find(sub) == std::wstring::npos) continue;
+        // Several substrings, '|' between them: a class matches any one.
+        bool match = false;
+        for (size_t at = 0; at <= sub.size();) {
+            const size_t bar = sub.find(L'|', at);
+            const std::wstring one = sub.substr(at, bar == std::wstring::npos ? std::wstring::npos : bar - at);
+            if (!one.empty() && Lower(name).find(one) != std::wstring::npos) match = true;
+            if (bar == std::wstring::npos) break;
+            at = bar + 1;
+        }
+        if (!match) continue;
         struct Ctx { const std::wstring* name; int* n; const char* when; } ctx{&name, &n, when};
         OI::ForEachInstance(cls, [](void* c, void* obj, int32_t) {
             auto* x = static_cast<Ctx*>(c);
@@ -78,9 +87,15 @@ void Census(const char* when) {
                                    ? ((static_cast<const uint8_t*>(obj)[off] & mask) != 0 ? 1 : 0) : -1;
             void* parent = nullptr;
             ue_wrap::engine::GetAttachParentActor(obj, parent);
-            UE_LOGI("[EVPROBE] %s: %ls '%ls' at (%.0f,%.0f,%.0f) active=%d parent=%ls", x->when, x->name->c_str(),
+            // VOTVCOOP_EVENT_PROBE_FIELD=<name>: that field's first four bytes as an integer, where the class has it.
+            static const std::string s_field = coop::config::ReadEnv("VOTVCOOP_EVENT_PROBE_FIELD");
+            const std::wstring wfield(s_field.begin(), s_field.end());
+            const int32_t foff = wfield.empty() ? -1 : R::FindPropertyOffset(R::ClassOf(obj), wfield.c_str());
+            int32_t fval = 0;
+            if (foff >= 0) std::memcpy(&fval, static_cast<const uint8_t*>(obj) + foff, sizeof(fval));
+            UE_LOGI("[EVPROBE] %s: %ls '%ls' at (%.0f,%.0f,%.0f) active=%d parent=%ls %s=%d", x->when, x->name->c_str(),
                     R::ToString(R::NameOf(obj)).c_str(), at.X, at.Y, at.Z, active,
-                    parent ? R::ClassNameOf(parent).c_str() : L"-");
+                    parent ? R::ClassNameOf(parent).c_str() : L"-", foff >= 0 ? s_field.c_str() : "-", fval);
         }, &ctx);
     }
     UE_LOGI("[EVPROBE] %s: %d actor(s) of a class holding '%ls'", when, n, sub.c_str());
