@@ -151,6 +151,7 @@
 #include "coop/dev/week2_drill.h"   // [dev] the story's second week on three peers
 #include "coop/dev/week3_drill.h"   // [dev] the story's third week on three peers
 #include "coop/dev/week4_drill.h"   // [dev] the story's fourth week on three peers
+#include "coop/dev/week5_drill.h"   // [dev] the story's fifth week on three peers
 #include "coop/dev/sit_probe.h"   // the chair sit probe
 #include "coop/dev/join_stall_probe.h"   // [dev] a client's game thread held still while it joins
 #include "coop/dev/kdisc_watch.h"   // [dev] every floppy disc's place, parent and physics
@@ -586,6 +587,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::week2_drill::Tick(&session);  // [dev] the story's second week (a latched read when off)
     coop::dev::week3_drill::Tick(&session);  // [dev] the story's third week (a latched read when off)
     coop::dev::week4_drill::Tick(&session);  // [dev] the story's fourth week (a latched read when off)
+    coop::dev::week5_drill::Tick(&session);  // [dev] the story's fifth week (a latched read when off)
     coop::dev::sit_probe::Tick(&session);  // a client sits on a chair; the host looks
     coop::dev::kdisc_watch::Tick(&session);  // [dev] VOTVCOOP_KDISC_WATCH
     coop::dev::kfollow_probe::Tick(&session);  // [dev] VOTVCOOP_KFOLLOW_PROBE
