@@ -1,4 +1,4 @@
-// coop/world/ambient_fixture_sync.h -- one set of dirt holes and beehive branches: the host's.
+// coop/world/ambient_fixture_sync.h -- one set of dirt holes, beehive branches and picnic warp arrows: the host's.
 //
 // A hexahive is a field of dirt holes, and its spawner destroys itself in its begin play, so the holes are what crosses. A lone
 // sus hole is the same class. A beehive's branch is a saved actor that stands in the world; its nest is a prop and crosses on
@@ -12,6 +12,10 @@
 // getBee, once the nest's mirror is in the prop key index). A joiner is sent every fixture and then a census-end, by which it
 // ends each loaded branch nothing named. A branch's end on a client leaves the nest to the prop lane.
 // A hole's end does not cross: it ends by its own viewer's distance and view, so each peer's copy ends by its own player.
+// The picnic's two Ariral warp arrows (arirShipVanishing_C) are saved actors its trigger_spawnProp_C spawns on the host
+// alone; each crosses by its place and its end (the picnic's clearing) crosses with it. A client binds a loaded arrow that
+// stands where the host's does, spawns a copy only when none is, and the census-end ends the loaded arrows nothing named.
+// Each copy fades for its own player as that player comes near, as the game's own does.
 
 #pragma once
 
@@ -43,6 +47,8 @@ struct Counters {
     uint64_t bound = 0;         // CLIENT: loaded branches bound to the host's branch by key
     uint64_t holeCopies = 0;    // CLIENT: hole copies spawned
     uint64_t branchCopies = 0;  // CLIENT: branch copies spawned
+    uint64_t shipCopies = 0;    // CLIENT: warp arrow copies spawned
+    uint64_t shipsBound = 0;    // CLIENT: loaded warp arrows bound to the host's by place
     uint64_t nestsBound = 0;    // CLIENT: nests given to a branch
     uint64_t hiveDropped = 0;   // CLIENT: branches that ended holding a nest, which the branch's end let stand
     uint64_t hiveGone = 0;      // CLIENT: branches that ended after their nest had already ended by the prop lane
