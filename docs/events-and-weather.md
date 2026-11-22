@@ -240,6 +240,26 @@ notepad mints is caught at its spawn and mirrored (`coop/creatures/npc_world_enu
 `lantern`, red `week3_red=note_local`: slot 1's use was granted and converted on the host, and the Ariral stood on all
 three peers; before, on slot 1 alone, with the notepad gone everywhere.)
 
+The warning obelisk (day 25, `obelisk_C`) is spawned by its event on the host alone. Its begin play drops it from high
+above; its landing shakes every camera near it, fires its particles, flags its radar point (the base alarm), pushes the
+props round it, flings seventy rocks, leaves the standing `prop_obelisk_C`, punches the main player and hides its own
+mesh. The rocks and the standing obelisk are host births and crossed as props, so a client saw them appear with no fall,
+shake or punch. The host now sends the obelisk's begin play while it has not fallen (`EventCue` 108 its yaw, then 107
+its place), and a client spawns its own copy there, turned as the host's, so the fall and landing play for its own
+player as the game's do: its own camera, its own punch, its own event count. The copy's push is turned off, as the
+host's push moves the props, and the props the copy's landing makes are ended at their birth, as the host's cross
+(`coop/world/obelisk_sync`). A joiner loads the obelisk the save holds. `[V]` (`coop/dev/week4_drill`, arm `obelisk`,
+red `week4_red=obelisk_host`: slot 1's copy fell from 10 km to the ground at the host's yaw, its landing's 71 props were
+ended, and every peer held the host's 136 rocks and one standing obelisk; before, slot 1 had no obelisk.)
+
+A story event's trigger box (`trigger_box_N_C`) runs its targets when a player of its class list walks in, and the
+host's copy sees a client's puppet, a `mainPlayer_C`, as it sees its own player: a client standing in the obelisk's box
+ran the host's box and the obelisk fell on every peer `[V]` (`coop/dev/week4_drill`, arm `box`). A box whose row is
+replayed on clients is armed there too, and the dropped Ariral gun's (day 24, `TB_event_arirToe`) then ran on the
+client's copy as well, leaving that client a gun of its own beside the host's. A client's own copy of a box listed in
+`coop/world/event_box_authority` is refused, so only the host's runs. `[V]` (arm `gun`, red `week4_red=box_local`: slot
+1's walk-in into its own garage box left it a gun nobody else had; after, its box was refused and it had none.)
+
 ### The ambient UFOs
 
 The gamemode arms five timers at begin play, each rolling and re-arming itself: the ball (high over player 0's
@@ -432,6 +452,8 @@ ending. Tests:
 | the base alarm | whoever transitions | polled; the host canonicalises |
 | the basement's pipes and flood | the host | a client's `addDamage`, `addWater` and `setLevel` refused outside the lane's apply; the bit and the level sent as they change; a client's repair asked |
 | the radio tower's Ariral ship | the host | its `appear` sent and rolled for every player in its box; a client's own refused |
+| the warning obelisk's fall | the host | its begin play sent; a client's own copy falls and lands, its push off and its prop births ended |
+| a story box whose walk-in makes shared props | the host | the host's box sees a client's puppet; a client's own copy of a listed box refused |
 | the lantern prank's notepad | the host | a client's use asked and run on the host's copy; the Ariral it sends mirrored |
 | the picnic's warp arrows | the host | each by its place and its end, on the fixture lane; a loaded one bound by place |
 | the Arirals' shrimp eater | the host | a client's `eat` refused; the host's refused near or in view of a client's player |
@@ -511,6 +533,7 @@ bit and the flood's level are sent to the joiner at its ready edge, and the host
 | the alarm, emails, the task | `coop/world/alarm_sync`, `coop/world/email_sync`, `coop/world/daily_task_sync`, `ue_wrap/world/email` |
 | the basement flood | `coop/world/flood_sync`; `coop/dev/flood_drill` |
 | the Arirals' shrimp and reputation | `coop/props/shrimp_eater_authority`, `coop/world/arir_rep_sync`; `coop/dev/week2_drill` |
+| the warning obelisk, the garage box | `coop/world/obelisk_sync`, `coop/world/event_box_authority`; `coop/dev/week4_drill` |
 | the radio tower's ship, the lantern prank | `coop/world/arir_tower_ship_sync`; `coop/props/prop_act_host`, `coop/props/prop_act_request`, `coop/creatures/npc_world_enum`; `coop/dev/week3_drill` |
 | a host-only event's count | `coop/world/host_event_presence` (fed by `coop/world/event_active_sync`) |
 | the Ariral's float | `coop/world/agrav_sync`, `ue_wrap/engine/engine_physics` (the gravity switch); `coop/dev/event_probe` |
