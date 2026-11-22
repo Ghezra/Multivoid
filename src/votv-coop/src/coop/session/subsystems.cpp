@@ -160,7 +160,10 @@
 #include "coop/props/printer_sync.h"            // a 3D print and its printed object
 #include "coop/creatures/kerfur_dress_sync.h"   // an Omega's outfit and its pat
 #include "coop/creatures/kerfur_camera.h"   // a client's Omega camera on its laptop list
+#include "coop/world/arir_rep_sync.h"   // the Arirals' reputation is the host's
 #include "coop/world/arir_ship_sync.h"   // the Ariral ship in the sky
+#include "coop/world/host_event_presence.h"   // a host-only event counts on every client
+#include "coop/props/shrimp_eater_authority.h"   // the Arirals eat a shrimp no player is near or watching
 #include "coop/world/cave_rock_sync.h"   // the Antibreather cave's entrance
 #include "coop/player/chair_seat.h"      // a player sitting on a chair
 #include "coop/world/sound_relay.h"   // a player's own sounds at a place
@@ -321,6 +324,9 @@ void Install(coop::net::Session& session) {
     coop::kerfur_color_sync::Install(&session);  // a custom-colour kerfur's colour: the host's
     coop::printer_sync::Install(&session);  // a 3D print, the host's, and the object it prints
     coop::arir_ship_sync::Install(&session);  // the Ariral ship in the sky
+    coop::host_event_presence::Install(&session);  // a host-only event counts on every client
+    coop::arir_rep_sync::Install(&session);  // the Arirals' reputation is the host's
+    coop::shrimp_eater_authority::Install(&session);  // the Arirals' shrimp eating
     coop::cave_rock_sync::Install(&session);  // the Antibreather cave's entrance
     coop::chair_seat::Install(&session);  // a player sitting on a chair
     coop::glowstick_sync::Install(&session);    // a glowstick's stick, through its record
@@ -617,6 +623,9 @@ DisconnectStats DisconnectAll() {
     coop::kerfur_color_sync::OnDisconnect();
     coop::printer_sync::OnDisconnect();
     coop::cave_rock_sync::OnDisconnect();
+    coop::shrimp_eater_authority::OnDisconnect();
+    coop::host_event_presence::OnDisconnect();
+    coop::arir_rep_sync::OnDisconnect();
     coop::chair_seat::OnDisconnect();
     coop::atv_host_sync::OnDisconnect();
     coop::atv_passenger::OnDisconnect();
@@ -712,7 +721,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:atv"}; coop::atv_sync::Tick(); }  // ATV: the host judges its own seat and grab, a client asks the host; the syncer streams its pose (host+client)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:drone"}; coop::drone_sync::Tick(); }  // delivery drone: host streams transform / client suppresses tick + mirrors
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:turbine"}; coop::turbine_sync::Tick(); }  // wind turbines: host ~1 Hz driver-float poll / client deferred-apply retry
-    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:woodchipper"}; coop::woodchipper_sync::Tick(); coop::generator_sync::Tick(); coop::flood_sync::Tick(); coop::kerfur_dress_sync::Tick(); coop::kerfur_camera::Tick(session); coop::arir_ship_sync::Tick(); coop::cave_rock_sync::Tick(); coop::chair_seat::Tick(); }  // woodchippers: the host's intents and its changed chippers, the burn read once a second / the client's held states
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:woodchipper"}; coop::woodchipper_sync::Tick(); coop::generator_sync::Tick(); coop::flood_sync::Tick(); coop::kerfur_dress_sync::Tick(); coop::kerfur_camera::Tick(session); coop::arir_ship_sync::Tick(); coop::shrimp_eater_authority::Tick(); coop::arir_rep_sync::Tick(); coop::cave_rock_sync::Tick(); coop::chair_seat::Tick(); }  // woodchippers: the host's intents and its changed chippers, the burn read once a second / the client's held states
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:glowstick"}; coop::glowstick_sync::Tick(); }  // a glowstick's stick: the sticks a player ended published, the waits for a struck prop retried
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:atv_host"}; coop::atv_host_sync::Tick(); }  // the ATVs' fuel, health and modules
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:alarm"}; coop::alarm_sync::Tick(); }  // base radar alarm: 1 Hz active-bit poll BOTH roles (host broadcasts transitions; client forwards local ones)

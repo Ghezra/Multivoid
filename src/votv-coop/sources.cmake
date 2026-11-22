@@ -665,13 +665,16 @@ set(VOTVCOOP_SOURCES
     src/coop/props/fireext_sync.cpp
     src/coop/props/miner_sync.cpp
     src/coop/props/prop_fire_sync.cpp
+    src/coop/props/shrimp_eater_authority.cpp
     src/coop/voice/camcorder_voice.cpp
+    src/coop/world/arir_rep_sync.cpp
     src/coop/world/arir_ship_sync.cpp
     src/coop/world/build_sync.cpp
     src/coop/world/cave_rock_sync.cpp
     src/coop/world/cover_sync.cpp
     src/coop/world/flood_sync.cpp
     src/coop/world/ground_hose_sync.cpp
+    src/coop/world/host_event_presence.cpp
     src/coop/world/media_device_sync.cpp
     src/coop/world/sound_relay.cpp
     src/ue_wrap/devices/kitchen.cpp

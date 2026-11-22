@@ -53,7 +53,9 @@
 #include "coop/creatures/kerfur_color_sync.h"
 #include "coop/props/printer_sync.h"
 #include "coop/creatures/kerfur_dress_sync.h"
+#include "coop/world/arir_rep_sync.h"
 #include "coop/world/arir_ship_sync.h"
+#include "coop/world/host_event_presence.h"
 #include "coop/world/cave_rock_sync.h"
 #include "coop/player/chair_seat.h"
 #include "coop/interactables/woodchipper_sync.h"
@@ -171,6 +173,8 @@ void ConnectReplayForSlot(int slot) {
     coop::kerfur_color_sync::SendJoin(slot);                     // and every custom-colour kerfur's colour
     coop::printer_sync::SendJoin(slot);                          // and every printed object
     coop::arir_ship_sync::SendJoin(slot);                        // and the Ariral ship, while it is up
+    coop::host_event_presence::SendJoin(slot);                   // and a host-only event, while one runs
+    coop::arir_rep_sync::SendJoin(slot);                         // and the Arirals' reputation
     coop::cave_rock_sync::SendJoin(slot);                        // and the Antibreather cave's entrance
     coop::chair_seat::SendJoin(slot);                            // and who sits on which chair
     coop::atv_host_sync::QueueConnectBroadcastForSlot(slot);  // every ATV's host state again
