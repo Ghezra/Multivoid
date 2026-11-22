@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 348;
+inline constexpr uint16_t kProtocolVersion = 349;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1672,6 +1672,11 @@ enum class ReliableKind : uint16_t {
     // body, one ask per 3 s), spawns the ATV there, which the ATV lane's AtvSpawn brings to every peer, the asker's
     // included. Never relayed. Not pre-world. Late join: none, an ask is an act. AtvSpawnAskPayload.
     AtvSpawnAsk = 321,
+    // Client to host: a change to the Arirals' reputation this client's own player made (coop/world/arir_rep_sync): its
+    // wake, its swing at the follower, its photo of the visit ship. The client's own addAriralRep is refused; the host
+    // judges the sender (world ready, the cause's own amount, one a second, a photo once) and makes the change, whose
+    // value then goes to every peer. Never relayed. Not pre-world. Late join: none, an ask is an act. ArirRepIntentPayload.
+    ArirRepIntent = 322,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2826,6 +2831,19 @@ struct AtvSpawnAskPayload {
     float yaw;      // 4
 };
 static_assert(sizeof(AtvSpawnAskPayload) == 16, "AtvSpawnAskPayload must be 16 bytes");
+
+// What a client's own player did to the Arirals' reputation (ArirRepIntent): the amount and its cause.
+namespace arir_rep_cause {
+inline constexpr uint8_t kWake = 0;        // the gamemode's wakeup: five either way
+inline constexpr uint8_t kSwing = 1;       // a swing at the follower: two off
+inline constexpr uint8_t kShipPhoto = 2;   // a photo of the day 13 visit ship: fifteen, once
+}  // namespace arir_rep_cause
+struct ArirRepIntentPayload {
+    float   rep;       // 4
+    uint8_t cause;     // 1 -- arir_rep_cause
+    uint8_t _pad[3];   // 3 -- zero
+};
+static_assert(sizeof(ArirRepIntentPayload) == 8, "ArirRepIntentPayload must be 8 bytes");
 
 // The 3D printer's lane (coop/props/printer_sync). A model is its folder's name, UTF-8, 1 to 95 bytes, not terminated;
 // a printed object is the host's element id of it, with its save key (an FName as text, up to 63 bytes) for a joiner's

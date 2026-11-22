@@ -195,6 +195,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::CheatRequest:
     case ReliableKind::AtvPartIntent:
     case ReliableKind::AtvSpawnAsk:
+    case ReliableKind::ArirRepIntent:
     case ReliableKind::PryAsk:
     case ReliableKind::OvenProgressState:
         return ClientAuthorship::Client;
