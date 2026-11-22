@@ -284,6 +284,18 @@ joiner after it left gets the sponge. `[V]` (`coop/dev/week5_drill`, arm `solto`
 host's Soltomia showed and threw and slot 1 had none; after, slot 1's copy showed at the host's place and yaw, played the
 throw, its own sponge was ended, and it ended with the host's one sponge.)
 
+The sixth week's flyovers, the peeping UFO (`morningUfo_C`), the Rozital mothership (`rozitBorg_C`) and the drop
+saucers (`ufoDropper_body_C`, `ufoDropper_car_C`), are spawned by the dispatcher on the host alone, and reached no
+client. They are now among its mirrored outputs, and `coop/world/flyover_sync` carries what the actor pose does not.
+The mothership's copy runs its own tick, which flies its ships, and takes the host's `alpha` every 2 s (`EventCue` 115).
+The UFO's box is refused on a client, and the host sends its show (113); the UFO's look at player 0 is served the
+nearest player, so a client's player can scare it off. A saucer copy's begin play, box, deploy, drop and end are refused;
+at the host's deploy (114) it shows and plays its timeline, which lowers it and blinks this machine's lights, and the
+car or body it drops is the host's. A client ends a saucer it loaded from its save where the host's copy stands or the
+host has none (116). `[V]` (`coop/dev/week6_drill`, red `week6_red=flyover_host`: before, slot 1 had none of the four;
+with the lane off, its mothership stood at alpha 0 and its saucers never showed; after, its mothership tracked the host's
+alpha, its UFO showed and flew, its saucers showed and blinked its lights, and the host's car reached it.)
+
 ### The ambient UFOs
 
 The gamemode arms five timers at begin play, each rolling and re-arming itself: the ball (high over player 0's
@@ -491,6 +503,7 @@ ending. Tests:
 | the radio tower's Ariral ship | the host | its `appear` sent and rolled for every player in its box; a client's own refused |
 | the Rozital scouts' hunt and pin | the host | each hostile ball serves the nearest player; a client's pin is sent to it |
 | the garage Soltomia | the host | its show and its opened sent; a client's copy shows and throws, its gameplay refused |
+| the sixth week's flyovers | the host | mirrored; the mothership's alpha, the UFO's show and the saucer's deploy sent |
 | the warning obelisk's fall | the host | its begin play sent; a client's own copy falls and lands, its push off and its prop births ended |
 | a story box whose walk-in makes shared props | the host | the host's box sees a client's puppet; a client's own copy of a listed box refused |
 | the lantern prank's notepad | the host | a client's use asked and run on the host's copy; the Ariral it sends mirrored |
@@ -574,6 +587,7 @@ bit and the flood's level are sent to the joiner at its ready edge, and the host
 | the Arirals' shrimp and reputation | `coop/props/shrimp_eater_authority`, `coop/world/arir_rep_sync`; `coop/dev/week2_drill` |
 | the Rozital scouts | `coop/creatures/scout_target`, `coop/creatures/served_player`; `coop/dev/week5_drill` |
 | the garage Soltomia | `coop/world/soltomia_sync`; `coop/dev/week5_drill` |
+| the sixth week's flyovers | `coop/world/flyover_sync`, `coop/creatures/npc_world_enum`; `coop/dev/week6_drill` |
 | the warning obelisk, the garage box | `coop/world/obelisk_sync`, `coop/world/event_box_authority`; `coop/dev/week4_drill` |
 | the radio tower's ship, the lantern prank | `coop/world/arir_tower_ship_sync`; `coop/props/prop_act_host`, `coop/props/prop_act_request`, `coop/creatures/npc_world_enum`; `coop/dev/week3_drill` |
 | a host-only event's count | `coop/world/host_event_presence` (fed by `coop/world/event_active_sync`) |
