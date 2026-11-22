@@ -30,6 +30,7 @@ inline constexpr RefFn kRefFns[] = {
     {L"marsstruct_build_skeleton_animblueprint_c", L"blueprintupdateanimation", L"marsstruct_build_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0x5a8d57c8e02c417full},
     {L"marsstruct_test1_skeleton_animblueprint_c", L"blueprintupdateanimation", L"marsstruct_test1_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0x0ffc590698427747ull},
     {L"mmann_rigg_skeleton_animblueprint_c", L"blueprintupdateanimation", L"mmann_rigg_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0xe4ee9b42fe7fe767ull},
+    {L"obelisk_c", L"receivebeginplay", L"obelisk_c.receivebeginplay", 0x6a2d5d90ab51fa2dull, 0xb3b7324f8d0b0732ull},
     {L"panel_satconsole_c", L"server alert", L"panel_satconsole_c.server alert", 0xa53496c8659a35aaull, 0x41eaa8148aa357f6ull},
     {L"piramid_sk_prot_skeleton_animblueprint_c", L"blueprintupdateanimation", L"piramid_sk_prot_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0x967dd224b19e6260ull},
     {L"printedobject_c", L"actionoptionindex", L"printedobject_c.actionoptionindex", 0x5a7351a33bbf62a6ull, 0xa160e2afbdbe020aull},
