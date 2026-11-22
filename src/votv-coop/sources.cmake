@@ -113,6 +113,7 @@ set(VOTVCOOP_SOURCES
     src/coop/creatures/kerfus_lanes.cpp
     src/coop/creatures/kerfus_state.cpp
     src/coop/creatures/served_player.cpp
+    src/coop/creatures/scout_target.cpp
     src/coop/interactables/keypad_sync.cpp
     src/coop/interactables/keypad_verbs.cpp
     src/coop/interactables/sleepingbag_sync.cpp
@@ -684,6 +685,7 @@ set(VOTVCOOP_SOURCES
     src/coop/world/host_event_presence.cpp
     src/coop/world/media_device_sync.cpp
     src/coop/world/obelisk_sync.cpp
+    src/coop/world/soltomia_sync.cpp
     src/coop/world/sound_relay.cpp
     src/ue_wrap/devices/kitchen.cpp
     src/ue_wrap/world/media_device.cpp

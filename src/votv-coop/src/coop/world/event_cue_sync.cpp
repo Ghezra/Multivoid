@@ -19,6 +19,8 @@
 #include "coop/world/arir_tower_ship_sync.h"
 #include "coop/world/host_event_presence.h"
 #include "coop/world/obelisk_sync.h"
+#include "coop/creatures/scout_target.h"
+#include "coop/world/soltomia_sync.h"
 #include "coop/world/world_sound_sync.h"
 
 #include "ue_wrap/core/asset_load.h"
@@ -276,6 +278,8 @@ void OnReliable(const coop::net::EventCuePayload& payload) {
     if (coop::arir_rep_sync::OnCue(payload)) return;  // the Arirals' reputation
     if (coop::arir_tower_ship_sync::OnCue(payload)) return;  // the tower's Ariral ship
     if (coop::obelisk_sync::OnCue(payload)) return;  // the warning obelisk's fall
+    if (coop::scout_target::OnCue(payload)) return;  // a scout's pin of this player
+    if (coop::soltomia_sync::OnCue(payload)) return;  // the garage Soltomia
     if (payload.cueId >= static_cast<uint32_t>(kCueCount)) {
         UE_LOGW("event_cue: OnReliable unknown cueId=%u (have %d cues) -- dropping (newer host?)",
                 payload.cueId, kCueCount);
