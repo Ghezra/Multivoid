@@ -6,6 +6,7 @@
 #include "coop/creatures/served_player.h"
 #include "coop/dev/event_trigger.h"
 #include "coop/net/session.h"
+#include "coop/session/teleport_client.h"
 #include "coop/player/players_registry.h"
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/core/log.h"
@@ -21,6 +22,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace coop::dev::week6_drill {
@@ -37,7 +39,9 @@ const std::string& Arm() {
     return v;
 }
 
+coop::net::Session* g_session = nullptr;
 uint64_t g_startAt = 0, g_nextLog = 0;
+std::unordered_set<void*> g_shots, g_blasts;   // hole: the guards' shots and the explosions seen on this machine
 int g_step = 0;
 FVector g_boxAt{};
 
@@ -133,16 +137,26 @@ void Act(bool host, int slot, uint64_t t) {
                     E::SetActorLocation(me, g_boxAt) ? 1 : 0);
         }
         const std::vector<void*> dev = Live(L"holeDevice_C");
-        if (!host && slot == 1 && g_step == 0 && t >= 75000u && me && !dev.empty()) {
-            g_step = 1;
+        // VOTVCOOP_WEEK6_HOLE_OUT=host: the host stands there instead of slot 1 (whether the guards shoot at all).
+        static const bool s_hostOut = coop::config::ReadEnv("VOTVCOOP_WEEK6_HOLE_OUT") == "host";
+        // The host moves the body: its own, or slot 1's by its order (a client's own jump is not a move the host takes).
+        if (host && g_step == 2 && t >= 75000u && me && !dev.empty()) {
+            if (s_hostOut) g_step = 4;
+            static bool s_ordered = false;
             FVector at{};
             E::TryGetActorLocation(dev[0], at);
-            const FVector to{at.X + 2500.f, at.Y, at.Z + 200.f};
-            UE_LOGI("[WEEK6] slot 1: 25 m from the device at (%.0f,%.0f,%.0f) (ok=%d)", to.X, to.Y, to.Z,
-                    E::SetActorLocation(me, to) ? 1 : 0);
+            const FVector to{at.X + 7000.f, at.Y, at.Z + 300.f};
+            if (s_hostOut) {
+                UE_LOGI("[WEEK6] host: 70 m from the device at (%.0f,%.0f,%.0f) (ok=%d)", to.X, to.Y, to.Z,
+                        E::SetActorLocation(me, to) ? 1 : 0);
+            } else if (!s_ordered) {
+                s_ordered = true;
+                UE_LOGI("[WEEK6] host: slot 1 ordered 70 m from the device at (%.0f,%.0f,%.0f) (ok=%d)", to.X, to.Y, to.Z,
+                        g_session && coop::teleport_client::OrderToPose(*g_session, 1, to, ue_wrap::FRotator{}) ? 1 : 0);
+            }
         }
         const std::vector<void*> ig = Live(L"igetis_C");
-        if (host && g_step == 2 && t >= 150000u && me && !ig.empty()) {
+        if (host && g_step == 2 && t >= 190000u && me && !ig.empty()) {
             g_step = 3;
             FVector at{};
             E::TryGetActorLocation(ig[0], at);
@@ -190,7 +204,8 @@ void Report(bool host, uint64_t t) {
             line += nm + L"@(" + std::to_wstring(static_cast<int>(at.X)) + L"," + std::to_wstring(static_cast<int>(at.Y)) +
                     L"," + std::to_wstring(static_cast<int>(at.Z)) + L") ";
         }
-        UE_LOGI("[WEEK6] hole %s t=%llu: %lshealth %.0f", who, static_cast<unsigned long long>(t / 1000u), line.c_str(),
+        UE_LOGI("[WEEK6] hole %s t=%llu: %lsshots seen %zu, explosions seen %zu, health %.0f", who,
+                static_cast<unsigned long long>(t / 1000u), line.c_str(), g_shots.size(), g_blasts.size(),
                 slotObj ? Float(slotObj, L"health") : -1.f);
     } else if (arm == "morning") {
         const std::vector<void*> u = Live(L"morningUfo_C");
@@ -219,6 +234,7 @@ void Report(bool host, uint64_t t) {
 
 void Tick(coop::net::Session* session) {
     if (Arm().empty() || !RowOf(Arm()) || !session || !session->running() || !session->connected()) return;
+    g_session = session;
     const bool host = session->role() == coop::net::Role::Host;
     const int slot = coop::players::Registry::Get().LocalPeerId();
     if (!g_startAt) {
@@ -227,6 +243,10 @@ void Tick(coop::net::Session* session) {
     }
     const uint64_t t = Now() - g_startAt;
     Act(host, slot, t);
+    if (Arm() == "hole") {
+        for (void* o : Live(L"kavotiaShot_C")) g_shots.insert(o);
+        for (void* o : Live(L"explosion_C")) g_blasts.insert(o);
+    }
     Report(host, t);
     static bool s_done = false;
     if (!s_done && t >= (Arm() == "hole" ? 242000u : 152000u)) {
