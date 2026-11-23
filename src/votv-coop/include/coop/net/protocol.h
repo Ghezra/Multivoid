@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 352;
+inline constexpr uint16_t kProtocolVersion = 353;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1676,6 +1676,14 @@ enum class ReliableKind : uint16_t {
     // the pile's end cross as props. Never relayed; not pre-world. Late join: none, an ask is an act.
     // ChipScrapAskPayload.
     ChipScrapAsk = 324,
+    // HOST->ALL: a light's or the hot plate's switch (a lamp, a wall light, a spotlight's head, the beacon, the hot
+    // plate) landed on the host's copy (coop/props/prop_switch_sync); to a joiner, every one at its ready edge. Never
+    // relayed; not pre-world. PropSwitchPayload.
+    PropSwitchState = 325,
+    // CLIENT->HOST: this client's press of such a switch, run on its copy and asked of the host, which judges the
+    // sender's reach and switches its own copy, whose PropSwitchState answers; a refusal is answered with the host's
+    // state, to the asker. Never relayed. PropSwitchPayload.
+    PropSwitchIntent = 326,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2637,6 +2645,17 @@ struct RoombaPayload {
     uint8_t  pad[3];  // zero
 };
 static_assert(sizeof(RoombaPayload) == 8, "RoombaPayload must be 8 bytes");
+
+// A light's or the hot plate's switch (PropSwitchState, PropSwitchIntent): the prop's element id, or with `head` set
+// the spotlight tripod's, whose child actor is the head.
+struct PropSwitchPayload {
+    uint32_t eid;     // the prop's element id (the tripod's, for its head)
+    uint8_t  on;      // 1 on, 0 off: the state (a state) or the one asked for (an intent)
+    uint8_t  head;    // 1: the switch is the head of the spotlight `eid` names
+    uint8_t  level;   // the hot plate's heat level (its `power`, 0..4); 0 for the others
+    uint8_t  pad;     // zero
+};
+static_assert(sizeof(PropSwitchPayload) == 8, "PropSwitchPayload must be 8 bytes");
 
 // A wall builder's aiming preview (WallPreview): the tool's own components, in world space.
 struct WallPreviewPayload {

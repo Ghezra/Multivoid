@@ -113,6 +113,7 @@
 #include "coop/interactables/car_charger_sync.h"
 #include "coop/props/bucket_sync.h"
 #include "coop/props/prop_rest_sync.h"  // the joiner's rest rest pass
+#include "coop/props/prop_switch_sync.h"  // every light's and hot plate's switch
 #include "coop/props/roomba_sync.h"  // every robot cleaner's switch
 #include "coop/props/miner_sync.h"   // every mining rig's counts and points
 #include "coop/props/fireext_sync.h"  // every extinguisher's thrust and every spray
@@ -256,6 +257,8 @@ void ConnectReplayForSlot(int slot) {
     coop::ufo_sync::SendJoinSnapshotForSlot(slot);
     // Every robot cleaner's switch; one that runs is followed through the drive stream.
     coop::roomba_sync::SendJoinSnapshotForSlot(slot);
+    // Every lamp's, wall light's, spotlight's, beacon's and hot plate's switch.
+    coop::prop_switch_sync::SendJoinSnapshotForSlot(slot);
     // The desk's back plates and every transformer station's door.
     coop::cover_sync::SendJoinSnapshotForSlot(slot);
     // Every spray, every thrusting extinguisher and every partly spent charge.

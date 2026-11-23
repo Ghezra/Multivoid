@@ -475,8 +475,8 @@ chain: the base's mop bucket, `prop_bucket_mop_C`, a `prop_bucket_C` with nothin
 under an exact match (Ghezra/Multivoid issue 42) `[V]` (`VOTVCOOP_BUCKET_CLASS`, `VOTVCOOP_BUCKET_EXACT=1` its red arm:
 a client's fill read 35 there and 0 elsewhere; now every step matches on all three).
 
-A world bucket's water, a concrete bucket's concrete and a cement bag's units are the host's, the base's mop bucket among them,
-and a client's verbs on them are asked of the host ([props-buckets.md](props-buckets.md)).
+A world bucket's water, concrete and a cement bag's units are the host's, and a client's verbs on them are asked
+([props-buckets.md](props-buckets.md)); so are a light's and the hot plate's switch ([props-switches.md](props-switches.md)).
 
 ## Who owns what
 

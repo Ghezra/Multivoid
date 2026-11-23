@@ -25,6 +25,7 @@
 #include "coop/interactables/kitchen_sync.h"  // a microwave's and a mini oven's controls
 #include "coop/props/prop_fire_sync.h"
 #include "coop/props/roomba_sync.h"  // a robot cleaner's switch, the host's
+#include "coop/props/prop_switch_sync.h"  // a light's or the hot plate's switch, the host's
 #include "coop/props/miner_sync.h"   // a GPU mining rig's counts and points, the host's
 #include "coop/props/fireext_sync.h"  // an extinguisher's thrust and a player's spray
 #include "coop/world/cover_sync.h"    // the desk's back plates and the stations' doors
@@ -511,6 +512,25 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         if (intent) ::coop::roomba_sync::OnIntent(msg.senderPeerSlot, p);
         else ::coop::roomba_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::PropSwitchState:
+    case net::ReliableKind::PropSwitchIntent: {
+        // PropSwitchState HOST->ALL, PropSwitchIntent CLIENT->HOST (coop/props/prop_switch_sync). Exact length.
+        const bool intent = msg.kind == net::ReliableKind::PropSwitchIntent;
+        net::PropSwitchPayload p{};
+        if (intent != (session.role() == net::Role::Host) || msg.payloadLen != sizeof(p)) {
+            UE_LOGW("event_feed: a light switch message the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.on > 1 || p.head > 1 || p.level > 4 || p.eid == 0) {
+            UE_LOGW("event_feed: a light switch message malformed -- dropping");
+            break;
+        }
+        if (intent) ::coop::prop_switch_sync::OnIntent(msg.senderPeerSlot, p);
+        else ::coop::prop_switch_sync::OnState(p);
         break;
     }
     case net::ReliableKind::WallPreview: {
