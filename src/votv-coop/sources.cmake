@@ -193,6 +193,7 @@ set(VOTVCOOP_SOURCES
     src/coop/session/player_handshake_version.cpp
     src/coop/player/item_activate.cpp
     src/coop/player/player_damage.cpp
+    src/coop/player/puppet_gravgun.cpp
     src/coop/player/puppet_cremation.cpp
     src/coop/player/puppet_events.cpp
     src/coop/player/puppet_events_selftest.cpp
