@@ -58,6 +58,12 @@
 #include "coop/world/arir_tower_ship_sync.h"
 #include "coop/world/host_event_presence.h"
 #include "coop/world/cave_rock_sync.h"
+#include "coop/creatures/gray_sync.h"
+#include "coop/world/flyover_sync.h"
+#include "coop/world/hexpillar_sync.h"
+#include "coop/world/hole_sync.h"
+#include "coop/world/sirenpost_sync.h"
+#include "coop/world/wanderer_sync.h"
 #include "coop/player/chair_seat.h"
 #include "coop/interactables/woodchipper_sync.h"
 #include "coop/interactables/atv_host_sync.h"
@@ -178,6 +184,12 @@ void ConnectReplayForSlot(int slot) {
     coop::arir_rep_sync::SendJoin(slot);                         // and the Arirals' reputation
     coop::arir_tower_ship_sync::SendJoin(slot);                  // and the tower's Ariral ship, while it is up
     coop::cave_rock_sync::SendJoin(slot);                        // and the Antibreather cave's entrance
+    coop::sirenpost_sync::SendJoin(slot);                        // and the siren post's place
+    coop::wanderer_sync::SendJoin(slot);                         // and the Anomalous wanderers' places
+    coop::hexpillar_sync::SendJoin(slot);                        // and every basalt pillar's rise
+    coop::gray_sync::SendJoin(slot);                             // and a zapped ATV
+    coop::hole_sync::SendJoin(slot);                             // and the Hole's rooms and controller
+    coop::flyover_sync::SendJoin(slot);                          // and the drop saucers the host has
     coop::chair_seat::SendJoin(slot);                            // and who sits on which chair
     coop::atv_host_sync::QueueConnectBroadcastForSlot(slot);  // every ATV's host state again
     coop::device_occupancy::QueueConnectBroadcastForSlot(slot);  // live device claims (busy table)

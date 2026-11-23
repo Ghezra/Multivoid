@@ -21,12 +21,18 @@
 
 namespace coop::ambient_births {
 
-// walkingTree_C, susDirtHole_C, beehiveBranch_C, prop_waspnest_bee_C, arirShipVanishing_C
-enum class Class : uint8_t { Tree, Hole, Branch, Nest, Ship };
+// walkingTree_C, susDirtHole_C, beehiveBranch_C, prop_waspnest_bee_C, arirShipVanishing_C; the basalt pillar
+// (hexpillar_C, coop/world/hexpillar_sync); Wolfgang's head, young, nesting self, nest, segments and young's segments
+// (coop/creatures/wolfgang_sync), whose births alone are asked for.
+enum class Class : uint8_t {
+    Tree, Hole, Branch, Nest, Ship, Pillar, WolfHead, WolfJr, WolfParent, WolfNest, WolfSegment, WolfSegmentJr
+};
 enum class Kind : uint8_t { Birth, Death };
 
-using Mask = uint8_t;
+using Mask = uint16_t;
 constexpr Mask Bit(Class c) { return static_cast<Mask>(1u << static_cast<unsigned>(c)); }
+constexpr Mask kWolfgang = Bit(Class::WolfHead) | Bit(Class::WolfJr) | Bit(Class::WolfParent) | Bit(Class::WolfNest) |
+                           Bit(Class::WolfSegment) | Bit(Class::WolfSegmentJr);
 
 struct Event {
     void*   obj;    // a death's object may be freed: compare it, never read through it
