@@ -4,26 +4,26 @@
 // class of the list that has one, so a class the host spawned and a client never counted, or kept, is seen.
 // VOTVCOOP_ENTITY_PROBE=real: the game's own spawns instead -- 35 s the super fog as its event spawns it (its own
 // spawnUfo mints the Thunder Wisp), 75 s the signal screen's spawn_trifo (the TriFO).
-// VOTVCOOP_ENTITY_PROBE=anom: the wiki's Anomalous list instead. Every peer, each 10 s from 30 s (`[ANOM]`): each
-// class's count and points (10 m), and the classes owning an EMF, photographic or paranormal part; the host spawns
-// and destroys the list's classes as above, but not the Killer Birch nor the Red Void Orb (a raw birch_C or
-// npc_orborb_C ends the game, wanting its spawner's stamp). Every peer, at 45 s: the wanderers' own rolls (the log's
-// and the sheet ghost's Teleport, the booth's Timer, William's lookPlace), the gamemode's tickerBody and tickerFunguy
-// and the Mimic's gen, many times, as each machine's own timers would.
 
 #include "coop/dev/entity_probe.h"
 
 #include "coop/config/config.h"
 #include "coop/net/session.h"
 #include "coop/player/players_registry.h"
+#include "coop/player/remote_player.h"
+#include "coop/session/teleport_client.h"
+#include "coop/world/world_actor_sync.h"
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/core/class_resolve.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/reflection.h"
+#include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_component.h"
+#include "ue_wrap/actors/spawner_stamp.h"
 #include "ue_wrap/engine/engine_pawn.h"
+#include "ue_wrap/world/world_instances.h"
 
 #include <windows.h>
 
@@ -64,12 +64,29 @@ bool Armed() {
     return v;
 }
 
+// VOTVCOOP_ENTITY_PROBE=anom: the wiki's Anomalous list instead. Every peer, each 10 s from 30 s (`[ANOM]`): each
+// class's count and points (10 m), and the classes owning an EMF, photographic or paranormal part; the host spawns
+// and destroys the list's classes as above, but not the Killer Birch nor the Red Void Orb (a raw birch_C or
+// npc_orborb_C ends the game, wanting its spawner's stamp). Every peer, at 45 s: the wanderers' own rolls (the log's
+// and the sheet ghost's Teleport, the booth's Timer, William's lookPlace), the gamemode's tickerBody and tickerFunguy
+// and the Mimic's gen, many times, as each machine's own timers would.
 bool Anom() {
     static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "anom";
     return v;
 }
 const wchar_t* const* List() { return Anom() ? kAnom : kClasses; }
 size_t ListCount() { return Anom() ? sizeof(kAnom) / sizeof(kAnom[0]) : sizeof(kClasses) / sizeof(kClasses[0]); }
+
+// VOTVCOOP_ENTITY_PROBE=four: the basalt pillars, Wolfgang, the Nisse and the Killer Birch on the game's own paths.
+// HOST 40 s: slot 1 beside the basalt stone; CLIENT slot 1, 55 s: its own digUp of it. HOST 70 s: the pillar's `a` at
+// 0.95, so its own tick spreads it; 80 s: the cave spawner's cencipede; CLIENT slot 1, 90 s: its own. HOST 100 s: a
+// Christmas tree and a Nisse beside it; CLIENT slot 1, 115 s: its tree's night marked and its woken. HOST 130 s: a
+// birch, stamped as its spawner does, 25 m behind the host, angry and looked away from, and slot 1 moved into it.
+// Every peer, each 10 s to 300 s (`[FOUR]`): each class's count and how many are mirrors.
+bool Four() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "four";
+    return v;
+}
 
 bool Real() {
     static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "real";
@@ -179,6 +196,166 @@ void Census(bool host, uint64_t t) {
     }
 }
 
+void* First(const wchar_t* cls) {
+    void* one[1];
+    return ue_wrap::world_instances::Find(cls, one, 1) > 0 && R::IsLive(one[0]) ? one[0] : nullptr;
+}
+
+bool SetBool(void* obj, const wchar_t* name, bool v) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!obj || !R::FindBoolProperty(R::ClassOf(obj), name, off, mask)) return false;
+    uint8_t* const b = static_cast<uint8_t*>(obj) + off;
+    *b = static_cast<uint8_t>(v ? (*b | mask) : (*b & ~mask));
+    return true;
+}
+
+bool SetFloat(void* obj, const wchar_t* name, float v) {
+    const int32_t off = obj ? R::FindPropertyOffset(R::ClassOf(obj), name) : -1;
+    if (off < 0) return false;
+    std::memcpy(static_cast<uint8_t*>(obj) + off, &v, sizeof(v));
+    return true;
+}
+
+void* SpawnStamped(const wchar_t* name, const ue_wrap::FVector& at) {
+    const CR::Resolved r = CR::ResolveClass(name, CR::AnyFamily(), CR::Load::Immediate);
+    if (r.state != CR::ClassState::Found || !r.cls) return nullptr;
+    void* const a = E::BeginDeferredSpawn(r.cls, at, ue_wrap::FRotator{});
+    if (!a) return nullptr;
+    ue_wrap::spawner_stamp::Stamp(r.cls, a);
+    return E::FinishDeferredSpawn(a, at, ue_wrap::FRotator{}) ? a : nullptr;
+}
+
+void FourStep(coop::net::Session& session, bool host, uint64_t t) {
+    static int s_step = 0;
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    void* const me = coop::players::Registry::Get().Local();
+    ue_wrap::FVector meAt{};
+    ue_wrap::FRotator meRot{};
+    if (me) {
+        E::TryGetActorLocation(me, meAt);
+        E::TryGetActorRotation(me, meRot);
+    }
+    if (host && s_step == 0 && t >= 40000u) {
+        s_step = 1;
+        ue_wrap::FVector at{};
+        void* const stone = First(L"prop_hexpillar_C");
+        if (stone && E::TryGetActorLocation(stone, at))
+            UE_LOGI("[FOUR] host: slot 1 moved beside the stone (ok=%d)",
+                    coop::teleport_client::OrderToPose(session, 1, ue_wrap::FVector{at.X + 300.f, at.Y, at.Z + 150.f},
+                                                       ue_wrap::FRotator{}) ? 1 : 0);
+    }
+    if (slot1 && s_step == 0 && t >= 55000u) {
+        s_step = 1;
+        UE_LOGI("[FOUR] client: its own digUp of the stone (ran=%d)", RunOn(L"prop_hexpillar_C", L"digUp") ? 1 : 0);
+    }
+    if (host && s_step == 1 && t >= 70000u) {
+        s_step = 2;
+        void* const p = First(L"hexpillar_C");
+        UE_LOGI("[FOUR] host: the pillar's a set to 0.95 (ok=%d)", p && SetFloat(p, L"a", 0.95f) ? 1 : 0);
+    }
+    if (host && s_step == 2 && t >= 80000u) {
+        s_step = 3;
+        const bool ran = RunOn(L"antibreatherSPawner_C", L"cencipede");
+        // The spawner's loop ends its Wolfgang while player 0 is far and not looking: let go of her.
+        void* const cave = First(L"antibreatherSPawner_C");
+        const int32_t off = cave ? R::FindPropertyOffset(R::ClassOf(cave), L"brether") : -1;
+        if (off >= 0) std::memset(static_cast<uint8_t*>(cave) + off, 0, sizeof(void*));
+        UE_LOGI("[FOUR] host: the cave spawner's cencipede (ran=%d), its hold on her let go (ok=%d)", ran ? 1 : 0,
+                off >= 0 ? 1 : 0);
+    }
+    if (slot1 && s_step == 1 && t >= 90000u) {
+        s_step = 2;
+        UE_LOGI("[FOUR] client: its own cave spawner's cencipede (ran=%d)",
+                RunOn(L"antibreatherSPawner_C", L"cencipede") ? 1 : 0);
+    }
+    const float yaw = meRot.Yaw * 0.0174532925f;
+    const CR::Resolved tree = CR::ResolveClass(L"prop_xmastree_C", CR::AnyFamily(), CR::Load::Immediate);
+    if (host && s_step == 3 && t >= 100000u) {
+        s_step = 4;
+        void* const n = SpawnStamped(L"tomtenisse_C", ue_wrap::FVector{meAt.X + 500.f * std::cos(yaw),
+                                                                     meAt.Y + 500.f * std::sin(yaw), meAt.Z});
+        UE_LOGI("[FOUR] host: a Nisse (ok=%d) beside the host", n ? 1 : 0);
+    }
+    // A raw tree is not a keyed prop and lasts seconds: each side stands its own just before the wake.
+    if (host && s_step == 4 && t >= 112000u && !First(L"prop_xmastree_C")) {
+        void* const tr = tree.cls ? E::SpawnActor(tree.cls, ue_wrap::FVector{meAt.X + 600.f * std::cos(yaw),
+                                                                              meAt.Y + 600.f * std::sin(yaw), meAt.Z})
+                                  : nullptr;
+        UE_LOGI("[FOUR] host: a Christmas tree beside the host (ok=%d)", tr ? 1 : 0);
+    }
+    if (slot1 && s_step == 2 && t >= 113000u && !First(L"prop_xmastree_C") && tree.cls)
+        E::SpawnActor(tree.cls, ue_wrap::FVector{meAt.X + 600.f, meAt.Y, meAt.Z});
+    if (slot1 && s_step == 2 && t >= 115000u) {
+        s_step = 3;
+        void* const tr = First(L"prop_xmastree_C");
+        const bool marked = SetBool(tr, L"sleptThroughMidnight", true);
+        UE_LOGI("[FOUR] client: its tree's night marked (ok=%d) and its woken (ran=%d)", marked ? 1 : 0,
+                RunOn(L"prop_xmastree_C", L"woken") ? 1 : 0);
+    }
+    if (host && s_step == 4 && t >= 130000u) {
+        s_step = 5;
+        const ue_wrap::FVector at{meAt.X - 2500.f * std::cos(yaw), meAt.Y - 2500.f * std::sin(yaw), meAt.Z};
+        void* const b = SpawnStamped(L"birch_C", at);
+        bool set = b != nullptr;
+        set = set && SetBool(b, L"angry", true) && SetBool(b, L"active", true) && SetBool(b, L"appeared", true);
+        set = set && SetFloat(b, L"lookAwayTime", 5.f);
+        const bool moved = b && coop::teleport_client::OrderToPose(
+                                    session, 1, ue_wrap::FVector{at.X + 60.f, at.Y, at.Z + 100.f}, ue_wrap::FRotator{});
+        UE_LOGI("[FOUR] host: a birch 25 m behind (ok=%d), angry and looked away from (set=%d), slot 1 into it (ok=%d)",
+                b ? 1 : 0, set ? 1 : 0, moved ? 1 : 0);
+    }
+    // The birch's tick spends its anger at once; once slot 1 stands at it, it is angry again, each 10 s.
+    static uint64_t s_reArm = 0;
+    if (host && s_step == 5 && t >= 140000u && t >= s_reArm && t < 230000u) {
+        s_reArm = t + 10000u;
+        void* const b = First(L"birch_C");
+        ue_wrap::FVector bAt{};
+        if (b && E::TryGetActorLocation(b, bAt)) {
+            coop::teleport_client::OrderToPose(session, 1, ue_wrap::FVector{bAt.X, bAt.Y + 90.f, bAt.Z + 100.f},
+                                               ue_wrap::FRotator{});
+            UE_LOGI("[FOUR] host: the birch angry again (ok=%d), slot 1 moved to it", SetBool(b, L"angry", true) ? 1 : 0);
+        }
+    }
+    static uint64_t s_next = 0;
+    if (t < 30000u || t > 300000u || t < s_next) return;
+    s_next = t + 10000u;
+    static const wchar_t* const kSeen[] = {L"hexpillar_C", L"centipedeHead_C", L"centipedeSegmet_C",
+                                           L"tomtenisse_C", L"birch_C",         L"prop_xmastree_C"};
+    std::wstring line;
+    void* all[512];
+    for (const wchar_t* cls : kSeen) {
+        const int n = ue_wrap::world_instances::Find(cls, all, 512);
+        int mirrors = 0;
+        for (int k = 0; k < n; ++k) mirrors += coop::world_actor_sync::IsMirroredActor(all[k]) ? 1 : 0;
+        line += std::wstring(cls) + L"=" + std::to_wstring(n) + L"/" + std::to_wstring(mirrors) + L" ";
+    }
+    UE_LOGI("[FOUR] %s t=%llu: (count/mirrors) %ls", host ? "host" : "client", static_cast<unsigned long long>(t / 1000u),
+            line.c_str());
+    if (void* const b = host ? First(L"birch_C") : nullptr) {
+        auto bit = [&](const wchar_t* n) {
+            int32_t off = -1;
+            uint8_t mask = 0;
+            return R::FindBoolProperty(R::ClassOf(b), n, off, mask) ? ((static_cast<const uint8_t*>(b)[off] & mask) ? 1 : 0) : -1;
+        };
+        auto flt = [&](const wchar_t* n) {
+            const int32_t off = R::FindPropertyOffset(R::ClassOf(b), n);
+            float v = -1.f;
+            if (off >= 0) std::memcpy(&v, static_cast<const uint8_t*>(b) + off, sizeof(v));
+            return v;
+        };
+        ue_wrap::FVector bAt{}, pAt{};
+        E::TryGetActorLocation(b, bAt);
+        coop::RemotePlayer* const rp = coop::players::Registry::Get().Puppet(1);
+        if (rp && rp->actor()) E::TryGetActorLocation(rp->actor(), pAt);
+        const float dx = bAt.X - pAt.X, dy = bAt.Y - pAt.Y, dz = bAt.Z - pAt.Z;
+        UE_LOGI("[FOUR] host birch: newvar_1=%d active=%d appeared=%d angry=%d rendered=%d lookAway=%.1f lookAt=%.1f "
+                "slot1 at %.0f cm", bit(L"NewVar_1"), bit(L"active"), bit(L"appeared"), bit(L"angry"), bit(L"rendered"),
+                flt(L"lookAwayTime"), flt(L"lookAtTime"), std::sqrt(dx * dx + dy * dy + dz * dz));
+    }
+    if (t >= 290000u) UE_LOGI("[ENTITY] done");
+}
+
 void HostStep(uint64_t now, uint64_t t) {
     if (g_spawned && now - g_spawnedAt >= 12000u) {
         const bool live = R::IsLive(g_spawned);
@@ -218,6 +395,10 @@ void Tick(coop::net::Session* session) {
     if (host) {
         if (Real()) RealStep(t);
         else HostStep(now, t);
+    }
+    if (Four()) {
+        FourStep(*session, host, t);
+        return;
     }
     if (Anom()) {
         static bool s_driven = false;
