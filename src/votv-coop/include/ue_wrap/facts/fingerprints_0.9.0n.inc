@@ -72,6 +72,7 @@ inline constexpr RefFn kRefFns[] = {
     {L"rufus_skeleton_animblueprint_c", L"blueprintupdateanimation", L"rufus_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0xf4ab9b5d37adac21ull},
     {L"shitduende_rigged_skeleton_animblueprint_c", L"blueprintupdateanimation", L"shitduende_rigged_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0x13309a9ea9590d69ull},
     {L"shrimpeatermaster_c", L"eat", L"shrimpeatermaster_c.eat", 0x6a2d5d90ab51fa2dull, 0x505a9edec74bb079ull},
+    {L"sirenpost_c", L"receivetick", L"sirenpost_c.receivetick", 0x6082ffdfa2cda429ull, 0x374e116649164efdull},
     {L"soltomiacleaning_c", L"bndevt__soltomiacleaning_box_k2node_componentboundevent_0_componentbeginoverlapsignature__delegatesignature", L"soltomiacleaning_c.bndevt__soltomiacleaning_box_k2node_componentboundevent_0_componentbeginoverlapsignature__delegatesignature", 0x068571522f5f0453ull, 0xa756088901e4e11eull},
     {L"soltomiacleaning_c", L"opened", L"soltomiacleaning_c.opened", 0x6a2d5d90ab51fa2dull, 0x1d071b01c088efe0ull},
     {L"soltomiacleaning_c", L"receivebeginplay", L"soltomiacleaning_c.receivebeginplay", 0x6a2d5d90ab51fa2dull, 0xceb406fbef7edc66ull},

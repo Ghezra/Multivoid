@@ -24,6 +24,7 @@
 #include "coop/world/hole_sync.h"
 #include "coop/creatures/firetank_sync.h"
 #include "coop/creatures/gray_sync.h"
+#include "coop/world/sirenpost_sync.h"
 #include "coop/world/soltomia_sync.h"
 #include "coop/world/world_sound_sync.h"
 
@@ -288,6 +289,7 @@ void OnReliable(const coop::net::EventCuePayload& payload) {
     if (coop::hole_sync::OnCue(payload)) return;      // the Hole Repair's bottom room
     if (coop::firetank_sync::OnCue(payload)) return;  // the Firetank's flame
     if (coop::gray_sync::OnCue(payload)) return;      // the Grays' ATV lockout
+    if (coop::sirenpost_sync::OnCue(payload)) return; // the siren post's place
     if (payload.cueId >= static_cast<uint32_t>(kCueCount)) {
         UE_LOGW("event_cue: OnReliable unknown cueId=%u (have %d cues) -- dropping (newer host?)",
                 payload.cueId, kCueCount);
