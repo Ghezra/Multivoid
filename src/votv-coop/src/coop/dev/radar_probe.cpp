@@ -1,7 +1,7 @@
 // coop/dev/radar_probe.cpp -- [dev] the radar's dots on every peer (VOTVCOOP_RADAR_PROBE=1 on every peer). The radar
 // draws mainGamemode_C.radarObjects, which a comp_radarPoint_C adds its owner to at its begin play and takes it from at
 // its destroy. Times are from each peer's own connect.
-//   HOST: 40 s the obelisk's row, 70 s the radio tower ship's, 100 s the Hole Repair's (its player into the box).
+//   HOST: 50 s the obelisk's row, 70 s the radio tower ship's, 100 s the Hole Repair's (its player into the box).
 //   Every peer, each 5 s to 240 s (`[RADAR]`): the list's count, then each class's count and its points, to 10 m.
 
 #include "coop/dev/radar_probe.h"
@@ -106,7 +106,7 @@ void Tick(coop::net::Session* session) {
     }
     const uint64_t t = now - g_startAt;
     if (host) {
-        if (g_step == 0 && t >= 40000u) {
+        if (g_step == 0 && t >= 50000u) {
             g_step = 1;
             UE_LOGI("[RADAR] host: obelisk fired (ok=%d)", Fire("obelisk") ? 1 : 0);
         }
