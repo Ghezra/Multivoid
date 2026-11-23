@@ -90,7 +90,7 @@ const NoReplayRow kNoReplayRows[] = {
     { "eggvasion", "npc and world-actor lanes (eventer and egger EX-catch)" },
     { "boarwar", "creature spawn (no lane yet)" },
     { "soltoClean", "soltomiaCleaning_C's show and throw ride soltomia_sync (EventCue 110-112) on a copy" },
-    { "salt", "save-actor spawn (no lane)" }, { "rozitalHole", "save-actor spawn (no lane)" },
+    { "salt", "save-actor spawn (no lane)" }, { "rozitalHole", "host-only controller; its room rides hole_sync (EventCue 117), its guards the npc lane" },
     { "dreambase", "save-actor spawn (no lane)" },
     { "fallbody_0", "world-actor lane (eventer EX-catch); its deploy rides flyover_sync (EventCue 114)" },
     { "fallbody_1", "world-actor lane (eventer EX-catch); its deploy rides flyover_sync (EventCue 114)" },
