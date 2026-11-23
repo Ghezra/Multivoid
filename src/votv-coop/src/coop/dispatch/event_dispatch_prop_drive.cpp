@@ -69,6 +69,7 @@
 #include "coop/props/prop_syncer_host.h"   // the host's claim judge and a client's End
 
 #include "coop/world/anomaly_ask.h"
+#include "coop/props/chip_scrap_sync.h"
 #include "coop/world/sus_hole_intent.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/devices/atv.h"   // ClampCharge: a host state's battery
@@ -1091,6 +1092,18 @@ bool HandlePropDriveEvent(net::Session& session,
         net::AnomalyAskPayload p{};
         std::memcpy(&p, msg.payload, sizeof(p));
         ::coop::anomaly_ask::OnAsk(session, static_cast<uint8_t>(msg.senderPeerSlot), p);
+        break;
+    }
+    case net::ReliableKind::ChipScrapAsk: {
+        // CLIENT->HOST. The pile, the place and the sender's reach are the lane's to judge (coop::chip_scrap_sync).
+        if (session.role() != net::Role::Host || msg.senderPeerSlot < 1 || msg.senderPeerSlot >= net::kMaxPeers ||
+            msg.payloadLen != sizeof(net::ChipScrapAskPayload)) {
+            UE_LOGW("event_feed: a malformed or misdirected ChipScrapAsk from slot %d -- dropping", msg.senderPeerSlot);
+            break;
+        }
+        net::ChipScrapAskPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        ::coop::chip_scrap_sync::OnAsk(static_cast<uint8_t>(msg.senderPeerSlot), p);
         break;
     }
     case net::ReliableKind::WalkerSeen: {

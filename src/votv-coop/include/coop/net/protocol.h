@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 351;
+inline constexpr uint16_t kProtocolVersion = 352;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1671,6 +1671,11 @@ enum class ReliableKind : uint16_t {
     // the Christmas tree up (the Nisse). The host judges the sender's reach and runs the act on its own copy. Never
     // relayed; not pre-world. Late join: none, an ask is an act. AnomalyAskPayload.
     AnomalyAsk = 323,
+    // Client to host: this client's shovel or rake scooped a trash pile, asked instead of run (its own turnIntoScrap
+    // is cancelled). The host judges the sender's reach and runs the pile's turnIntoScrap on its copy; the scrap and
+    // the pile's end cross as props. Never relayed; not pre-world. Late join: none, an ask is an act.
+    // ChipScrapAskPayload.
+    ChipScrapAsk = 324,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -4857,6 +4862,13 @@ static_assert(sizeof(FireflySpawnPayload) == 12, "FireflySpawnPayload must be 12
 
 // One cosmetic emitter cue (EventCue): the registry index and the world position. cueId is on the
 // wire and the registry is append-only.
+// A client's scoop of a trash pile (ChipScrapAsk): the pile's element id (0 for a pile with none) and its place.
+struct ChipScrapAskPayload {
+    uint32_t elementId;
+    float    x, y, z;
+};
+static_assert(sizeof(ChipScrapAskPayload) == 16, "ChipScrapAskPayload must be 16 bytes");
+
 struct EventCuePayload {
     uint32_t cueId;  // index into event_cue_sync's cue registry (append-only)
     float x;         // world spawn location of the cue emitter
