@@ -83,6 +83,14 @@ size_t ListCount() { return Anom() ? sizeof(kAnom) / sizeof(kAnom[0]) : sizeof(k
 // Christmas tree and a Nisse beside it; CLIENT slot 1, 115 s: its tree's night marked and its woken. HOST 130 s: a
 // birch, stamped as its spawner does, 25 m behind the host, angry and looked away from, and slot 1 moved into it.
 // Every peer, each 10 s to 300 s (`[FOUR]`): each class's count and how many are mirrors.
+// VOTVCOOP_ENTITY_PROBE=scrap: a trash pile's scoop. HOST 40 s: slot 1 moved beside the first actorChipPile_C, whose
+// place every peer is told by that pile; CLIENT slot 1, 55 s: the pile nearest its body runs its own turnIntoScrap,
+// as the shovel's dig does. Every peer, each 5 s to 120 s (`[SCRAP]`): its piles, and whether one stands at the place.
+bool Scrap() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "scrap";
+    return v;
+}
+
 bool Four() {
     static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "four";
     return v;
@@ -224,6 +232,70 @@ void* SpawnStamped(const wchar_t* name, const ue_wrap::FVector& at) {
     if (!a) return nullptr;
     ue_wrap::spawner_stamp::Stamp(r.cls, a);
     return E::FinishDeferredSpawn(a, at, ue_wrap::FRotator{}) ? a : nullptr;
+}
+
+void ScrapStep(coop::net::Session& session, bool host, uint64_t t) {
+    static int s_step = 0;
+    static ue_wrap::FVector s_place{};
+    static bool s_havePlace = false;
+    static void* piles[16384];
+    const int n = ue_wrap::world_instances::Find(L"actorChipPile_C", piles, 16384);
+    void* const me = coop::players::Registry::Get().Local();
+    ue_wrap::FVector meAt{};
+    if (me) E::TryGetActorLocation(me, meAt);
+    if (host && s_step == 0 && t >= 40000u && n > 0) {
+        s_step = 1;
+        E::TryGetActorLocation(piles[0], s_place);
+        s_havePlace = true;
+        UE_LOGI("[SCRAP] host: slot 1 moved beside the pile at (%.0f,%.0f,%.0f) (ok=%d)", s_place.X, s_place.Y, s_place.Z,
+                coop::teleport_client::OrderToPose(session, 1, ue_wrap::FVector{s_place.X + 150.f, s_place.Y, s_place.Z + 120.f},
+                                                   ue_wrap::FRotator{}) ? 1 : 0);
+    }
+    if (!host && s_step == 0 && t >= 55000u && coop::players::Registry::Get().LocalPeerId() == 1) {
+        s_step = 1;
+        void* best = nullptr;
+        float bestD = 500.f * 500.f;
+        for (int k = 0; k < n; ++k) {
+            ue_wrap::FVector at{};
+            if (!E::TryGetActorLocation(piles[k], at)) continue;
+            const float dx = at.X - meAt.X, dy = at.Y - meAt.Y, dz = at.Z - meAt.Z, d = dx * dx + dy * dy + dz * dz;
+            if (d < bestD) {
+                bestD = d;
+                best = piles[k];
+                s_place = at;
+            }
+        }
+        s_havePlace = best != nullptr;
+        ue_wrap::ParamFrame pf(best ? R::FindDispatchFunction(R::ClassOf(best), L"turnIntoScrap", nullptr) : nullptr);
+        const bool ran = pf.valid() && ue_wrap::Call(best, pf);
+        UE_LOGI("[SCRAP] client: the pile at (%.0f,%.0f,%.0f) scooped as the shovel does (found=%d ran=%d)", s_place.X,
+                s_place.Y, s_place.Z, best ? 1 : 0, ran ? 1 : 0);
+    }
+    // A client learns the place from the pile nearest its body once it stands there.
+    if (!host && !s_havePlace && t >= 50000u) {
+        for (int k = 0; k < n; ++k) {
+            ue_wrap::FVector at{};
+            if (!E::TryGetActorLocation(piles[k], at)) continue;
+            const float dx = at.X - meAt.X, dy = at.Y - meAt.Y;
+            if (dx * dx + dy * dy < 400.f * 400.f) {
+                s_place = at;
+                s_havePlace = true;
+            }
+        }
+    }
+    static uint64_t s_next = 0;
+    if (t < 30000u || t > 120000u || t < s_next) return;
+    s_next = t + 5000u;
+    int atPlace = 0;
+    for (int k = 0; k < n && s_havePlace; ++k) {
+        ue_wrap::FVector at{};
+        if (!E::TryGetActorLocation(piles[k], at)) continue;
+        const float dx = at.X - s_place.X, dy = at.Y - s_place.Y, dz = at.Z - s_place.Z;
+        atPlace += dx * dx + dy * dy + dz * dz < 150.f * 150.f ? 1 : 0;
+    }
+    UE_LOGI("[SCRAP] %s t=%llu: piles=%d placeKnown=%d pileAtPlace=%d", host ? "host" : "client",
+            static_cast<unsigned long long>(t / 1000u), n, s_havePlace ? 1 : 0, atPlace);
+    if (t >= 115000u) UE_LOGI("[ENTITY] done");
 }
 
 void FourStep(coop::net::Session& session, bool host, uint64_t t) {
@@ -395,6 +467,10 @@ void Tick(coop::net::Session* session) {
     if (host) {
         if (Real()) RealStep(t);
         else HostStep(now, t);
+    }
+    if (Scrap()) {
+        ScrapStep(*session, host, t);
+        return;
     }
     if (Four()) {
         FourStep(*session, host, t);
