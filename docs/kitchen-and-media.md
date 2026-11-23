@@ -21,6 +21,21 @@ host's count stands: a client sends only its player's coal, light, off press or 
 its copy never runs out first; the drill runs each from each peer, a food heating on it, three coals burnt on the host's
 count, the lid's own press and its return from each peer, and a lit grill for a rejoin, the verbs by reflection.
 
+### The butter churn
+
+The butter churn (`prop_butterchurn_C`) takes a held milk carton poured on it (its `playerUsedOn`: the carton destroyed,
+`milkPercent` 100), is cranked by its action 4 (`speed` raised, its tick on), turns the milk to butter in its own tick
+(`hasButter`), and its action 7 puts the butter in the taker's inventory. Each peer ran that alone, so a client's churn
+made butter on its machine only and two players could each take one. It is the host's (`coop/props/butter_churn_sync`):
+a client's crank and take are refused at the script-body gate and asked of the host (`ButterChurnAsk`), and its pour
+runs on its copy, where the carton is in its hand, and is asked too. The host judges the sender's reach (6 m), cranks
+its own churn, pours, or clears the butter and grants the take to that one asker, whose copy then runs its own action 7
+into its own inventory. Each change goes to every client (`ButterChurnState`), which writes the host's milk and butter
+and replays a crank through its copy's own action 4, so its crank turns and its sound plays; a joiner gets every churn at
+its ready edge `[V]` (`coop/dev/entity_probe`, `VOTVCOOP_ENTITY_PROBE=churn`, three peers: slot 1's ten cranks made
+the host's butter, its copy and a slot that joined after showed it, and slot 1's take was granted to it alone, the
+butter pocketed and every peer's churn empty after). A pour is not run on the rig: it wants a carton in a hand.
+
 ### Radios and TVs
 
 A placed radio or TV (`coop/world/media_device_sync`) plays through each peer's own media player and picks its own next track, so the
@@ -128,6 +143,7 @@ measured: a player's own hold and throw of a printed object, a client's light to
 | `KitchenState` | the presser to all; the host's burn of a grill's coals | a microwave's or a mini oven's setting and whether it runs; a grill's coals, fire, lid and burn |
 | `MinerState`, `MinerIntent` | the host to all, an answer to its asker alone; a client to the host | a rig's GPUs, slots, coolers, points and heat; a client's use of an item or its claim |
 | `FireExtState`, `FireExtIntent` | the host to all; a client to the host | a world extinguisher's thrust and charge, a player's spray; a client's spray on or off |
+| `ButterChurnState`, `ButterChurnAsk` | the host to all, a grant or a refusal to its asker alone; a client to the host | a churn's speed, milk and butter, and a take granted; a client's crank, pour or take |
 | `MediaDeviceState` | the host to all; a client to the host | a device's track (a hash of its catalog link), time, play state and mode, and a TV's channel and picture; a client's change through its interface |
 | `PrintAsk`, `PrintCheck`, `PrintCheckReply`, `PrintNotice` | a client to the host; the host to each client; each client to the host; the host to a client | a client's print, by the printer's element id and the model; the host's question of a model; the client's hash of its folder, 0 for none; a chat line naming who lacks which model |
 | `PrinterState` | the host to all | a printer by its element id began printing a model, or its print ended |
@@ -136,7 +152,7 @@ measured: a player's own hold and throw of a printed object, a client's light to
 ## Late join
 
 Every radio and TV again at the joiner's ready edge, every kitchen machine that is off its defaults, and every printed
-object (a save-loaded copy adopted by its key).
+object (a save-loaded copy adopted by its key), and every butter churn's milk, speed and butter.
 
 ## Known limits
 
@@ -149,6 +165,7 @@ object (a save-loaded copy adopted by its key).
 | What | Where |
 |---|---|
 | a microwave's, a mini oven's and a grill's controls | `coop/interactables/kitchen_sync`, `ue_wrap/devices/kitchen` |
+| the butter churn | `coop/props/butter_churn_sync`; `coop/dev/entity_probe` (`churn`) |
 | a placed radio or TV | `coop/world/media_device_sync`, `ue_wrap/world/media_device` |
 | the GPU mining rig | `coop/props/miner_sync`; `coop/dev/miner_probe` |
 | the fire extinguisher's foam | `coop/props/fireext_sync`; `coop/dev/foam_probe` |

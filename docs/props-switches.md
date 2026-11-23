@@ -1,7 +1,7 @@
 # Light and hot plate switches
 
-A lamp's, a wall light's, a spotlight's, the beacon's and the hot plate's switch are the host's on every peer, with the
-hot plate's heat level, and a client's press of one is asked of the host. The identity, birth and drop of the props
+A lamp's, a wall light's, a spotlight's, the beacon's, the hot plate's and the smoke alarm's switch are the host's on
+every peer, with the hot plate's heat level, and a client's press of one is asked of the host. The identity, birth and drop of the props
 themselves are on [props.md](props.md).
 
 ## What the game does
@@ -14,12 +14,14 @@ plate's switch is its action 8, and its action 5 steps its heat level `power` fr
 the food on it while it is powered and on. The spotlight's head (`prop_spotlightHead_C`) flips `active` in
 `toggleLight` and runs `upd`; the tripod spotlight (`prop_spotlight_C`) carries its head as a child actor, its
 `lighhead`, which names the tripod back as its `tripod`. The beacon (`prop_beacon_C`) sets `isActive` through `open`,
-which also lights its radar point. No lane carried any of these, so each peer's press was its own: a client's lamp lit
+which also lights its radar point. The smoke detector (`prop_smokeDetec_C`) sets `isActive` through `alarm(activate)`:
+its once-a-second timer runs `check`, which sounds it when `checkFire` finds a fire in its sphere, and its action 5
+silences it. No lane carried any of these, so each peer's press was its own: a client's lamp lit
 on its machine alone, and a client's hot plate heated nothing the host cooks.
 
 ## How it works
 
-Every one of those bodies ends in `upd` or `open`, which the script-body gate watches by name, class-declared, at their
+Every one of those bodies ends in `upd`, `open` or `alarm`, which the script-body gate watches by name, class-declared, at their
 end (`coop/props/prop_switch_sync`). The host keeps the last state it sent per prop and sends each change
 (`PropSwitchState`): the prop's element id, or a tripod head's tripod's with the head flag, whether it is on, and the
 hot plate's level. A client keeps the last state it knows per copy, the copy's own at its bind or the host's last; a
@@ -28,13 +30,15 @@ asked of the host (`PropSwitchIntent`). The host judges the sender's reach (its 
 8 asks per half second per sender, then switches its own copy through the prop's own body (the fields written and `upd`
 run, or `open(condition)`), whose end sends the state to every client. A refused ask, or one for the state the host
 already has, is answered with the host's state to the asker alone, which puts its copy back. A client takes a state
-through the same body, and holds the newest state of a prop whose copy is not bound yet until its bind.
+through the same body, and holds the newest state of a prop whose copy is not bound yet until its bind. A client
+refuses the smoke detector's own `check`, since the fires are the host's, and may only ask it silenced: an ask to sound
+it is refused and answered with the host's state.
 
 ## Who owns what
 
 | State | Owner | How it crosses |
 |---|---|---|
-| a lamp's, wall light's, spotlight's, beacon's or hot plate's switch, and the plate's heat level | the host | each change sent; a client's press runs on its copy and is a request the host judges |
+| a lamp's, wall light's, spotlight's, beacon's, hot plate's or smoke alarm's switch, and the plate's heat level | the host | each change sent; a client's press runs on its copy and is a request the host judges |
 | the cord's power under it | the cord lane | each peer's `upd` reads its own cord's plug, which the cord lane carries |
 | the food cooked on a hot plate | the host | its own food lane; the host's plate is on when any peer switched it on |
 
@@ -56,7 +60,9 @@ held, the newest per prop, up to 64, until its bind.
 a floor lamp, a beacon, a spotlight head, a powered hot plate and a tripod spotlight; slot 1's switch of each reached the
 host's copy and its own stayed on; the host's switch of the five lights reached slot 1, and its step of the plate's
 level reached it with the plate still on; a slot that joined after both found the plate on at level 1. Before it, a
-client's switch left the host's lamps off.
+client's switch left the host's lamps off. The smoke detector (`coop/dev/entity_probe`, `VOTVCOOP_ENTITY_PROBE=churn`, three peers): the host's alarm sounded on slot 1's
+copy, slot 1's silence switched the host's off, slot 1's own alarm was refused and its copy put back, and the host's
+alarm again reached slot 1 and a slot that joined after.
 
 ## Known limits
 

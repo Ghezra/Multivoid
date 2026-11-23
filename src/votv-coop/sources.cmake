@@ -83,6 +83,7 @@ set(VOTVCOOP_SOURCES
     src/coop/creatures/kerfur_dress_sync.cpp
     src/coop/props/chip_scrap_sync.cpp
     src/coop/props/prop_switch_sync.cpp
+    src/coop/props/butter_churn_sync.cpp
     src/coop/world/sound_relay.cpp
     src/coop/world/sound_catalog.cpp
     src/coop/world/sound_judge.cpp

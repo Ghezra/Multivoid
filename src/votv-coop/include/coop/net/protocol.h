@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 353;
+inline constexpr uint16_t kProtocolVersion = 354;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1684,6 +1684,13 @@ enum class ReliableKind : uint16_t {
     // sender's reach and switches its own copy, whose PropSwitchState answers; a refusal is answered with the host's
     // state, to the asker. Never relayed. PropSwitchPayload.
     PropSwitchIntent = 326,
+    // HOST->ALL: a butter churn's milk, churning speed and butter (coop/props/butter_churn_sync), when a churn, a pour or a
+    // take changed them; to a joiner, every churn at its ready edge; to one asker, a refusal's state, or the grant of a
+    // take (`grant`), which its copy runs into its own inventory. Never relayed; not pre-world. ButterChurnStatePayload.
+    ButterChurnState = 327,
+    // CLIENT->HOST: this client's churn, pour or take of a churn's butter. The host judges the sender's reach and runs
+    // it on its own copy; a take is granted to one asker. Never relayed. ButterChurnAskPayload.
+    ButterChurnAsk = 328,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2656,6 +2663,26 @@ struct PropSwitchPayload {
     uint8_t  pad;     // zero
 };
 static_assert(sizeof(PropSwitchPayload) == 8, "PropSwitchPayload must be 8 bytes");
+
+// A butter churn's state (ButterChurnState): its element id, its `speed`, its `milkPercent`, and whether it holds butter;
+// `grant` is set on the one copy of a take the host granted, sent to its asker alone.
+struct ButterChurnStatePayload {
+    uint32_t eid;
+    float    speed;
+    float    milk;
+    uint8_t  hasButter;  // 1: the milk is churned to butter, not yet taken
+    uint8_t  grant;      // 1: this slot's take is granted; its copy runs its own take
+    uint8_t  pad[2];     // zero
+};
+static_assert(sizeof(ButterChurnStatePayload) == 16, "ButterChurnStatePayload must be 16 bytes");
+
+// A client's act on a butter churn (ButterChurnAsk): the churn's element id and the act.
+struct ButterChurnAskPayload {
+    uint32_t eid;
+    uint8_t  op;      // 1 churn (its action 4), 2 pour a carton of milk, 3 take the butter (its action 7)
+    uint8_t  pad[3];  // zero
+};
+static_assert(sizeof(ButterChurnAskPayload) == 8, "ButterChurnAskPayload must be 8 bytes");
 
 // A wall builder's aiming preview (WallPreview): the tool's own components, in world space.
 struct WallPreviewPayload {

@@ -26,6 +26,7 @@
 #include "coop/props/prop_fire_sync.h"
 #include "coop/props/roomba_sync.h"  // a robot cleaner's switch, the host's
 #include "coop/props/prop_switch_sync.h"  // a light's or the hot plate's switch, the host's
+#include "coop/props/butter_churn_sync.h"  // a butter churn's milk, speed and butter, the host's
 #include "coop/props/miner_sync.h"   // a GPU mining rig's counts and points, the host's
 #include "coop/props/fireext_sync.h"  // an extinguisher's thrust and a player's spray
 #include "coop/world/cover_sync.h"    // the desk's back plates and the stations' doors
@@ -512,6 +513,38 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         if (intent) ::coop::roomba_sync::OnIntent(msg.senderPeerSlot, p);
         else ::coop::roomba_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::ButterChurnState: {
+        // HOST->ALL (coop/props/butter_churn_sync). Exact length.
+        net::ButterChurnStatePayload p{};
+        if (session.role() == net::Role::Host || msg.payloadLen != sizeof(p)) {
+            UE_LOGW("event_feed: a butter churn state the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.eid == 0 || p.hasButter > 1 || p.grant > 1 || !std::isfinite(p.speed) || !std::isfinite(p.milk)) {
+            UE_LOGW("event_feed: a butter churn state malformed -- dropping");
+            break;
+        }
+        ::coop::butter_churn_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::ButterChurnAsk: {
+        // CLIENT->HOST (coop/props/butter_churn_sync). Exact length.
+        net::ButterChurnAskPayload p{};
+        if (session.role() != net::Role::Host || msg.payloadLen != sizeof(p)) {
+            UE_LOGW("event_feed: a butter churn ask the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.eid == 0 || p.op < 1 || p.op > 3) {
+            UE_LOGW("event_feed: a butter churn ask malformed -- dropping");
+            break;
+        }
+        ::coop::butter_churn_sync::OnAsk(msg.senderPeerSlot, p);
         break;
     }
     case net::ReliableKind::PropSwitchState:
