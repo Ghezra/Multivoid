@@ -15,7 +15,7 @@ bool IsCreature(void* actor);
 
 // Is `actor` a creature of a parked family (npc_mirror_brain::IsParkedClass of its class), a walking mannequin, which
 // crosses as a prop with its copy's damage timer off, a Rozital's shot, whose shooters fire none on a client, or a
-// Firetank, whose copy's flame is refused?
+// Firetank, whose copy's flame is refused, or the Grays' controller, whose knock-down runs on the host alone?
 bool IsDelivered(void* actor);
 
 }  // namespace coop::creature_hit

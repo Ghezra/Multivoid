@@ -42,6 +42,8 @@ bool IsDelivered(void* actor) {
     if (IsRozitalShot(actor)) return true;
     // A Firetank, a world-actor mirror on a client whose drive, sight and flame are refused (coop/world/spawn_authority).
     if (actor && R::ClassNameOf(actor) == L"firetank_C") return true;
+    // The Grays' controller, whose knock-down of the body that took a Gray runs on the host alone (coop/creatures/gray_sync).
+    if (actor && R::ClassNameOf(actor) == L"grayEventController_C") return true;
     return IsCreature(actor) && coop::npc_mirror_brain::IsParkedClass(R::ClassOf(actor));
 }
 
