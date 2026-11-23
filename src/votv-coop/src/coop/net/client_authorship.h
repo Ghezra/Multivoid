@@ -196,6 +196,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::AtvSpawnAsk:
     case ReliableKind::ArirRepIntent:
     case ReliableKind::PryAsk:
+    case ReliableKind::AnomalyAsk:
     case ReliableKind::OvenProgressState:
         return ClientAuthorship::Client;
     // The Host row matches MTA's protected element data, which a client may not write: opt-in there

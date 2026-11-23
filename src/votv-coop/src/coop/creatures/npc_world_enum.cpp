@@ -165,6 +165,18 @@ constexpr const wchar_t* kSuperFogOutputs[] = {L"HoelUfo_C", nullptr};
 constexpr const wchar_t* kSignalScreenOutputs[] = {L"ufo_trifo_C", nullptr};
 // The lantern prank's notepad mints the Ariral that bashes the door (a follower child) when it is used, on the host.
 constexpr const wchar_t* kBusterNoteOutputs[] = {L"arirSlapper_C", nullptr};
+// The basalt stone mints the first pillar, and each pillar the next (coop/world/hexpillar_sync).
+constexpr const wchar_t* kPillarOutputs[] = {L"hexpillar_C", nullptr};
+// The Christmas tree's wake and the vengeful soul mint the Nisse (coop/creatures/nisse_sync).
+constexpr const wchar_t* kNisseOutputs[] = {L"tomtenisse_C", nullptr};
+// Wolfgang: the cave spawner mints her head, a head its body, young and nest, the nest the nesting Wolfgang
+// (coop/creatures/wolfgang_sync). The cave spawner's Antibreather stays its own.
+constexpr const wchar_t* kCaveOutputs[] = {L"centipedeHead_C", nullptr};
+constexpr const wchar_t* kWolfgangOutputs[] = {L"centipedeSegmet_C", L"centipedeSegmet_jr_C", L"wolfgangJr_C",
+                                               L"eggyWolfgang_C", nullptr};
+constexpr const wchar_t* kNestOutputs[] = {L"parentWolfgang_C", nullptr};
+// The Killer Birch's spawner (coop/creatures/birch_sync).
+constexpr const wchar_t* kBirchOutputs[] = {L"birch_C", nullptr};
 // The gamemode mints many classes besides these, and most of its other spawners are not refused on a client yet,
 // so its source is narrowed to the outputs whose client roll the spawn authority refuses: the night roll's
 // (mainGamemode_C::CustomEvent_5, an Octa or a night egg), the four ambient UFO timers' (coop/world/ufo_sync), and
@@ -192,6 +204,16 @@ constexpr ExSpawnSource kExSpawnSources[] = {
     {L"boarInvasion_C",          nullptr},          // boarwar: the Firetanks and the Ariral shooters (boars are props)
     {L"superFog_C",              kSuperFogOutputs}, // the super fog: its spawnUfo mints the Thunder Wisp
     {L"analogDScreenTest_C",     kSignalScreenOutputs},  // the signal screen: spawn_trifo mints the TriFO
+    {L"prop_hexpillar_C",        kPillarOutputs},   // the basalt stone: its digUp mints the first pillar
+    {L"hexpillar_C",             kPillarOutputs},   // a basalt pillar: its tick mints the next
+    {L"prop_xmastree_C",         kNisseOutputs},    // the Christmas tree: its woken mints three Nisse
+    {L"nisse_soul_C",            kNisseOutputs},    // the vengeful soul: its tick mints Nisse
+    {L"antibreatherSPawner_C",   kCaveOutputs},     // the cave: cencipede mints Wolfgang
+    {L"centipedeHead_C",         kWolfgangOutputs}, // Wolfgang: her body, young and nest
+    {L"wolfgangJr_C",            kWolfgangOutputs}, // her young: their bodies
+    {L"parentWolfgang_C",        kWolfgangOutputs}, // the nesting Wolfgang: her body
+    {L"eggyWolfgang_C",          kNestOutputs},     // the nest: the nesting Wolfgang
+    {L"birchSpawner_C",          kBirchOutputs},    // the Killer Birch's spawner
     {L"blackballSpawner_C",      nullptr},          // the orb event: its ubergraph mints npc_orborb_C
     {L"prop_notebook_busterSpawner_C", kBusterNoteOutputs},  // the lantern prank's notepad: arirSlapper_C
 };

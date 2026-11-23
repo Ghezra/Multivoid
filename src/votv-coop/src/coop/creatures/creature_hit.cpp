@@ -46,6 +46,8 @@ bool IsDelivered(void* actor) {
     if (actor && R::ClassNameOf(actor) == L"grayEventController_C") return true;
     // The Thunder Wisp's zap, which its mirror on a client never makes (its tick is parked there).
     if (actor && R::ClassNameOf(actor) == L"hoelUfoAttack_C") return true;
+    // The Killer Birch, a world-actor mirror on a client whose tick is parked (coop/creatures/birch_sync).
+    if (actor && R::ClassNameOf(actor) == L"birch_C") return true;
     return IsCreature(actor) && coop::npc_mirror_brain::IsParkedClass(R::ClassOf(actor));
 }
 

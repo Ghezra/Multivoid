@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 350;
+inline constexpr uint16_t kProtocolVersion = 351;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1666,6 +1666,11 @@ enum class ReliableKind : uint16_t {
     // judges the sender (world ready, the cause's own amount, one a second, a photo once) and makes the change, whose
     // value then goes to every peer. Never relayed. Not pre-world. Late join: none, an ask is an act. ArirRepIntentPayload.
     ArirRepIntent = 322,
+    // Client to host: this client's own game ran an Anomalous entity's act that is the host's to run (its own copy is
+    // cancelled): op 1, its dirt hole dug up the basalt pillar's buried stone at `x, y, z`; op 2, its player woke with
+    // the Christmas tree up (the Nisse). The host judges the sender's reach and runs the act on its own copy. Never
+    // relayed; not pre-world. Late join: none, an ask is an act. AnomalyAskPayload.
+    AnomalyAsk = 323,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2825,6 +2830,16 @@ struct ArirRepIntentPayload {
     uint8_t _pad[3];   // 3 -- zero
 };
 static_assert(sizeof(ArirRepIntentPayload) == 8, "ArirRepIntentPayload must be 8 bytes");
+
+// An Anomalous entity's act a client asks of the host (AnomalyAsk): which, and where.
+inline constexpr uint8_t kAnomalyAskDigPillar = 1;   // the basalt pillar's stone, dug up at the place
+inline constexpr uint8_t kAnomalyAskNisseWoken = 2;  // the sender woke with the Christmas tree up; the place is its body
+struct AnomalyAskPayload {
+    uint8_t op;          // kAnomalyAsk*
+    uint8_t pad[3];
+    float   x, y, z;     // the place
+};
+static_assert(sizeof(AnomalyAskPayload) == 16, "AnomalyAskPayload must be 16 bytes");
 
 // The 3D printer's lane (coop/props/printer_sync). A model is its folder's name, UTF-8, 1 to 95 bytes, not terminated;
 // a printed object is the host's element id of it, with its save key (an FName as text, up to 63 bytes) for a joiner's

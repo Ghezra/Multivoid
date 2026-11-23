@@ -26,6 +26,7 @@
 #include "coop/creatures/gray_sync.h"
 #include "coop/world/sirenpost_sync.h"
 #include "coop/world/wanderer_sync.h"
+#include "coop/world/hexpillar_sync.h"
 #include "coop/world/soltomia_sync.h"
 #include "coop/world/world_sound_sync.h"
 
@@ -292,6 +293,7 @@ void OnReliable(const coop::net::EventCuePayload& payload) {
     if (coop::gray_sync::OnCue(payload)) return;      // the Grays' ATV lockout
     if (coop::sirenpost_sync::OnCue(payload)) return; // the siren post's place
     if (coop::wanderer_sync::OnCue(payload)) return;  // the Anomalous wanderers' places
+    if (coop::hexpillar_sync::OnCue(payload)) return; // the basalt pillars' rise
     if (payload.cueId >= static_cast<uint32_t>(kCueCount)) {
         UE_LOGW("event_cue: OnReliable unknown cueId=%u (have %d cues) -- dropping (newer host?)",
                 payload.cueId, kCueCount);

@@ -148,6 +148,7 @@ UE_FACT_FN(kRowUfoMidasGamemode, "spawn_authority", L"mainGamemode_C", L"ufo_mid
 UE_FACT_FN(kRowTickerBodyGamemode, "spawn_authority", L"mainGamemode_C", L"tickerBody", Declared);
 UE_FACT_FN(kRowTickerFunguyGamemode, "spawn_authority", L"mainGamemode_C", L"tickerFunguy", Declared);
 UE_FACT_FN(kRowGenImpostorPropsMaster, "spawn_authority", L"impostorPropsMaster_C", L"gen", Declared);
+UE_FACT_FN(kRowReceiveTickBirchSpawner, "spawn_authority", L"birchSpawner_C", L"ReceiveTick", Declared);
 
 // One row: the facts row a client must not run, and the tag its refusal log carries.
 struct Row {
@@ -300,6 +301,9 @@ constexpr Row kRows[] = {
     // The Mimic: the level's impostor master mints a prop_impostor_C at a random map point on its looping timer's
     // handler. The host's crosses as a prop.
     {&kRowGenImpostorPropsMaster,         "impostorPropsMaster.gen"},
+    // The Killer Birch: its spawner mints the birch in its tick when its player is in its area; the host's spawner
+    // reads every player's body, and its birch crosses (coop/creatures/birch_sync).
+    {&kRowReceiveTickBirchSpawner,        "birchSpawner.ReceiveTick"},
 
     // The ambient creatures and fixtures, the host's: the deer and walking tree roll absolute map points and the npc lane
     // mirrors what the host rolled; the hexahive's field of dirt holes and the beehive's branches cross on the fixture lane.
