@@ -22,6 +22,7 @@
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_component.h"
 #include "ue_wrap/actors/spawner_stamp.h"
+#include "ue_wrap/engine/data_table.h"
 #include "ue_wrap/engine/engine_pawn.h"
 #include "ue_wrap/world/world_instances.h"
 
@@ -83,6 +84,157 @@ size_t ListCount() { return Anom() ? sizeof(kAnom) / sizeof(kAnom[0]) : sizeof(k
 // Christmas tree and a Nisse beside it; CLIENT slot 1, 115 s: its tree's night marked and its woken. HOST 130 s: a
 // birch, stamped as its spawner does, 25 m behind the host, angry and looked away from, and slot 1 moved into it.
 // Every peer, each 10 s to 300 s (`[FOUR]`): each class's count and how many are mirrors.
+
+// VOTVCOOP_ENTITY_PROBE=lamps: a store prop's own on switch. HOST 40 s: a desk lamp, a floor lamp, a beacon, a spotlight
+// head, a hot plate (powered, so its heat runs while it is on) and a tripod spotlight (its head's switch), 1.2 m apart
+// and 2.5 m before the host. CLIENT slot 1, 60 s: each one's switch on its copy (its right-click, else its radial action
+// 4; the plate's is action 8). HOST 80 s: each one's switch on the host's, but the plate's level is stepped (action 5)
+// and its switch left on, as a slot that joins after finds it. Every peer, each 5 s to 110 s (`[LAMPS]`): each one's
+// switch, and the plate's `powered` and level.
+bool Lamps() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "lamps";
+    return v;
+}
+
+void* First(const wchar_t* cls);
+
+constexpr const wchar_t* kLamps[] = {L"prop_deskLamp_C", L"prop_floorlamp_C", L"prop_beacon_C", L"prop_spotlightHead_C",
+                                     L"prop_cookingPad_C", L"prop_spotlight_C"};
+
+// The switched actor of a drill row: the tripod spotlight's is its head, a child actor (its `lighhead`).
+void* Target(const wchar_t* c) {
+    void* const a = First(c);
+    if (!a || std::wcscmp(c, L"prop_spotlight_C") != 0) return a;
+    static R::InstanceOffset s_head(L"lighhead");
+    const int32_t off = s_head.Of(a);
+    void* const h = off >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(a) + off) : nullptr;
+    return h && R::IsLive(h) ? h : nullptr;
+}
+
+int BoolOf(void* a, const wchar_t* name) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!a || !R::FindBoolProperty(R::ClassOf(a), name, off, mask)) return -1;
+    return (static_cast<const uint8_t*>(a)[off] & mask) ? 1 : 0;
+}
+int LevelOfPad() {
+    void* const a = First(L"prop_cookingPad_C");
+    static R::InstanceOffset s_power(L"power");
+    const int32_t off = a ? s_power.Of(a) : -1;
+    return off >= 0 ? *reinterpret_cast<const int32_t*>(static_cast<const char*>(a) + off) : -1;
+}
+int ActiveOf(void* a) {
+    const int v = BoolOf(a, L"active");
+    return v >= 0 ? v : BoolOf(a, L"isActive");
+}
+
+// The switch a player presses: the right-click where the prop has one, else its radial action 4.
+bool Press(void* a, void* me, uint8_t action = 0) {
+    void* f = action ? nullptr : R::FindDispatchFunction(R::ClassOf(a), L"playerHandUse_RMB", nullptr);
+    if (!f) {
+        ue_wrap::ParamFrame pf(R::FindDispatchFunction(R::ClassOf(a), L"actionOptionIndex", nullptr));
+        if (!pf.valid()) return false;
+        pf.Set<void*>(L"player", me);
+        const uint8_t act = action ? action : 4;
+        pf.Set(L"action", act);
+        return ue_wrap::Call(a, pf);
+    }
+    ue_wrap::ParamFrame pf(f);
+    if (!pf.valid()) return false;
+    pf.Set<void*>(L"player", me);
+    return ue_wrap::Call(a, pf);
+}
+
+void LampsStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    void* const me = coop::players::Registry::Get().Local();
+    ue_wrap::FVector at{};
+    ue_wrap::FRotator rot{};
+    if (me) {
+        E::TryGetActorLocation(me, at);
+        E::TryGetActorRotation(me, rot);
+    }
+    const float yaw = rot.Yaw * 0.0174532925f;
+    if (host && s_step == 0 && t >= 40000u) {
+        s_step = 1;
+        int k = 0;
+        for (const wchar_t* c : kLamps) {
+            const CR::Resolved rc = CR::ResolveClass(c, CR::AnyFamily(), CR::Load::Immediate);
+            const float side = (static_cast<float>(k++) - 2.f) * 120.f;
+            const ue_wrap::FVector to{at.X + 250.f * std::cos(yaw) - side * std::sin(yaw),
+                                      at.Y + 250.f * std::sin(yaw) + side * std::cos(yaw), at.Z};
+            void* const a = rc.cls ? E::SpawnActor(rc.cls, to) : nullptr;
+            int32_t off = -1;
+            uint8_t mask = 0;
+            if (a && std::wcscmp(c, L"prop_cookingPad_C") == 0 && R::FindBoolProperty(R::ClassOf(a), L"powered", off, mask)) {
+                static_cast<uint8_t*>(a)[off] |= mask;  // as a plugged cord leaves it
+                void* const upd = R::FindDispatchFunction(R::ClassOf(a), L"upd", nullptr);
+                if (upd) R::CallFunction(a, upd, nullptr);
+            }
+            UE_LOGI("[LAMPS] host: %ls spawned=%d", c, a ? 1 : 0);
+        }
+    }
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    if ((slot1 && s_step == 0 && t >= 60000u) || (host && s_step == 1 && t >= 80000u)) {
+        s_step = host ? 2 : 1;
+        for (const wchar_t* c : kLamps) {
+            const bool pad = std::wcscmp(c, L"prop_cookingPad_C") == 0;  // its switch is action 8; the host steps its level (5)
+            void* const a = Target(c);
+            const int before = ActiveOf(a);
+            const bool ran = a && Press(a, me, pad ? (host ? 5 : 8) : 0);
+            UE_LOGI("[LAMPS] %s pressed %ls: ran=%d active %d -> %d", host ? "host" : "client", c, ran ? 1 : 0, before,
+                    ActiveOf(a));
+        }
+    }
+    static uint64_t s_next = 0;
+    if (t < 30000u || t > 110000u || t < s_next) return;
+    s_next = t + 5000u;
+    std::wstring line;
+    for (const wchar_t* c : kLamps) line += std::wstring(c) + L"=" + std::to_wstring(ActiveOf(Target(c))) + L" ";
+    UE_LOGI("[LAMPS] %s t=%llu: (active, -1 none) %ls pad_powered=%d pad_level=%d", host ? "host" : "client",
+            static_cast<unsigned long long>(t / 1000u), line.c_str(), BoolOf(First(L"prop_cookingPad_C"), L"powered"), LevelOfPad());
+    if (t >= 105000u) UE_LOGI("[ENTITY] done");
+}
+
+// VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
+// line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
+// column getter.
+bool Catalog() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "catalog";
+    return v;
+}
+
+void DumpTable(const wchar_t* name) {
+    void* const table = R::FindObject(name, L"DataTable");
+    void* const rs = table ? ue_wrap::data_table::RowStruct(table) : nullptr;
+    std::vector<ue_wrap::data_table::RowRef> rows;
+    if (!rs || !ue_wrap::data_table::Rows(table, rows, "entity_probe")) {
+        UE_LOGW("[CATALOG] %ls: not found", name);
+        return;
+    }
+    std::vector<std::wstring> cols;
+    std::vector<std::vector<std::wstring>> vals;
+    for (const auto& fld : R::EnumerateStructFields(rs)) {
+        std::vector<std::wstring> v;
+        if (!ue_wrap::data_table::ColumnAsStrings(table, fld.name, v)) continue;
+        cols.push_back(fld.name.substr(0, fld.name.find(L'_')));
+        vals.push_back(std::move(v));
+    }
+    UE_LOGI("[CATALOG] %ls: %zu rows, %zu columns (the first column holds %zu strings)", name, rows.size(), cols.size(),
+            vals.empty() ? size_t{0} : vals[0].size());
+    for (size_t i = 0; i < rows.size(); ++i) {
+        std::wstring line = R::ToString(rows[i].key) + L" |";
+        for (size_t c = 0; c < cols.size(); ++c) {
+            // A column's strings are its rows', in the RowMap's order (no title row on this build).
+            const size_t at = i;
+            std::wstring v = at < vals[c].size() ? vals[c][at] : L"?";
+            if (v.size() > 120) v = v.substr(0, 120);
+            line += L" " + cols[c] + L"=" + v;
+        }
+        UE_LOGI("[CATALOG] %ls %ls", name, line.c_str());
+    }
+}
+
 // VOTVCOOP_ENTITY_PROBE=scrap: a trash pile's scoop. HOST 40 s: slot 1 moved beside the first actorChipPile_C, whose
 // place every peer is told by that pile; CLIENT slot 1, 55 s: the pile nearest its body runs its own turnIntoScrap,
 // as the shovel's dig does. Every peer, each 5 s to 120 s (`[SCRAP]`): its piles, and whether one stands at the place.
@@ -467,6 +619,20 @@ void Tick(coop::net::Session* session) {
     if (host) {
         if (Real()) RealStep(t);
         else HostStep(now, t);
+    }
+    if (Lamps()) {
+        LampsStep(host, t);
+        return;
+    }
+    if (Catalog()) {
+        static bool s_dumped = false;
+        if (host && !s_dumped && t >= 20000u) {
+            s_dumped = true;
+            DumpTable(L"list_store");
+            DumpTable(L"list_props");
+            UE_LOGI("[ENTITY] done");
+        }
+        return;
     }
     if (Scrap()) {
         ScrapStep(*session, host, t);
