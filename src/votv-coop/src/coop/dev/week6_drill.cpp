@@ -14,6 +14,7 @@
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_component.h"
+#include "ue_wrap/world/world_singleton.h"
 
 #include <windows.h>
 
@@ -86,6 +87,7 @@ const char* RowOf(const std::string& arm) {
     if (arm == "morning") return "morningGay";
     if (arm == "dropcar") return "fallcar_0";
     if (arm == "dropbody") return "fallbody_0";
+    if (arm == "hole") return "rozitalHole";
     return nullptr;
 }
 
@@ -122,6 +124,33 @@ void Act(bool host, int slot, uint64_t t) {
                     E::SetActorLocation(me, at) ? 1 : 0);
         }
     }
+    if (arm == "hole") {
+        const std::vector<void*> ctl = Live(L"event_bottomHoleController_C");
+        if (host && g_step == 1 && t >= 40000u && me && !ctl.empty()) {
+            g_step = 2;
+            g_boxAt = E::GetComponentLocation(Field(ctl[0], L"Box"));
+            UE_LOGI("[WEEK6] host: into the hole's box at (%.0f,%.0f,%.0f) (ok=%d)", g_boxAt.X, g_boxAt.Y, g_boxAt.Z,
+                    E::SetActorLocation(me, g_boxAt) ? 1 : 0);
+        }
+        const std::vector<void*> dev = Live(L"holeDevice_C");
+        if (!host && slot == 1 && g_step == 0 && t >= 75000u && me && !dev.empty()) {
+            g_step = 1;
+            FVector at{};
+            E::TryGetActorLocation(dev[0], at);
+            const FVector to{at.X + 2500.f, at.Y, at.Z + 200.f};
+            UE_LOGI("[WEEK6] slot 1: 25 m from the device at (%.0f,%.0f,%.0f) (ok=%d)", to.X, to.Y, to.Z,
+                    E::SetActorLocation(me, to) ? 1 : 0);
+        }
+        const std::vector<void*> ig = Live(L"igetis_C");
+        if (host && g_step == 2 && t >= 150000u && me && !ig.empty()) {
+            g_step = 3;
+            FVector at{};
+            E::TryGetActorLocation(ig[0], at);
+            const FVector to{at.X + 300.f, at.Y, at.Z + 100.f};
+            UE_LOGI("[WEEK6] host: 3 m from the Igetis at (%.0f,%.0f,%.0f) (ok=%d)", to.X, to.Y, to.Z,
+                    E::SetActorLocation(me, to) ? 1 : 0);
+        }
+    }
     if ((arm == "dropcar" || arm == "dropbody") && host && g_step == 1 && t >= 40000u) {
         const std::vector<void*> d = Droppers();
         if (!d.empty()) {
@@ -132,7 +161,7 @@ void Act(bool host, int slot, uint64_t t) {
 }
 
 void Report(bool host, uint64_t t) {
-    if (t < 25000u || t > 150000u || Now() < g_nextLog) return;
+    if (t < 25000u || t > (Arm() == "hole" ? 240000u : 150000u) || Now() < g_nextLog) return;
     g_nextLog = Now() + 3000u;
     const std::string& arm = Arm();
     const char* const who = host ? "host" : "client";
@@ -142,6 +171,27 @@ void Report(bool host, uint64_t t) {
         UE_LOGI("[WEEK6] borg %s t=%llu: motherships %zu, alpha %.4f, ships at (%.0f,%.0f,%.0f)", who,
                 static_cast<unsigned long long>(t / 1000u), b.size(), b.empty() ? -1.f : Float(b[0], L"alpha"),
                 ships.X, ships.Y, ships.Z);
+    } else if (arm == "hole") {
+        static const wchar_t* const kParts[] = {L"event_bottomHoleController_C", L"holeBottom_C", L"holeDevice_C",
+                                                L"kavotiaPatrolController_C", L"kavotia_C", L"kavotiaShot_C",
+                                                L"igetis_C", L"prop_rozitalBeacon_C", L"prop_holeDeviceCapsule_C"};
+        std::wstring line;
+        for (const wchar_t* k : kParts) line += std::wstring(k) + L"=" + std::to_wstring(Live(k).size()) + L" ";
+        void* const gm = ue_wrap::world_singleton::Gamemode();
+        void* const slotObj = gm ? Field(gm, L"saveSlot") : nullptr;
+        // The save's grate and fence, and the grate prop the Hole's open makes, by their prop names.
+        for (void* pr : Live(L"prop_C")) {
+            const int32_t off = R::FindPropertyOffset(R::ClassOf(pr), L"Name");
+            if (off < 0) continue;
+            const std::wstring nm = R::ToString(*reinterpret_cast<const R::FName*>(static_cast<uint8_t*>(pr) + off));
+            if (nm.rfind(L"hole", 0) != 0) continue;
+            FVector at{};
+            E::TryGetActorLocation(pr, at);
+            line += nm + L"@(" + std::to_wstring(static_cast<int>(at.X)) + L"," + std::to_wstring(static_cast<int>(at.Y)) +
+                    L"," + std::to_wstring(static_cast<int>(at.Z)) + L") ";
+        }
+        UE_LOGI("[WEEK6] hole %s t=%llu: %lshealth %.0f", who, static_cast<unsigned long long>(t / 1000u), line.c_str(),
+                slotObj ? Float(slotObj, L"health") : -1.f);
     } else if (arm == "morning") {
         const std::vector<void*> u = Live(L"morningUfo_C");
         FVector at{};
@@ -179,7 +229,7 @@ void Tick(coop::net::Session* session) {
     Act(host, slot, t);
     Report(host, t);
     static bool s_done = false;
-    if (!s_done && t >= 152000u) {
+    if (!s_done && t >= (Arm() == "hole" ? 242000u : 152000u)) {
         s_done = true;
         UE_LOGI("[WEEK6] done arm=%s slot=%d", Arm().c_str(), slot);
     }
