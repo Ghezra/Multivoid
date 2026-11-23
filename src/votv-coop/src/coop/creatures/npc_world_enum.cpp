@@ -160,6 +160,9 @@ struct ExSpawnSource {
 constexpr const wchar_t* kEventerOutputs[] = {L"ventCrawler_C",     L"superEgger_C",     L"morningUfo_C", L"rozitBorg_C",
                                               L"ufoDropper_body_C", L"ufoDropper_car_C", L"ufoDropper_tank_C",
                                               L"ufoDropper_pig_C",  nullptr};
+// The super fog mints its Thunder Wisp; the signal screen, among its other births, the TriFO.
+constexpr const wchar_t* kSuperFogOutputs[] = {L"HoelUfo_C", nullptr};
+constexpr const wchar_t* kSignalScreenOutputs[] = {L"ufo_trifo_C", nullptr};
 // The lantern prank's notepad mints the Ariral that bashes the door (a follower child) when it is used, on the host.
 constexpr const wchar_t* kBusterNoteOutputs[] = {L"arirSlapper_C", nullptr};
 // The gamemode mints many classes besides these, and most of its other spawners are not refused on a client yet,
@@ -185,6 +188,8 @@ constexpr ExSpawnSource kExSpawnSources[] = {
     {L"ufoDropper_tank_C",       nullptr},          // graystank: the saucer's drop mints the Firetank's box
     {L"firetankDeploy_C",        nullptr},          // the box's spawnParts mints the Firetank
     {L"boarInvasion_C",          nullptr},          // boarwar: the Firetanks and the Ariral shooters (boars are props)
+    {L"superFog_C",              kSuperFogOutputs}, // the super fog: its spawnUfo mints the Thunder Wisp
+    {L"analogDScreenTest_C",     kSignalScreenOutputs},  // the signal screen: spawn_trifo mints the TriFO
     {L"blackballSpawner_C",      nullptr},          // the orb event: its ubergraph mints npc_orborb_C
     {L"prop_notebook_busterSpawner_C", kBusterNoteOutputs},  // the lantern prank's notepad: arirSlapper_C
 };
@@ -285,7 +290,7 @@ void InstallExSpawnCatch() {
                 "ticker_treeSpawner_C -> walkingTree_C, "
                 "tentacleBallsFollower_C -> tentacleBall_C, kavotiaPatrolController_C -> kavotia_C + igetis_C, "
                 "ufoDropper_tank_C -> firetankDeploy_C -> firetank_C, boarInvasion_C -> firetank_C + "
-                "npc_ariral_shooter_C, "
+                "npc_ariral_shooter_C, superFog_C -> HoelUfo_C, analogDScreenTest_C -> ufo_trifo_C, "
                 "blackballSpawner_C -> npc_orborb_C, "
                 "prop_notebook_busterSpawner_C -> arirSlapper_C; EX_CallMath spawns now enroll)");
     } else {

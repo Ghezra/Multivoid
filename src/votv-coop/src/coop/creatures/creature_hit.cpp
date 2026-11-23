@@ -44,6 +44,8 @@ bool IsDelivered(void* actor) {
     if (actor && R::ClassNameOf(actor) == L"firetank_C") return true;
     // The Grays' controller, whose knock-down of the body that took a Gray runs on the host alone (coop/creatures/gray_sync).
     if (actor && R::ClassNameOf(actor) == L"grayEventController_C") return true;
+    // The Thunder Wisp's zap, which its mirror on a client never makes (its tick is parked there).
+    if (actor && R::ClassNameOf(actor) == L"hoelUfoAttack_C") return true;
     return IsCreature(actor) && coop::npc_mirror_brain::IsParkedClass(R::ClassOf(actor));
 }
 

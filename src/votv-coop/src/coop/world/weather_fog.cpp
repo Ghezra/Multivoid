@@ -77,6 +77,7 @@ long long g_lastReconcileMs    = 0;
 // the local camera, so a client runs its own copy from the host's start edge and drops it at the host's end edge.
 // CLIENT: the host's black fog as last applied, for its edges.
 bool      g_lastHostBlack = false;
+bool      g_lastHostSuper = false;
 
 long long NowMs() {
     using namespace std::chrono;
@@ -253,9 +254,18 @@ void ApplyFromHost(void* cycle, const coop::net::WeatherStatePayload& payload) {
     }
     g_lastHostBlack = hostBlack;
 
-    // Super fog: clear-only (destroy a stray when the host has none). The spawn is deferred: the
-    // super-fog actor owns a UFO encounter, and its spawn was not reliably reproducible in the
-    // probe. A bounded loop, since the find returns one.
+    // Super fog: this client's own fog while the host's stands, as the black fog's. Its UFO encounter is the host's
+    // (the Thunder Wisp crosses on the world-actor lane, and this copy's own spawnUfo is refused there as a local
+    // spawn of a listed class). A stray is destroyed when the host has none; a bounded loop, since the find returns one.
+    if (hostSuperActive && !g_lastHostSuper && !LiveSuperFog()) {
+        void* cls = ue_wrap::asset_load::LoadObjectByPath(L"/Game/objects/superFog.superFog_C");
+        if (!cls) cls = R::FindClass(P::name::SuperFogClass);
+        g_spawnFogEchoSuppress.store(true, std::memory_order_release);
+        void* const sf = cls ? E::SpawnActor(cls, ue_wrap::FVector{}) : nullptr;
+        g_spawnFogEchoSuppress.store(false, std::memory_order_release);
+        UE_LOGI("weather_fog: host SUPER FOG -> this client's own super fog %s", sf ? "spawned" : "NOT spawned");
+    }
+    g_lastHostSuper = hostSuperActive;
     if (!hostSuperActive) {
         for (int k = 0; k < 8; ++k) {
             void* sf = LiveSuperFog();

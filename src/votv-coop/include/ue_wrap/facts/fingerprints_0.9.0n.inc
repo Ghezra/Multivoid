@@ -77,6 +77,7 @@ inline constexpr RefFn kRefFns[] = {
     {L"soltomiacleaning_c", L"opened", L"soltomiacleaning_c.opened", 0x6a2d5d90ab51fa2dull, 0x1d071b01c088efe0ull},
     {L"soltomiacleaning_c", L"receivebeginplay", L"soltomiacleaning_c.receivebeginplay", 0x6a2d5d90ab51fa2dull, 0xceb406fbef7edc66ull},
     {L"soltomiacleaning_c", L"receivedestroyed", L"soltomiacleaning_c.receivedestroyed", 0x6a2d5d90ab51fa2dull, 0xfdc69f17853f1d53ull},
+    {L"superfog_c", L"spawnufo", L"superfog_c.spawnufo", 0x6a2d5d90ab51fa2dull, 0x850bce6076a1ea8cull},
     {L"tentacleball_prot_skeleton_animblueprint1_c", L"blueprintupdateanimation", L"tentacleball_prot_skeleton_animblueprint1_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0xf253073b0390594dull},
     {L"tomtenisse1_skeleton_animblueprint_c", L"blueprintupdateanimation", L"tomtenisse1_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0x092f0f854cd6a61cull},
     {L"trigger_box_n_c", L"bndevt__box_k2node_componentboundevent_0_componentbeginoverlapsignature__delegatesignature", L"trigger_box_n_c.bndevt__box_k2node_componentboundevent_0_componentbeginoverlapsignature__delegatesignature", 0x068571522f5f0453ull, 0x195164057268e502ull},

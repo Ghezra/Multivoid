@@ -113,6 +113,7 @@ UE_FACT_FN(kRowFiretankCube1, "spawn_authority", L"firetank_C",
 UE_FACT_FN(kRowFiretankBackoff, "spawn_authority", L"firetank_C",
            L"BndEvt__testTank_backoffCollide_K2Node_ComponentBoundEvent_1_ComponentHitSignature__DelegateSignature",
            Declared);
+UE_FACT_FN(kRowSpawnUfoSuperFog, "spawn_authority", L"superFog_C", L"spawnUfo", Declared);
 UE_FACT_FN(kRowBeginGrayEventController, "spawn_authority", L"grayEventController_C", L"begin", Declared);
 UE_FACT_FN(kRowTurnedonGrayEventController, "spawn_authority", L"grayEventController_C", L"turnedon", Declared);
 UE_FACT_FN(kRowSpawnGrayEventController, "spawn_authority", L"grayEventController_C", L"spawn", Declared);
@@ -249,6 +250,9 @@ constexpr Row kRows[] = {
     {&kRowFiretankCube, "firetank.CubeOverlap"},
     {&kRowFiretankCube1, "firetank.Cube1Overlap"},
     {&kRowFiretankBackoff, "firetank.backoffHit"},
+    // superFog_C: a client runs its own fog while the host's stands (coop/world/weather_fog); its spawnUfo mints the
+    // Thunder Wisp, which is the host's and crosses as a world-actor mirror.
+    {&kRowSpawnUfoSuperFog,               "superFog.spawnUfo"},
 
     // The event spawners themselves: a client's copies must never mint children. Every
     // BeginDeferred inside these graphs is bytecode-internal, so the spawn interceptor never
