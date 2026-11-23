@@ -196,6 +196,98 @@ void LampsStep(bool host, uint64_t t) {
     if (t >= 105000u) UE_LOGI("[ENTITY] done");
 }
 
+// VOTVCOOP_ENTITY_PROBE=churn: the smoke detector and the butter churn. HOST 40 s: one of each 2.5 m before the host;
+// 45 s: the churn given 2 of milk (a full carton's 100 takes some 170 cranks) and the detector's alarm on, as its check
+// finds a fire. CLIENT slot 1, 60 s: its copy's silence (action 5); 62 s to 67 s: ten cranks (action 4); 70 s: its
+// copy's own alarm on, which the host refuses. HOST 80 s: the alarm on again (`[CHURN] host: the alarm on again`), so
+// a slot that joins after finds it on, and the churn's butter. CLIENT slot 1, 150 s: the take (action 7). Every peer,
+// each 5 s to 200 s (`[CHURN]`): the alarm's `isActive`, the churn's `speed`, `milkPercent` and `hasButter`.
+bool ChurnMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "churn";
+    return v;
+}
+
+bool Alarm(void* a, bool on) {
+    ue_wrap::ParamFrame pf(a ? R::FindDispatchFunction(R::ClassOf(a), L"alarm", nullptr) : nullptr);
+    if (!pf.valid()) return false;
+    pf.Set<bool>(L"activate", on);
+    return ue_wrap::Call(a, pf);
+}
+
+float FloatOf(void* a, const wchar_t* name) {
+    R::InstanceOffset o(name);
+    const int32_t off = a ? o.Of(a) : -1;
+    return off >= 0 ? *reinterpret_cast<const float*>(static_cast<const char*>(a) + off) : -1.f;
+}
+
+void ChurnStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    static uint64_t s_nextCrank = 0;
+    static int s_cranks = 0;
+    void* const me = coop::players::Registry::Get().Local();
+    void* const det = First(L"prop_smokeDetec_C");
+    void* const churn = First(L"prop_butterchurn_C");
+    if (host && s_step == 0 && t >= 40000u) {
+        s_step = 1;
+        ue_wrap::FVector at{};
+        ue_wrap::FRotator rot{};
+        if (me) {
+            E::TryGetActorLocation(me, at);
+            E::TryGetActorRotation(me, rot);
+        }
+        const float yaw = rot.Yaw * 0.0174532925f;
+        int k = 0;
+        for (const wchar_t* c : {L"prop_smokeDetec_C", L"prop_butterchurn_C"}) {
+            const CR::Resolved rc = CR::ResolveClass(c, CR::AnyFamily(), CR::Load::Immediate);
+            const float side = (static_cast<float>(k++) - 0.5f) * 150.f;
+            const ue_wrap::FVector to{at.X + 250.f * std::cos(yaw) - side * std::sin(yaw),
+                                      at.Y + 250.f * std::sin(yaw) + side * std::cos(yaw), at.Z};
+            void* const a = rc.cls ? E::SpawnActor(rc.cls, to) : nullptr;
+            UE_LOGI("[CHURN] host: %ls spawned=%d", c, a ? 1 : 0);
+        }
+    }
+    if (host && s_step == 1 && t >= 45000u) {
+        s_step = 2;
+        R::InstanceOffset o(L"milkPercent");  // the spawn is listed by the next frame, not its own
+        const int32_t off = churn ? o.Of(churn) : -1;
+        if (off >= 0) *reinterpret_cast<float*>(static_cast<char*>(churn) + off) = 2.f;
+        UE_LOGI("[CHURN] host: the alarm on (ran=%d)", Alarm(det, true) ? 1 : 0);
+    }
+    if (host && s_step == 2 && t >= 80000u) {
+        s_step = 3;
+        UE_LOGI("[CHURN] host: the alarm on again (ran=%d)", Alarm(det, true) ? 1 : 0);
+    }
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    if (slot1 && s_step == 0 && t >= 60000u && det) {
+        s_step = 1;
+        UE_LOGI("[CHURN] client: silenced its alarm copy (ran=%d)", det && Press(det, me, 5) ? 1 : 0);
+        s_nextCrank = t + 2000u;
+    }
+    if (slot1 && s_step == 1 && churn && t >= s_nextCrank) {
+        s_nextCrank = t + 500u;
+        const bool ran = Press(churn, me, 4);
+        UE_LOGI("[CHURN] client: crank %d (ran=%d)", ++s_cranks, ran ? 1 : 0);
+        if (s_cranks >= 10) s_step = 2;
+    }
+    if (slot1 && s_step == 2 && t >= 70000u) {
+        s_step = 3;
+        UE_LOGI("[CHURN] client: its alarm copy's own on (ran=%d)", Alarm(det, true) ? 1 : 0);
+    }
+    if (slot1 && s_step == 3 && t >= 150000u) {
+        s_step = 4;
+        UE_LOGI("[CHURN] client: took the butter (ran=%d)", churn && Press(churn, me, 7) ? 1 : 0);
+    }
+    static uint64_t s_next = 0;
+    if (t < 30000u || t > 200000u || t < s_next) return;
+    s_next = t + 5000u;
+    int butter = -1;
+    if (churn) butter = BoolOf(churn, L"hasButter");
+    UE_LOGI("[CHURN] %s t=%llu: alarm=%d churn speed=%.2f milk=%.2f butter=%d", host ? "host" : "client",
+            static_cast<unsigned long long>(t / 1000u), det ? BoolOf(det, L"isActive") : -1, FloatOf(churn, L"speed"),
+            FloatOf(churn, L"milkPercent"), butter);
+    if (t >= 195000u) UE_LOGI("[ENTITY] done");
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -622,6 +714,10 @@ void Tick(coop::net::Session* session) {
     }
     if (Lamps()) {
         LampsStep(host, t);
+        return;
+    }
+    if (ChurnMode()) {
+        ChurnStep(host, t);
         return;
     }
     if (Catalog()) {
