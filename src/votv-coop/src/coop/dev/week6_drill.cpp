@@ -94,6 +94,7 @@ const char* RowOf(const std::string& arm) {
     if (arm == "hole") return "rozitalHole";
     if (arm == "droptank") return "graystank";
     if (arm == "grays") return "graysforest";
+    if (arm == "boars") return "boarwar";
     return nullptr;
 }
 
@@ -206,7 +207,7 @@ void Act(bool host, int slot, uint64_t t) {
 }
 
 void Report(bool host, uint64_t t) {
-    if (t < 25000u || t > (Arm() == "hole" || Arm() == "droptank" || Arm() == "grays" ? 240000u : 150000u) ||
+    if (t < 25000u || t > (Arm() == "hole" || Arm() == "droptank" || Arm() == "grays" || Arm() == "boars" ? 240000u : 150000u) ||
         Now() < g_nextLog)
         return;
     g_nextLog = Now() + 3000u;
@@ -264,7 +265,11 @@ void Report(bool host, uint64_t t) {
             more += L", grays=" + std::to_wstring(Live(L"grayTest_C").size()) + L", ragdoll " +
                     std::to_wstring(Bool(me, L"isRagdoll")) + L", atv zapped " + std::to_wstring(Bool(car, L"zapped"));
         }
-        if (arm == "droptank" || arm == "grays") {
+        if (arm == "boars")
+            for (const wchar_t* k : {L"boarInvasion_C", L"grayboar_C", L"grayboarPawn_C", L"firetank_C",
+                                     L"npc_ariral_shooter_C"})
+                more += std::wstring(L", ") + k + L"=" + std::to_wstring(Live(k).size());
+        if (arm == "droptank" || arm == "grays" || arm == "boars") {
             for (const wchar_t* k : {L"firetankDeploy_C", L"firetank_C", L"grayboar_C"})
                 more += std::wstring(L", ") + k + L"=" + std::to_wstring(Live(k).size());
             const std::vector<void*> ft = Live(L"firetank_C");
@@ -301,7 +306,7 @@ void Tick(coop::net::Session* session) {
     }
     Report(host, t);
     static bool s_done = false;
-    if (!s_done && t >= (Arm() == "hole" || Arm() == "droptank" || Arm() == "grays" ? 242000u : 152000u)) {
+    if (!s_done && t >= (Arm() == "hole" || Arm() == "droptank" || Arm() == "grays" || Arm() == "boars" ? 242000u : 152000u)) {
         s_done = true;
         UE_LOGI("[WEEK6] done arm=%s slot=%d", Arm().c_str(), slot);
     }
