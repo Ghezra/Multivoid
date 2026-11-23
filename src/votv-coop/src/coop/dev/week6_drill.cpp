@@ -93,6 +93,7 @@ const char* RowOf(const std::string& arm) {
     if (arm == "dropbody") return "fallbody_0";
     if (arm == "hole") return "rozitalHole";
     if (arm == "droptank") return "graystank";
+    if (arm == "grays") return "graysforest";
     return nullptr;
 }
 
@@ -167,6 +168,23 @@ void Act(bool host, int slot, uint64_t t) {
                     E::SetActorLocation(me, to) ? 1 : 0);
         }
     }
+    // grays: the transformer back on at 40 s (the controller's turnedOn mints the Grays); slot 1 ordered onto the first.
+    if (arm == "grays" && host) {
+        const std::vector<void*> ctl = Live(L"grayEventController_C");
+        if (g_step == 1 && t >= 40000u && !ctl.empty()) {
+            g_step = 2;
+            const bool on = Run(ctl[0], L"turnedOn");
+            UE_LOGI("[WEEK6] host: the Grays' controller turned on (ran=%d) and spawns them (ran=%d)", on ? 1 : 0,
+                    Run(ctl[0], L"Spawn") ? 1 : 0);
+        }
+        const std::vector<void*> grays = Live(L"grayTest_C");
+        FVector at{};
+        if (g_step == 2 && t >= 55000u && !grays.empty() && g_session && E::TryGetActorLocation(grays[0], at)) {
+            g_step = 3;
+            UE_LOGI("[WEEK6] host: slot 1 ordered onto a Gray at (%.0f,%.0f,%.0f) (ok=%d)", at.X, at.Y, at.Z,
+                    coop::teleport_client::OrderToPose(*g_session, 1, at, ue_wrap::FRotator{}) ? 1 : 0);
+        }
+    }
     // droptank: once the host's Firetank stands, the host orders slot 1 8 m from it.
     if (arm == "droptank" && host && g_step == 2 && g_session) {
         const std::vector<void*> ft = Live(L"firetank_C");
@@ -188,7 +206,9 @@ void Act(bool host, int slot, uint64_t t) {
 }
 
 void Report(bool host, uint64_t t) {
-    if (t < 25000u || t > (Arm() == "hole" || Arm() == "droptank" ? 240000u : 150000u) || Now() < g_nextLog) return;
+    if (t < 25000u || t > (Arm() == "hole" || Arm() == "droptank" || Arm() == "grays" ? 240000u : 150000u) ||
+        Now() < g_nextLog)
+        return;
     g_nextLog = Now() + 3000u;
     const std::string& arm = Arm();
     const char* const who = host ? "host" : "client";
@@ -238,7 +258,13 @@ void Report(bool host, uint64_t t) {
         if (dropCls) drops = Live(dropName.c_str()).size();
         const FVector body = s ? E::GetComponentRelativeLocation(Field(s, L"grayUfoSk")) : FVector{};
         std::wstring more;
-        if (arm == "droptank") {
+        if (arm == "grays") {
+            void* const me = coop::players::Registry::Get().Local();
+            void* const car = Field(ue_wrap::world_singleton::Gamemode(), L"car");
+            more += L", grays=" + std::to_wstring(Live(L"grayTest_C").size()) + L", ragdoll " +
+                    std::to_wstring(Bool(me, L"isRagdoll")) + L", atv zapped " + std::to_wstring(Bool(car, L"zapped"));
+        }
+        if (arm == "droptank" || arm == "grays") {
             for (const wchar_t* k : {L"firetankDeploy_C", L"firetank_C", L"grayboar_C"})
                 more += std::wstring(L", ") + k + L"=" + std::to_wstring(Live(k).size());
             const std::vector<void*> ft = Live(L"firetank_C");
@@ -275,7 +301,7 @@ void Tick(coop::net::Session* session) {
     }
     Report(host, t);
     static bool s_done = false;
-    if (!s_done && t >= (Arm() == "hole" || Arm() == "droptank" ? 242000u : 152000u)) {
+    if (!s_done && t >= (Arm() == "hole" || Arm() == "droptank" || Arm() == "grays" ? 242000u : 152000u)) {
         s_done = true;
         UE_LOGI("[WEEK6] done arm=%s slot=%d", Arm().c_str(), slot);
     }
