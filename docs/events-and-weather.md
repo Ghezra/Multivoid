@@ -504,6 +504,7 @@ ending. Tests:
 | the Rozital scouts' hunt and pin | the host | each hostile ball serves the nearest player; a client's pin is sent to it |
 | the garage Soltomia | the host | its show and its opened sent; a client's copy shows and throws, its gameplay refused |
 | the sixth week's flyovers | the host | mirrored; the mothership's alpha, the UFO's show and the saucer's deploy sent |
+| the Hole Repair | the host | its controller's box refused on a client; its room's place sent; its guards and Igetis mirrored |
 | the warning obelisk's fall | the host | its begin play sent; a client's own copy falls and lands, its push off and its prop births ended |
 | a story box whose walk-in makes shared props | the host | the host's box sees a client's puppet; a client's own copy of a listed box refused |
 | the lantern prank's notepad | the host | a client's use asked and run on the host's copy; the Ariral it sends mirrored |
@@ -588,6 +589,7 @@ bit and the flood's level are sent to the joiner at its ready edge, and the host
 | the Rozital scouts | `coop/creatures/scout_target`, `coop/creatures/served_player`; `coop/dev/week5_drill` |
 | the garage Soltomia | `coop/world/soltomia_sync`; `coop/dev/week5_drill` |
 | the sixth week's flyovers | `coop/world/flyover_sync`, `coop/creatures/npc_world_enum`; `coop/dev/week6_drill` |
+| the Hole Repair | `coop/world/hole_sync`, `coop/world/spawn_authority`; `docs/npcs-and-kerfur.md`; `coop/dev/week6_drill` |
 | the warning obelisk, the garage box | `coop/world/obelisk_sync`, `coop/world/event_box_authority`; `coop/dev/week4_drill` |
 | the radio tower's ship, the lantern prank | `coop/world/arir_tower_ship_sync`; `coop/props/prop_act_host`, `coop/props/prop_act_request`, `coop/creatures/npc_world_enum`; `coop/dev/week3_drill` |
 | a host-only event's count | `coop/world/host_event_presence` (fed by `coop/world/event_active_sync`) |
