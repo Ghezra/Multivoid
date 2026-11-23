@@ -40,6 +40,8 @@ bool IsRozitalShot(void* actor) {
 bool IsDelivered(void* actor) {
     if (ue_wrap::ambient_creature::IsWalker(actor)) return true;  // a prop, not an Npc, and its copy's timers are off
     if (IsRozitalShot(actor)) return true;
+    // A Firetank, a world-actor mirror on a client whose drive, sight and flame are refused (coop/world/spawn_authority).
+    if (actor && R::ClassNameOf(actor) == L"firetank_C") return true;
     return IsCreature(actor) && coop::npc_mirror_brain::IsParkedClass(R::ClassOf(actor));
 }
 

@@ -51,7 +51,8 @@ namespace SP = coop::served_player;
 
 constexpr const wchar_t* kBorg = L"rozitBorg_C";
 constexpr const wchar_t* kMorning = L"morningUfo_C";
-constexpr const wchar_t* kDropperKinds[] = {L"ufoDropper_body_C", L"ufoDropper_car_C"};
+constexpr const wchar_t* kDropperKinds[] = {L"ufoDropper_body_C", L"ufoDropper_car_C", L"ufoDropper_tank_C",
+                                            L"ufoDropper_pig_C"};
 
 UE_FACT_FN(kRowMorningBox, "flyover_sync", L"morningUfo_C",
            L"BndEvt__morningUfo_Box_K2Node_ComponentBoundEvent_0_ComponentBeginOverlapSignature__DelegateSignature",

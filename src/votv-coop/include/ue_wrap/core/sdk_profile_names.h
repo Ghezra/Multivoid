@@ -152,6 +152,7 @@ inline constexpr const wchar_t* kWorldActorAllowlist[] = {
     L"ufoDropper_body_C",          // ufoDropper delivery saucer body (the gray "drop pod")
     L"ufoDropper_car_C",           // ufoDropper car variant
     L"ufoDropper_tank_C",          // ufoDropper tank variant
+    L"ufoDropper_pig_C",           // ufoDropper corrupted-boar variant (graystank without the extreme-combat rule)
     L"rozitBorg_C",                // Rozital mothership (borgRozital event)
     L"arirShip_C",                 // ariral ship
     L"skyUfo_C",                   // high-altitude sky UFO
@@ -168,6 +169,7 @@ inline constexpr const wchar_t* kWorldActorAllowlist[] = {
     L"superEgger_C",               // super egger
     L"igetis_C",                   // igetis
     L"firetank_C",                 // firetank (APawn -- transform-only mirror is layout-agnostic)
+    L"firetankDeploy_C",           // the Firetank's dropped box, which lands and mints it (graystank)
     L"piramidSubpawn_C",           // pyramid sub-pawn (APawn; the SANDBOX piramidTest_C child, not the event)
     L"piramid2_C",                 // walking pyramid event actor (a plain AActor; brain suppression and the
                                    // gather relay: coop/creatures/piramid_sync)

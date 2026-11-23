@@ -158,7 +158,8 @@ struct ExSpawnSource {
 };
 // The sixth week's flyovers are mirrored with a lane for what their actor pose does not carry (coop/world/flyover_sync).
 constexpr const wchar_t* kEventerOutputs[] = {L"ventCrawler_C",     L"superEgger_C",     L"morningUfo_C", L"rozitBorg_C",
-                                              L"ufoDropper_body_C", L"ufoDropper_car_C", nullptr};
+                                              L"ufoDropper_body_C", L"ufoDropper_car_C", L"ufoDropper_tank_C",
+                                              L"ufoDropper_pig_C",  nullptr};
 // The lantern prank's notepad mints the Ariral that bashes the door (a follower child) when it is used, on the host.
 constexpr const wchar_t* kBusterNoteOutputs[] = {L"arirSlapper_C", nullptr};
 // The gamemode mints many classes besides these, and most of its other spawners are not refused on a client yet,
@@ -181,6 +182,9 @@ constexpr ExSpawnSource kExSpawnSources[] = {
     {L"superEgger_C",            nullptr},          // eggvasion: spwn() mints the eg_C children
     {L"tentacleBallsFollower_C", nullptr},          // tentacleBalls: runTrigger() mints the pack
     {L"kavotiaPatrolController_C", nullptr},        // rozitalHole: its begin play mints the guards and the Igetis
+    {L"ufoDropper_tank_C",       nullptr},          // graystank: the saucer's drop mints the Firetank's box
+    {L"firetankDeploy_C",        nullptr},          // the box's spawnParts mints the Firetank
+    {L"boarInvasion_C",          nullptr},          // boarwar: the Firetanks and the Ariral shooters (boars are props)
     {L"blackballSpawner_C",      nullptr},          // the orb event: its ubergraph mints npc_orborb_C
     {L"prop_notebook_busterSpawner_C", kBusterNoteOutputs},  // the lantern prank's notepad: arirSlapper_C
 };
@@ -280,6 +284,8 @@ void InstallExSpawnCatch() {
                 "mainGamemode_C -> geomOcta_C + eg_C + the four ambient UFOs, ticker_deerSpawner_C -> deer_C, "
                 "ticker_treeSpawner_C -> walkingTree_C, "
                 "tentacleBallsFollower_C -> tentacleBall_C, kavotiaPatrolController_C -> kavotia_C + igetis_C, "
+                "ufoDropper_tank_C -> firetankDeploy_C -> firetank_C, boarInvasion_C -> firetank_C + "
+                "npc_ariral_shooter_C, "
                 "blackballSpawner_C -> npc_orborb_C, "
                 "prop_notebook_busterSpawner_C -> arirSlapper_C; EX_CallMath spawns now enroll)");
     } else {

@@ -22,6 +22,7 @@
 #include "coop/creatures/scout_target.h"
 #include "coop/world/flyover_sync.h"
 #include "coop/world/hole_sync.h"
+#include "coop/creatures/firetank_sync.h"
 #include "coop/world/soltomia_sync.h"
 #include "coop/world/world_sound_sync.h"
 
@@ -284,6 +285,7 @@ void OnReliable(const coop::net::EventCuePayload& payload) {
     if (coop::soltomia_sync::OnCue(payload)) return;  // the garage Soltomia
     if (coop::flyover_sync::OnCue(payload)) return;   // the sixth week's flyovers
     if (coop::hole_sync::OnCue(payload)) return;      // the Hole Repair's bottom room
+    if (coop::firetank_sync::OnCue(payload)) return;  // the Firetank's flame
     if (payload.cueId >= static_cast<uint32_t>(kCueCount)) {
         UE_LOGW("event_cue: OnReliable unknown cueId=%u (have %d cues) -- dropping (newer host?)",
                 payload.cueId, kCueCount);
