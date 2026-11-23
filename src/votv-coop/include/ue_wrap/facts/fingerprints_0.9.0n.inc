@@ -32,6 +32,7 @@ inline constexpr RefFn kRefFns[] = {
     {L"kavotia_c", L"receivebeginplay", L"kavotia_c.receivebeginplay", 0x6a2d5d90ab51fa2dull, 0x1016432f93845f6full},
     {L"kavotia_c", L"receivetick", L"kavotia_c.receivetick", 0x6082ffdfa2cda429ull, 0x57ae28a2b9bad780ull},
     {L"kavotia_c", L"sense", L"kavotia_c.sense", 0x6a2d5d90ab51fa2dull, 0xb68cac98d151ec1aull},
+    {L"kavotia_c", L"sensepawns", L"kavotia_c.sensepawns", 0x94bab6231293869eull, 0x97f26a0c3e82d1a6ull},
     {L"kavotia_c", L"timeline_0__finishedfunc", L"kavotia_c.timeline_0__finishedfunc", 0x6a2d5d90ab51fa2dull, 0xe73b01a4c911e4ddull},
     {L"kavotia_skeleton_animblueprint_c", L"blueprintupdateanimation", L"kavotia_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0x833d5cdfeac36a1cull},
     {L"kefrus_face_skeleton_animblueprint_c", L"blueprintupdateanimation", L"kefrus_face_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0xaba68335ed3fffe9ull},
