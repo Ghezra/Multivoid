@@ -92,12 +92,14 @@ const char* RowOf(const std::string& arm) {
     if (arm == "dropcar") return "fallcar_0";
     if (arm == "dropbody") return "fallbody_0";
     if (arm == "hole") return "rozitalHole";
+    if (arm == "droptank") return "graystank";
     return nullptr;
 }
 
 std::vector<void*> Droppers() {
     std::vector<void*> d = Live(L"ufoDropper_car_C");
-    for (void* o : Live(L"ufoDropper_body_C")) d.push_back(o);
+    for (const wchar_t* k : {L"ufoDropper_body_C", L"ufoDropper_tank_C", L"ufoDropper_pig_C"})
+        for (void* o : Live(k)) d.push_back(o);
     return d;
 }
 
@@ -165,7 +167,18 @@ void Act(bool host, int slot, uint64_t t) {
                     E::SetActorLocation(me, to) ? 1 : 0);
         }
     }
-    if ((arm == "dropcar" || arm == "dropbody") && host && g_step == 1 && t >= 40000u) {
+    // droptank: once the host's Firetank stands, the host orders slot 1 8 m from it.
+    if (arm == "droptank" && host && g_step == 2 && g_session) {
+        const std::vector<void*> ft = Live(L"firetank_C");
+        FVector at{};
+        if (!ft.empty() && E::TryGetActorLocation(ft[0], at)) {
+            g_step = 3;
+            const FVector to{at.X + 800.f, at.Y, at.Z + 200.f};
+            UE_LOGI("[WEEK6] host: slot 1 ordered 8 m from the Firetank at (%.0f,%.0f,%.0f) (ok=%d)", to.X, to.Y, to.Z,
+                    coop::teleport_client::OrderToPose(*g_session, 1, to, ue_wrap::FRotator{}) ? 1 : 0);
+        }
+    }
+    if ((arm == "dropcar" || arm == "dropbody" || arm == "droptank") && host && g_step == 1 && t >= 40000u) {
         const std::vector<void*> d = Droppers();
         if (!d.empty()) {
             g_step = 2;
@@ -175,7 +188,7 @@ void Act(bool host, int slot, uint64_t t) {
 }
 
 void Report(bool host, uint64_t t) {
-    if (t < 25000u || t > (Arm() == "hole" ? 240000u : 150000u) || Now() < g_nextLog) return;
+    if (t < 25000u || t > (Arm() == "hole" || Arm() == "droptank" ? 240000u : 150000u) || Now() < g_nextLog) return;
     g_nextLog = Now() + 3000u;
     const std::string& arm = Arm();
     const char* const who = host ? "host" : "client";
@@ -224,9 +237,22 @@ void Report(bool host, uint64_t t) {
         size_t drops = 0;
         if (dropCls) drops = Live(dropName.c_str()).size();
         const FVector body = s ? E::GetComponentRelativeLocation(Field(s, L"grayUfoSk")) : FVector{};
-        UE_LOGI("[WEEK6] %s %s t=%llu: saucers %zu, hidden %d, body z %.0f, weight %.2f, drops of %ls %zu", arm.c_str(),
+        std::wstring more;
+        if (arm == "droptank") {
+            for (const wchar_t* k : {L"firetankDeploy_C", L"firetank_C", L"grayboar_C"})
+                more += std::wstring(L", ") + k + L"=" + std::to_wstring(Live(k).size());
+            const std::vector<void*> ft = Live(L"firetank_C");
+            FVector at{};
+            if (!ft.empty() && E::TryGetActorLocation(ft[0], at))
+                more += L" at (" + std::to_wstring(static_cast<int>(at.X)) + L"," + std::to_wstring(static_cast<int>(at.Y)) +
+                        L")";
+            void* const gm = ue_wrap::world_singleton::Gamemode();
+            void* const slotObj = gm ? Field(gm, L"saveSlot") : nullptr;
+            more += L", health " + std::to_wstring(static_cast<int>(slotObj ? Float(slotObj, L"health") : -1.f));
+        }
+        UE_LOGI("[WEEK6] %s %s t=%llu: saucers %zu, hidden %d, body z %.0f, weight %.2f, drops of %ls %zu%ls", arm.c_str(),
                 who, static_cast<unsigned long long>(t / 1000u), d.size(), s ? Bool(s, L"bHidden") : -1, body.Z,
-                s ? Float(s, L"weight") : -1.f, dropName.c_str(), drops);
+                s ? Float(s, L"weight") : -1.f, dropName.c_str(), drops, more.c_str());
     }
 }
 
@@ -249,7 +275,7 @@ void Tick(coop::net::Session* session) {
     }
     Report(host, t);
     static bool s_done = false;
-    if (!s_done && t >= (Arm() == "hole" ? 242000u : 152000u)) {
+    if (!s_done && t >= (Arm() == "hole" || Arm() == "droptank" ? 242000u : 152000u)) {
         s_done = true;
         UE_LOGI("[WEEK6] done arm=%s slot=%d", Arm().c_str(), slot);
     }
