@@ -153,6 +153,7 @@
 #include "coop/dev/week4_drill.h"   // [dev] the story's fourth week on three peers
 #include "coop/dev/week5_drill.h"   // [dev] the story's fifth week on three peers
 #include "coop/dev/week6_drill.h"   // [dev] the story's sixth week on three peers
+#include "coop/dev/gravgun_drill.h"  // [dev] one gravity gun shot per click
 #include "coop/dev/cleansound_drill.h"   // [dev] the cleaning sounds on the sound relay
 #include "coop/dev/sit_probe.h"   // the chair sit probe
 #include "coop/dev/join_stall_probe.h"   // [dev] a client's game thread held still while it joins
@@ -591,6 +592,7 @@ void TickDrills(coop::net::Session& session) {
     coop::dev::week4_drill::Tick(&session);  // [dev] the story's fourth week (a latched read when off)
     coop::dev::week5_drill::Tick(&session);  // [dev] the story's fifth week (a latched read when off)
     coop::dev::week6_drill::Tick(&session);  // [dev] the story's sixth week (a latched read when off)
+    coop::dev::gravgun_drill::Tick(&session);  // [dev] one gravity gun shot per click (a latched read when off)
     coop::dev::cleansound_drill::Tick(&session);  // [dev] the cleaning sounds (a latched read when off)
     coop::dev::sit_probe::Tick(&session);  // a client sits on a chair; the host looks
     coop::dev::kdisc_watch::Tick(&session);  // [dev] VOTVCOOP_KDISC_WATCH
