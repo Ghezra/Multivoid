@@ -593,10 +593,19 @@ bool WriteKerfurList(void* atv, const std::vector<void*>& list) {
 
 bool GetSeatTransform(void* atv, FVector& loc, FRotator& rot) {
     if (!atv || !R::IsLive(atv)) return false;
-    // The ATV's own sit attaches the player to the ATV and sets its location and rotation to the world transform of
-    // `playerHit` (in its `playerHitWith` event), so the body of a remote driver goes to the same place.
+    // The ATV's own sit attaches the player to the ATV at the world transform of `playerHit` (in its `playerHitWith`
+    // event) and hides it: `playerHit` carries a hidden capsule, about 140 cm above where a seated body's pivot goes. A
+    // remote driver's body takes `playerHit`'s place across and its turn, at the height a riding pivot takes above
+    // `sitarrow` (the passenger's, ue_wrap/devices/atv_passenger_seat), so it sits on the seat (issue 46).
+    constexpr float kBodyUpCm = 25.f;
     void* hit = ReadObj(atv, g_playerHit.Get());
-    return hit && engine::TryGetComponentLocation(hit, loc) && engine::TryGetComponentWorldRotation(hit, rot);
+    void* sit = ReadObj(atv, g_sitarrow.Get());
+    FVector seat{};
+    if (!hit || !sit || !engine::TryGetComponentLocation(hit, loc) || !engine::TryGetComponentWorldRotation(hit, rot) ||
+        !engine::TryGetComponentLocation(sit, seat))
+        return false;
+    loc.Z = seat.Z + kBodyUpCm;
+    return true;
 }
 
 bool GetSitArrowLocation(void* atv, FVector& loc) {

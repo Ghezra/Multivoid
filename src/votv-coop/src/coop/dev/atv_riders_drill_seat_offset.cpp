@@ -93,7 +93,7 @@ RemoteSeat MeasureRemoteSeat(uint8_t slot) {
     const bool s = ue_wrap::atv::GetSitArrowLocation(atv, sit);
     m.body = Rooted(b, at, root, rot);
     m.hit = Rooted(t, seat, root, rot);
-    UE_LOGI("atv-riders: seat offset (remote driver slot %u) on the %s: body=%s playerHit=%s sitarrow=%s",
+    UE_LOGI("atv-riders: seat offset (remote driver slot %u) on the %s: body=%s seat=%s sitarrow=%s",
             static_cast<unsigned>(slot), RoleName(MyRole()), m.body.c_str(), m.hit.c_str(), Rooted(s, sit, root, rot).c_str());
     if (b && t) {
         m.read = true;
@@ -116,8 +116,8 @@ bool JudgeRemoteSeat(uint8_t slot, int step) {
     }
     if (m.offCm > kRigidCm) {
         Fail(step, "remote_seat_off",
-             "the remote driver's body " + m.body + " is " + Num("%.0f", m.offCm) + " cm from the ATV's playerHit " + m.hit +
-                 ", the seat the game's own sit uses (at most " + Num("%.0f", kRigidCm) + " cm)");
+             "the remote driver's body " + m.body + " is " + Num("%.0f", m.offCm) + " cm from the ATV's driver seat " + m.hit +
+                 ", playerHit across at the seat's height (at most " + Num("%.0f", kRigidCm) + " cm)");
         return false;
     }
     return true;

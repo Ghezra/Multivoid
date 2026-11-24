@@ -188,8 +188,9 @@ bool DestroyMirror(void* atv);
 // and nothing done, on a null or dead actor, an unresolved function or a call that did not dispatch. Game thread.
 bool Dismount(void* atv);
 
-// Where a seated driver's body goes: the world transform of the ATV's `playerHit`, where the ATV's own sit puts its
-// player (location and rotation). False on null, an unresolved ATV_C or component, or an unreadable transform. Game thread.
+// Where a seated driver's body goes: the ATV's `playerHit` across and turned (where the ATV's own sit puts its hidden
+// player), at 25 cm above `sitarrow` in height, where a riding pivot sits. False on null, an unresolved ATV_C or component,
+// or an unreadable transform. Game thread.
 bool GetSeatTransform(void* atv, FVector& loc, FRotator& rot);
 
 // The world location of the ATV's `sitarrow`, the point a riding kerfur's pivot goes. False on null, an unresolved ATV_C or
