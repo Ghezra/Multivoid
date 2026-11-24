@@ -54,7 +54,10 @@ using coop::net::ReliableKind;
 // Past this many queued requests a sender is refused with QueueFull. Past it for a sender whose world is not ready
 // the request is only counted: nothing is sent to a link that cannot take it.
 constexpr size_t kCap = 2;
-constexpr coop::net::IntentBudget kBudget{4.0f, 2.0f};
+// A sender's acts at once and per second. A player taking props one after another clicks several items a second, and
+// the old 4 at once and 2 a second slowed every act past the first second to one per 500 ms (issue 45); the queue's cap,
+// one held act per player and the client's one pending act still bound what a sender costs.
+constexpr coop::net::IntentBudget kBudget{16.0f, 8.0f};
 
 struct Queued {
     coop::net::PropActRequestPayload req;
