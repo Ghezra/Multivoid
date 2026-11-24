@@ -20,6 +20,8 @@
 #include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/engine_attach.h"
+#include "ue_wrap/engine/engine_physics.h"
 #include "ue_wrap/engine/engine_component.h"
 #include "ue_wrap/actors/spawner_stamp.h"
 #include "ue_wrap/engine/data_table.h"
@@ -286,6 +288,135 @@ void ChurnStep(bool host, uint64_t t) {
             static_cast<unsigned long long>(t / 1000u), det ? BoolOf(det, L"isActive") : -1, FloatOf(churn, L"speed"),
             FloatOf(churn, L"milkPercent"), butter);
     if (t >= 195000u) UE_LOGI("[ENTITY] done");
+}
+
+// VOTVCOOP_ENTITY_PROBE=drone: the remote drone and the sled. HOST 40 s: one of each 2.5 m before the host, the drone's
+// energy 100. CLIENT slot 1, 55 s: its copy's switch (action 8); 60 s to 66 s: `move` up, then 66 s to 72 s forward,
+// a call each 100 ms as the laptop's sliders make them; 80 s: the switch again. CLIENT slot 1, 90 s: sits on the sled
+// (its own playerSit, its player this one), 91 s to 95 s its forward held (moveForward) and, at 91 s,
+// a shove of 6 m/s along x as a slope would give (on flat ground the push loses to friction), 96 s up (playerUnsit); HOST
+// 110 s to 116 s, the same on its own, shoved back at 111 s. Every
+// peer, each 2 s to 140 s (`[DRONE]`): the drone's place, `active` and `energy`, and the sled's place.
+bool DroneMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "drone";
+    return v;
+}
+
+bool CallWith(void* a, const wchar_t* fn, const wchar_t* p0, float v0, const wchar_t* p1 = nullptr, float v1 = 0.f,
+              const wchar_t* p2 = nullptr, float v2 = 0.f) {
+    ue_wrap::ParamFrame pf(a ? R::FindDispatchFunction(R::ClassOf(a), fn, nullptr) : nullptr);
+    if (!pf.valid()) return false;
+    pf.Set<float>(p0, v0);
+    if (p1) pf.Set<float>(p1, v1);
+    if (p2) pf.Set<float>(p2, v2);
+    return ue_wrap::Call(a, pf);
+}
+
+bool CallPlayer(void* a, const wchar_t* fn, void* player) {
+    ue_wrap::ParamFrame pf(a ? R::FindDispatchFunction(R::ClassOf(a), fn, nullptr) : nullptr);
+    if (!pf.valid()) return false;
+    pf.Set<void*>(L"player", player);
+    return ue_wrap::Call(a, pf);
+}
+
+bool CallPressed(void* a, const wchar_t* fn, bool pressed) {
+    ue_wrap::ParamFrame pf(a ? R::FindDispatchFunction(R::ClassOf(a), fn, nullptr) : nullptr);
+    if (!pf.valid()) return false;
+    pf.Set<bool>(L"pressed", pressed);
+    return ue_wrap::Call(a, pf);
+}
+
+void DroneStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    static uint64_t s_nextMove = 0;
+    void* const me = coop::players::Registry::Get().Local();
+    void* const drone = First(L"prop_rdrone_C");
+    void* const sled = First(L"prop_sled_C");
+    if (host && s_step == 0 && t >= 40000u) {
+        s_step = 1;
+        ue_wrap::FVector at{};
+        ue_wrap::FRotator rot{};
+        if (me) {
+            E::TryGetActorLocation(me, at);
+            E::TryGetActorRotation(me, rot);
+        }
+        const float yaw = rot.Yaw * 0.0174532925f;
+        int k = 0;
+        for (const wchar_t* c : {L"prop_rdrone_C", L"prop_sled_C"}) {
+            const CR::Resolved rc = CR::ResolveClass(c, CR::AnyFamily(), CR::Load::Immediate);
+            const float side = (static_cast<float>(k++) - 0.5f) * 200.f;
+            const ue_wrap::FVector to{at.X + 250.f * std::cos(yaw) - side * std::sin(yaw),
+                                      at.Y + 250.f * std::sin(yaw) + side * std::cos(yaw), at.Z};
+            UE_LOGI("[DRONE] host: %ls spawned=%d", c, rc.cls && E::SpawnActor(rc.cls, to) ? 1 : 0);
+        }
+    }
+    if (host && s_step == 1 && t >= 42000u && drone) {
+        s_step = 2;
+        const float e = FloatOf(drone, L"energy");
+        R::InstanceOffset o(L"energy");  // the spawn is listed by the next frame, not its own
+        const int32_t off = o.Of(drone);
+        if (off >= 0) *reinterpret_cast<float*>(static_cast<char*>(drone) + off) = 100.f;
+        UE_LOGI("[DRONE] host: the drone's energy %.1f -> 100", e);
+    }
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    if (slot1 && s_step == 0 && t >= 55000u && drone) {
+        s_step = 1;
+        UE_LOGI("[DRONE] client: pressed the drone's switch (ran=%d)", Press(drone, me, 8) ? 1 : 0);
+    }
+    if (slot1 && s_step == 1 && t >= 60000u && t < 72000u && t >= s_nextMove) {
+        s_nextMove = t + 100u;
+        const bool upPhase = t < 66000u;
+        CallWith(drone, L"move", L"forward", upPhase ? 0.f : 800.f, L"rot", 0.f, L"up", upPhase ? 800.f : 0.f);
+    }
+    if (slot1 && s_step == 1 && t >= 80000u) {
+        s_step = 2;
+        UE_LOGI("[DRONE] client: pressed the drone's switch again (ran=%d)", Press(drone, me, 8) ? 1 : 0);
+    }
+    if (slot1 && s_step == 2 && t >= 90000u && sled) {
+        s_step = 3;
+        UE_LOGI("[DRONE] client: sat on the sled (ran=%d)", CallPlayer(sled, L"playerSit", me) ? 1 : 0);
+    }
+    if (slot1 && s_step == 3 && t >= 91000u) {
+        s_step = 4;
+        UE_LOGI("[DRONE] client: the sled's forward held (ran=%d), shoved as a slope would (ok=%d)",
+                CallPressed(sled, L"moveForward", true) ? 1 : 0,
+                ue_wrap::engine::SetComponentLinearVelocity(ue_wrap::engine::RootComponentOf(sled), 600.f, 0.f, 0.f) ? 1 : 0);
+    }
+    if (slot1 && s_step == 4 && t >= 95000u) {
+        s_step = 5;
+        CallPressed(sled, L"moveForward", false);
+    }
+    if (host && s_step == 2 && t >= 110000u && sled) {
+        s_step = 3;
+        UE_LOGI("[DRONE] host: sat on the sled (ran=%d), forward held (ran=%d)", CallPlayer(sled, L"playerSit", me) ? 1 : 0,
+                CallPressed(sled, L"moveForward", true) ? 1 : 0);
+    }
+    if (host && s_step == 3 && t >= 111000u && sled) {
+        s_step = 4;
+        UE_LOGI("[DRONE] host: shoved the sled (ok=%d)",
+                ue_wrap::engine::SetComponentLinearVelocity(ue_wrap::engine::RootComponentOf(sled), -600.f, 0.f, 0.f) ? 1 : 0);
+    }
+    if (host && s_step == 4 && t >= 116000u) {
+        s_step = 5;
+        CallPressed(sled, L"moveForward", false);
+        UE_LOGI("[DRONE] host: got off the sled (ran=%d)", CallPlayer(sled, L"playerUnsit", me) ? 1 : 0);
+    }
+    if (slot1 && s_step == 5 && t >= 96000u) {
+        s_step = 6;
+        UE_LOGI("[DRONE] client: got off the sled (ran=%d)", CallPlayer(sled, L"playerUnsit", me) ? 1 : 0);
+    }
+    static uint64_t s_next = 0;
+    if (t < 30000u || t > 140000u || t < s_next) return;
+    s_next = t + 2000u;
+    ue_wrap::FVector d{}, sl{};
+    if (drone) E::TryGetActorLocation(drone, d);
+    if (sled) E::TryGetActorLocation(sled, sl);
+    UE_LOGI("[DRONE] %s t=%llu: drone at (%.0f,%.0f,%.0f) active=%d energy=%.1f sim=%d; sled at (%.0f,%.0f,%.0f) sim=%d "
+            "forward=%d", host ? "host" : "client", static_cast<unsigned long long>(t / 1000u), d.X, d.Y, d.Z,
+            drone ? BoolOf(drone, L"active") : -1, FloatOf(drone, L"energy"),
+            drone && ue_wrap::engine::IsActorRootSimulatingPhysics(drone) ? 1 : 0, sl.X, sl.Y, sl.Z,
+            sled && ue_wrap::engine::IsActorRootSimulatingPhysics(sled) ? 1 : 0, sled ? BoolOf(sled, L"pressedForward") : -1);
+    if (t >= 138000u) UE_LOGI("[ENTITY] done");
 }
 
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
@@ -718,6 +849,10 @@ void Tick(coop::net::Session* session) {
     }
     if (ChurnMode()) {
         ChurnStep(host, t);
+        return;
+    }
+    if (DroneMode()) {
+        DroneStep(host, t);
         return;
     }
     if (Catalog()) {
