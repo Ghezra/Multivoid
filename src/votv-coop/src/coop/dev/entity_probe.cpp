@@ -8,11 +8,16 @@
 #include "coop/dev/entity_probe.h"
 
 #include "coop/config/config.h"
+#include "coop/element/element.h"
+#include "coop/element/registry.h"
+#include "coop/dev/director/director.h"
 #include "coop/net/session.h"
 #include "coop/player/players_registry.h"
 #include "coop/player/remote_player.h"
+#include "coop/props/photo_sync.h"
 #include "coop/session/teleport_client.h"
 #include "coop/world/world_actor_sync.h"
+#include "harness/screenshot.h"
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/core/class_resolve.h"
 #include "ue_wrap/core/log.h"
@@ -23,6 +28,7 @@
 #include "ue_wrap/engine/engine_attach.h"
 #include "ue_wrap/engine/engine_physics.h"
 #include "ue_wrap/engine/engine_component.h"
+#include "ue_wrap/actors/photo_store.h"
 #include "ue_wrap/actors/spawner_stamp.h"
 #include "ue_wrap/engine/data_table.h"
 #include "ue_wrap/engine/engine_pawn.h"
@@ -32,10 +38,12 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <cwchar>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace coop::dev::entity_probe {
 namespace {
@@ -417,6 +425,256 @@ void DroneStep(bool host, uint64_t t) {
             drone && ue_wrap::engine::IsActorRootSimulatingPhysics(drone) ? 1 : 0, sl.X, sl.Y, sl.Z,
             sled && ue_wrap::engine::IsActorRootSimulatingPhysics(sled) ? 1 : 0, sled ? BoolOf(sled, L"pressedForward") : -1);
     if (t >= 138000u) UE_LOGI("[ENTITY] done");
+}
+
+// VOTVCOOP_ENTITY_PROBE=photo: the camera and the tape. HOST 40 s: a printer camera, a tape and an empty bottle 2.5 m before
+// the host; 42 s: the bottle's health to half its full. CLIENT slot 1, 50 s: one paper pocketed; 55 s: the camera's
+// click (its own player's view); 70 s: the click again, with no paper. HOST 60 s: a paper pocketed; 65 s: the click; 80 s:
+// a photo of its print laid in the world. CLIENT slot 1, 90 s: the tape on the bottle; 95 s: again, at full. Every peer,
+// each 5 s to 120 s (`[PHOTO]`): the gallery's and the printed pictures' lengths, the last two pictures' sizes and
+// hashes, each photo copy's index with its picture's hash, the bottle's health and the tape's uses. HOST 100 s: photo 0
+// (slot 1's print) laid 80 cm before it. Every peer in turn (3 s apart, by slot), once its copy of photo 0 stands, steps
+// 1.2 m off its +x side, narrows its view onto it and captures its screen (coop-screenshots/, `photo-host`...).
+bool PhotoMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "photo";
+    return v;
+}
+
+uint32_t Fnv(const std::vector<uint8_t>& b) {
+    uint32_t h = 2166136261u;
+    for (uint8_t c : b) h = (h ^ c) * 16777619u;
+    return h;
+}
+
+float* BottleHealth(void* a, float* full) {
+    static R::InstanceOffset s_impact(L"physicsImpact");
+    const int32_t off = a ? s_impact.Of(a) : -1;
+    void* const comp = off >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(a) + off) : nullptr;
+    if (!comp || !R::IsLive(comp)) return nullptr;
+    const int32_t h = R::FindPropertyOffset(R::ClassOf(comp), L"health");
+    const int32_t d = R::FindPropertyOffset(R::ClassOf(comp), L"damageData");
+    void* const st = R::PropertyInnerStruct(R::ClassOf(comp), L"damageData");
+    const int32_t f = st ? R::FindPropertyOffsetByPrefix(st, L"health_") : -1;
+    if (h < 0 || d < 0 || f < 0) return nullptr;
+    if (full) std::memcpy(full, static_cast<char*>(comp) + d + f, sizeof(float));
+    return reinterpret_cast<float*>(static_cast<char*>(comp) + h);
+}
+
+bool Pocket(void* me, const wchar_t* cls) {
+    const CR::Resolved rc = CR::ResolveClass(cls, CR::AnyFamily(), CR::Load::Immediate);
+    ue_wrap::FVector at{};
+    if (!me || !rc.cls || !E::TryGetActorLocation(me, at)) return false;
+    void* const a = E::SpawnActor(rc.cls, at);
+    ue_wrap::ParamFrame f(a ? R::FindDispatchFunction(R::ClassOf(me), L"putObjectInventory2", nullptr) : nullptr);
+    return f.valid() && f.Set<void*>(L"inputPin", a) && f.Set<bool>(L"noNotify", false) && ue_wrap::Call(me, f);
+}
+
+void PhotoStep(bool host, uint64_t t) {
+    namespace PS = ue_wrap::photo_store;
+    static int s_step = 0;
+    static int32_t s_hostPrint = -1;
+    static int32_t s_clientPrint = 0;  // HOST: the index slot 1's print was filed at; a client finds it by its picture
+    void* const me = coop::players::Registry::Get().Local();
+    void* const cam = First(L"prop_digcam_print_C");
+    void* const tape = First(L"prop_officetape_C");
+    void* const bottle = First(L"prop_emptyBottle_C");
+    if (host && s_step == 0 && t >= 40000u) {
+        s_step = 1;
+        ue_wrap::FVector at{};
+        ue_wrap::FRotator rot{};
+        if (me) {
+            E::TryGetActorLocation(me, at);
+            E::TryGetActorRotation(me, rot);
+        }
+        const float yaw = rot.Yaw * 0.0174532925f;
+        int k = 0;
+        for (const wchar_t* c : {L"prop_digcam_print_C", L"prop_officetape_C", L"prop_emptyBottle_C"}) {
+            const CR::Resolved rc = CR::ResolveClass(c, CR::AnyFamily(), CR::Load::Immediate);
+            const float side = (static_cast<float>(k++) - 1.f) * 120.f;
+            const ue_wrap::FVector to{at.X + 250.f * std::cos(yaw) - side * std::sin(yaw),
+                                      at.Y + 250.f * std::sin(yaw) + side * std::cos(yaw), at.Z};
+            UE_LOGI("[PHOTO] host: %ls spawned=%d", c, rc.cls && E::SpawnActor(rc.cls, to) ? 1 : 0);
+        }
+    }
+    if (host && s_step == 1 && t >= 42000u && bottle) {
+        s_step = 2;
+        float full = 0.f;
+        float* const h = BottleHealth(bottle, &full);
+        if (h) *h = full * 0.5f;
+        UE_LOGI("[PHOTO] host: the bottle's health to %.1f of %.1f", h ? *h : -1.f, full);
+    }
+    if (host && s_step == 2 && t >= 60000u) {
+        s_step = 3;
+        UE_LOGI("[PHOTO] host: a paper pocketed (ok=%d)", Pocket(me, L"prop_notebook_paper_C") ? 1 : 0);
+    }
+    if (host && s_step == 3 && t >= 65000u && cam) {
+        s_step = 4;
+        UE_LOGI("[PHOTO] host: clicked the camera (ran=%d)", CallPlayer(cam, L"playerHandUse_LMB", me) ? 1 : 0);
+    }
+    if (host && s_step == 4 && t >= 70000u) {
+        s_step = 5;
+        s_hostPrint = PS::Count(false) - 1;
+        UE_LOGI("[PHOTO] host: its print is photo %d", s_hostPrint);
+    }
+    if (host && s_step == 5 && t >= 80000u) {
+        s_step = 6;
+        const CR::Resolved rc = CR::ResolveClass(L"prop_photo_C", CR::AnyFamily(), CR::Load::Immediate);
+        ue_wrap::FVector at{};
+        if (me) E::TryGetActorLocation(me, at);
+        at.Z += 50.f;
+        void* const a = rc.cls ? E::BeginDeferredSpawn(rc.cls, at, {}) : nullptr;
+        static R::InstanceOffset s_idx(L"index");
+        const int32_t off = a ? s_idx.Of(a) : -1;
+        if (off >= 0) *reinterpret_cast<int32_t*>(static_cast<char*>(a) + off) = s_hostPrint;
+        const bool ok = a && E::FinishDeferredSpawn(a, at, {});
+        if (ok) {
+            void* const f = R::FindDispatchFunction(R::ClassOf(a), L"loadImage", nullptr);
+            if (f) R::CallFunction(a, f, nullptr);
+        }
+        UE_LOGI("[PHOTO] host: photo %d laid in the world (ok=%d)", s_hostPrint, ok ? 1 : 0);
+    }
+    if (host && s_step == 6 && t >= 100000u) {
+        s_step = 7;
+        s_clientPrint = coop::photo_sync::LastClientPrint();
+        const CR::Resolved rc = CR::ResolveClass(L"prop_photo_C", CR::AnyFamily(), CR::Load::Immediate);
+        ue_wrap::FVector at{};
+        ue_wrap::FRotator rot{};
+        if (me) {
+            E::TryGetActorLocation(me, at);
+            E::TryGetActorRotation(me, rot);
+        }
+        const float yaw = rot.Yaw * 0.0174532925f;
+        at.X += 80.f * std::cos(yaw);
+        at.Y += 80.f * std::sin(yaw);
+        void* const a = rc.cls ? E::BeginDeferredSpawn(rc.cls, at, {}) : nullptr;
+        static R::InstanceOffset s_idx0(L"index");
+        const int32_t off = a ? s_idx0.Of(a) : -1;
+        if (off >= 0) *reinterpret_cast<int32_t*>(static_cast<char*>(a) + off) = s_clientPrint;
+        const bool ok = a && E::FinishDeferredSpawn(a, at, {});
+        if (ok) {
+            void* const f = R::FindDispatchFunction(R::ClassOf(a), L"loadImage", nullptr);
+            if (f) R::CallFunction(a, f, nullptr);
+        }
+        UE_LOGI("[PHOTO] host: photo %d, slot 1's print, laid before the host for the screenshots (ok=%d)", s_clientPrint,
+                ok ? 1 : 0);
+    }
+    {
+        static uint64_t s_seen = 0;
+        static int s_shot = 0;
+        void* zero = nullptr;
+        void* all[16];
+        const int found = ue_wrap::world_instances::Find(L"prop_photo_C", all, 16);
+        // The screenshots' photo is the newest one laid (the highest element id), once both laid photos stand.
+        uint32_t best = 0;
+        for (int i = 0; i < found && found >= 2; ++i) {
+            const auto eid = coop::element::Registry::Get().EidForActor(all[i]);
+            if (eid != coop::element::kInvalidId && static_cast<uint32_t>(eid) > best) {
+                best = static_cast<uint32_t>(eid);
+                zero = all[i];
+            }
+        }
+        // Host's copy is laid at 100 s; a client's appears with it, whatever that client's own clock reads.
+        if (!zero && s_shot == 0) s_seen = 0;  // a copy seen only in passing starts nothing
+        if (zero && !s_seen && (!host || t >= 100000u)) s_seen = t;
+        const int slot = host ? 0 : coop::players::Registry::Get().LocalPeerId();
+        const uint64_t turn = s_seen + static_cast<uint64_t>(slot) * 3000u;  // one peer at a time on the photo's face
+        static ue_wrap::FVector s_home{};
+        ue_wrap::FVector eye{}, at{}, body{};
+        if (zero && s_seen && s_shot == 0 && t >= turn + 1000u && me && E::TryGetActorLocation(zero, at) &&
+            E::TryGetActorLocation(me, body)) {
+            s_shot = 1;  // 1.2 m off the photo's +x side, the side its picture faces from the host's spot
+            s_home = body;
+            const ue_wrap::FVector to{at.X + 120.f, at.Y, body.Z};
+            UE_LOGI("[PHOTO] %s: stepped beside photo 0 (ok=%d)", host ? "host" : "client",
+                    E::TeleportTo(me, to, ue_wrap::FRotator{}) ? 1 : 0);
+        }
+        static void* s_cam = nullptr;
+        static int32_t s_fovOff = -1;
+        static float s_fov = 0.f;
+        if (zero && s_shot >= 1 && s_shot < 3 && t >= turn + 2000u && me && E::ReadMainPlayerCameraLocation(me, eye) &&
+            E::TryGetActorLocation(zero, at)) {
+            E::SetControlRotation(E::GetController(me), coop::director::LookAt(eye, at));
+            if (s_shot == 1) {
+                s_shot = 2;
+                static R::InstanceOffset s_camO(L"camera");
+                const int32_t co = s_camO.Of(me);
+                s_cam = co >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(me) + co) : nullptr;
+                s_fovOff = s_cam ? R::FindPropertyOffset(R::ClassOf(s_cam), L"FieldOfView") : -1;
+                if (s_fovOff >= 0) std::memcpy(&s_fov, static_cast<char*>(s_cam) + s_fovOff, sizeof(float));
+                UE_LOGI("[PHOTO] %s: turned to photo 0 at (%.0f,%.0f,%.0f), %.0f cm off, fov %.0f", host ? "host" : "client",
+                        at.X, at.Y, at.Z, std::sqrt((eye.X - at.X) * (eye.X - at.X) + (eye.Y - at.Y) * (eye.Y - at.Y) +
+                                                    (eye.Z - at.Z) * (eye.Z - at.Z)), s_fov);
+            }
+            if (s_fovOff >= 0) {  // a narrow view, so the photo fills the shot
+                const float narrow = 16.f;
+                std::memcpy(static_cast<char*>(s_cam) + s_fovOff, &narrow, sizeof(float));
+            }
+            if (t >= turn + 2800u) {
+                s_shot = 3;
+                const wchar_t* const label = slot == 0 ? L"photo-host" : slot == 1 ? L"photo-slot1" : L"photo-slot2";
+                UE_LOGI("[PHOTO] %s: screenshot %ls saved=%d", host ? "host" : "client", label,
+                        harness::screenshot::Capture(label) ? 1 : 0);
+                if (s_fovOff >= 0) std::memcpy(static_cast<char*>(s_cam) + s_fovOff, &s_fov, sizeof(float));
+                const ue_wrap::FVector home{s_home.X - 150.f, s_home.Y - 150.f * static_cast<float>(slot), s_home.Z};
+                E::TeleportTo(me, home, ue_wrap::FRotator{});  // out of the next peer's view
+            }
+        }
+    }
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    if (slot1 && s_step == 0 && t >= 50000u) {
+        s_step = 1;
+        UE_LOGI("[PHOTO] client: a paper pocketed (ok=%d)", Pocket(me, L"prop_notebook_paper_C") ? 1 : 0);
+    }
+    if (slot1 && s_step == 1 && t >= 55000u && cam) {
+        s_step = 2;
+        UE_LOGI("[PHOTO] client: clicked the camera (ran=%d)", CallPlayer(cam, L"playerHandUse_LMB", me) ? 1 : 0);
+    }
+    if (slot1 && s_step == 2 && t >= 70000u && cam) {
+        s_step = 3;
+        UE_LOGI("[PHOTO] client: clicked the camera with no paper (ran=%d)",
+                CallPlayer(cam, L"playerHandUse_LMB", me) ? 1 : 0);
+    }
+    for (int i = 0; i < 2; ++i) {
+        const uint64_t at = i ? 95000u : 90000u;
+        if (slot1 && s_step == 3 + i && t >= at && tape && bottle) {
+            s_step = 4 + i;
+            static R::InstanceOffset s_prop(L"prop");
+            const int32_t off = s_prop.Of(tape);
+            if (off >= 0) *reinterpret_cast<void**>(static_cast<char*>(tape) + off) = bottle;
+            UE_LOGI("[PHOTO] client: taped the bottle (ran=%d)", CallPlayer(tape, L"playerHandUse_LMB", me) ? 1 : 0);
+        }
+    }
+    static uint64_t s_next = 0;
+    if (t < 30000u || t > 125000u || t < s_next) return;
+    s_next = t + 5000u;
+    const int32_t gal = PS::Count(false), phys = PS::Count(true);
+    std::vector<uint8_t> b;
+    char last[160] = "";
+    int len = 0;
+    for (int32_t i = phys - 2 > 0 ? phys - 2 : 0; i < phys; ++i) {
+        const bool ok = PS::Read(true, i, b);
+        len += std::snprintf(last + len, sizeof(last) - static_cast<size_t>(len), " [%d] %zu/%08x", i, ok ? b.size() : 0,
+                             ok ? Fnv(b) : 0u);
+    }
+    void* photos[16];
+    const int n = ue_wrap::world_instances::Find(L"prop_photo_C", photos, 16);
+    char copies[160] = "";
+    len = 0;
+    static R::InstanceOffset s_idx(L"index");
+    for (int i = 0; i < n && len < 120; ++i) {
+        const int32_t off = s_idx.Of(photos[i]);
+        const int32_t idx = off >= 0 ? *reinterpret_cast<const int32_t*>(static_cast<const char*>(photos[i]) + off) : -1;
+        const bool ok = PS::Read(true, idx, b);
+        len += std::snprintf(copies + len, sizeof(copies) - static_cast<size_t>(len), " %d:%08x", idx, ok ? Fnv(b) : 0u);
+    }
+    float full = 0.f;
+    const float* const bh = BottleHealth(bottle, &full);
+    static R::InstanceOffset s_uses(L"uses");
+    const int32_t uo = tape ? s_uses.Of(tape) : -1;
+    UE_LOGI("[PHOTO] %s t=%llu: gallery %d, pictures %d:%s; photo copies %d:%s; bottle %.1f/%.1f; tape uses %d",
+            host ? "host" : "client", static_cast<unsigned long long>(t / 1000u), gal, phys, last, n, copies,
+            bh ? *bh : -1.f, full, uo >= 0 ? *reinterpret_cast<const int32_t*>(static_cast<const char*>(tape) + uo) : -1);
+    if (t >= 118000u) UE_LOGI("[ENTITY] done");
 }
 
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
@@ -853,6 +1111,10 @@ void Tick(coop::net::Session* session) {
     }
     if (DroneMode()) {
         DroneStep(host, t);
+        return;
+    }
+    if (PhotoMode()) {
+        PhotoStep(host, t);
         return;
     }
     if (Catalog()) {
