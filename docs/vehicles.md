@@ -195,8 +195,9 @@ element id (`riderEid`), so a peer learns who rides from the stamp and from noth
 
 The driver's own player is attached to the ATV and hidden while it drives, so its stream says nothing a body could sit
 by. On every other peer, when the table puts a peer on an ATV, that peer's body is attached to the ATV once, at the
-ATV's `playerHit` across and turned (where the game's own sit puts its hidden player) at 25 cm above `sitarrow` in height
-(`playerHit` stands about 140 cm higher, so a body there floated above the ATV: issue 46), in the AnimBP's seat pose (`isOnAtv`),
+handlebars, 100 cm ahead of the ATV's `Camera` and 25 cm above `sitarrow`, in the AnimBP's seat pose (`isOnAtv`). The
+game's own sit puts its hidden player at `playerHit`, about 1.15 m higher and 1 m back over the passenger's place; a body
+there floated behind the driver's seat (issue 46, an upstream change to `playerHit` reverted),
 with its collision off so it cannot push the ATV. When the seat ends, the body is detached and the stream places it again
 (`coop/player/puppet_seat`).
 
@@ -367,7 +368,7 @@ join window is not queued.
 | The pose stream rides the reliable lane; a sequenced unreliable stream is the intended shape | `[V]` `coop/interactables/atv_sync` sends it reliable |
 | Not synced here: the radio, whose track rides the media lane (docs/kitchen-and-media.md) | `[V]` nothing under `coop/interactables/atv_*` carries it |
 | A client's refuel or repair is the rise its copy shows, which the host takes as is within the 100 ceiling and the reach; the gas can's own fuel after a pour is not carried. A refused take-off of a module the host does not have leaves its author's module in the world | `[V]` `coop/interactables/atv_host_sync` |
-| A seated driver's head does not follow its look, and its flashlight and steps are still; a riding kerfur and the driver's body share the ATV, the driver at the ATV's `playerHit` at the seat's height and the kerfur at its `sitarrow`. A client's mirror rides the ATV the stamp names, not the nearest one | `[?]` `coop/player/puppet_seat`, `coop/creatures/npc_ride` |
+| A seated driver's head does not follow its look, and its flashlight and steps are still; a riding kerfur and the driver's body share the ATV, the driver ahead of the ATV's `Camera` and the kerfur at its `sitarrow`. A client's mirror rides the ATV the stamp names, not the nearest one | `[?]` `coop/player/puppet_seat`, `coop/creatures/npc_ride` |
 
 ## Code map
 

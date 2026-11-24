@@ -593,18 +593,22 @@ bool WriteKerfurList(void* atv, const std::vector<void*>& list) {
 
 bool GetSeatTransform(void* atv, FVector& loc, FRotator& rot) {
     if (!atv || !R::IsLive(atv)) return false;
-    // The ATV's own sit attaches the player to the ATV at the world transform of `playerHit` (in its `playerHitWith`
-    // event) and hides it: `playerHit` carries a hidden capsule, about 140 cm above where a seated body's pivot goes. A
-    // remote driver's body takes `playerHit`'s place across and its turn, at the height a riding pivot takes above
-    // `sitarrow` (the passenger's, ue_wrap/devices/atv_passenger_seat), so it sits on the seat (issue 46).
-    constexpr float kBodyUpCm = 25.f;
-    void* hit = ReadObj(atv, g_playerHit.Get());
+    // The ATV's own sit attaches its player at `playerHit` and hides it: `playerHit` carries only the hidden capsule,
+    // about 1.15 m above the seat and 1 m behind the handlebars, over the passenger's place, so a body there floated
+    // behind the driver's seat (issue 46). The body sits forward of the camera, at the handlebars, on the seat: the
+    // placement the passenger's (ue_wrap/devices/atv_passenger_seat) is tuned to sit behind.
+    void* camera = ReadObj(atv, g_camera.Get());
     void* sit = ReadObj(atv, g_sitarrow.Get());
-    FVector seat{};
-    if (!hit || !sit || !engine::TryGetComponentLocation(hit, loc) || !engine::TryGetComponentWorldRotation(hit, rot) ||
-        !engine::TryGetComponentLocation(sit, seat))
+    FVector eye{}, seat{};
+    if (!camera || !sit || !engine::TryGetComponentLocation(camera, eye) || !engine::TryGetComponentLocation(sit, seat) ||
+        !engine::TryGetComponentWorldRotation(sit, rot))
         return false;
-    loc.Z = seat.Z + kBodyUpCm;
+    constexpr float kForwardCm = 100.f;
+    constexpr float kUpCm = 25.f;  // on the seat, not in it
+    constexpr float kDeg2Rad = 0.01745329252f;
+    const float yaw = rot.Yaw * kDeg2Rad, pitch = rot.Pitch * kDeg2Rad;
+    loc = FVector{eye.X + std::cos(pitch) * std::cos(yaw) * kForwardCm, eye.Y + std::cos(pitch) * std::sin(yaw) * kForwardCm,
+                  seat.Z + std::sin(pitch) * kForwardCm + kUpCm};
     return true;
 }
 
