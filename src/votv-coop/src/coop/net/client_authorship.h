@@ -52,6 +52,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::TapeAsk:
     case ReliableKind::BucketPourAsk:
     case ReliableKind::GasCanSpend:
+    case ReliableKind::PictureAsk:
     case ReliableKind::MinerIntent:
     case ReliableKind::FireExtIntent:
     case ReliableKind::CoverIntent:
@@ -318,6 +319,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::TapeState:
     case ReliableKind::CrematorFuel:
     case ReliableKind::GasCanState:
+    case ReliableKind::PictureState:
     case ReliableKind::MinerState:
     case ReliableKind::FireExtState:
     case ReliableKind::CoverState:

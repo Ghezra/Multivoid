@@ -476,7 +476,7 @@ under an exact match (Ghezra/Multivoid issue 42) `[V]` (`VOTVCOOP_BUCKET_CLASS`,
 a client's fill read 35 there and 0 elsewhere; now every step matches on all three).
 
 A bucket's water and concrete and a cement bag's units are the host's ([props-buckets.md](props-buckets.md)); so are a
-light's switch ([props-switches.md](props-switches.md)) and a photo's picture and a tape's repair ([props-camera-tape.md](props-camera-tape.md)).
+light's switch ([props-switches.md](props-switches.md)), a photo's picture, a tape's repair and a custom picture ([props-camera-tape.md](props-camera-tape.md)).
 
 ## Who owns what
 

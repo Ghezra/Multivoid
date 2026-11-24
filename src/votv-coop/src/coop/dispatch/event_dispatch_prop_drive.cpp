@@ -28,6 +28,7 @@
 #include "coop/props/prop_switch_sync.h"  // a light's or the hot plate's switch, the host's
 #include "coop/props/photo_sync.h"  // a printed photo's picture, the host's save's
 #include "coop/props/tape_sync.h"
+#include "coop/props/custom_picture_sync.h"  // a frame's or poster's custom picture name, the host's
 #include "coop/props/bucket_pour.h"
 #include "coop/interactables/gasoline_sync.h"  // the cremator's fuel and a gas can's, the host's  // a client's tipped bucket's pour, the host's to spawn   // a tape's repair, the host's
 #include "coop/props/rdrone_sync.h"  // a remote drone's flight, switch and energy, the host's
@@ -597,6 +598,27 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         ::coop::bucket_pour::OnAsk(msg.senderPeerSlot, p);
+        break;
+    }
+    case net::ReliableKind::PictureAsk:
+    case net::ReliableKind::PictureState: {
+        // CLIENT->HOST a pick; HOST->ALL a piece's name (coop/props/custom_picture_sync). Exact length.
+        net::CustomPicturePayload p{};
+        const bool state = msg.kind == net::ReliableKind::PictureState;
+        if ((session.role() == net::Role::Host) == state || msg.payloadLen != sizeof(p)) {
+            UE_LOGW("event_feed: a custom picture row the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        std::memcpy(&p, msg.payload, sizeof(p));
+        bool sane = p.len <= 94 && p.key.len <= sizeof(p.key.data) && (p.eid != 0) != (p.key.len != 0);
+        for (uint8_t i = 0; sane && i < p.len; ++i) sane = p.name[i] >= 32 && p.name[i] != 127;
+        if (!sane) {
+            UE_LOGW("event_feed: a custom picture row malformed -- dropping");
+            break;
+        }
+        if (state) ::coop::custom_picture_sync::OnState(p);
+        else ::coop::custom_picture_sync::OnAsk(msg.senderPeerSlot, p);
         break;
     }
     case net::ReliableKind::TapeState: {

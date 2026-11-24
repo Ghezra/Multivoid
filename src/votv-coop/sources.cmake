@@ -87,6 +87,7 @@ set(VOTVCOOP_SOURCES
     src/coop/props/rdrone_sync.cpp
     src/coop/props/photo_sync.cpp
     src/coop/props/tape_sync.cpp
+    src/coop/props/custom_picture_sync.cpp
     src/coop/props/bucket_pour.cpp
     src/coop/world/sound_relay.cpp
     src/coop/world/sound_catalog.cpp

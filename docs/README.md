@@ -60,7 +60,7 @@ messages, the late-join answer, the known limits with their evidence, and the co
 | [props.md](props.md) | Props: identity, the birth and death seams, holding and throwing, containers, the props that change on their own |
 | [props-buckets.md](props-buckets.md) | Buckets and cement bags: the host's water and concrete, the rows, a client's verbs as asked families, a tipped bucket's pour, a dropped item's record gate |
 | [props-switches.md](props-switches.md) | A light's or the hot plate's switch: the host's state, a client's press asked and judged, the plate's heat level, the joiner's snapshot |
-| [props-camera-tape.md](props-camera-tape.md) | The printer camera and the tape: a printed photo's picture from the host's save, a client's print filed there, a tape's repair asked of the host |
+| [props-camera-tape.md](props-camera-tape.md) | The printer camera, the tape and custom pictures: a printed photo's picture from the host's save, a client's print filed there, a tape's repair asked of the host, a frame's or poster's custom picture by its file name |
 | [prop-coasting.md](prop-coasting.md) | Props in motion with no hand on them: the host's drive set, its feeders (a hook, a broom, a birth, a let-go, a body's push), the cap and the rest rule |
 | [deployables.md](deployables.md) | The tools that leave an actor behind: the grappling hook and rope, the owner's stream, the anchor handoff, the tie that lives on the host |
 | [piles.md](piles.md) | Trash piles: the host's id across pile and clump, the client's grab as an intent, the dispenser piles |

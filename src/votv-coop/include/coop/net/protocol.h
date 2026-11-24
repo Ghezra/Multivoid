@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 359;
+inline constexpr uint16_t kProtocolVersion = 360;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1719,6 +1719,12 @@ enum class ReliableKind : uint16_t {
     // CLIENT->HOST: this client's copy of a gas can lost fuel to its player's pour; the host takes it as the can's fuel,
     // never higher. Never relayed. GasCanPayload.
     GasCanSpend = 337,
+    // CLIENT->HOST: this client's custom picture pick on a frame or poster, its file name (coop/props/custom_picture_sync).
+    // Never relayed; not pre-world. CustomPicturePayload.
+    PictureAsk = 338,
+    // HOST->ALL: a frame's or poster's custom picture file name; to a joiner, every named frame and held poster; to a
+    // refused asker, the host's name. Never relayed; not pre-world. CustomPicturePayload.
+    PictureState = 339,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2781,6 +2787,17 @@ struct GasCanPayload {
     float    amount;
 };
 static_assert(sizeof(GasCanPayload) == 8, "GasCanPayload must be 8 bytes");
+
+// A custom picture's file name (PictureAsk, PictureState) on a frame or held poster (`eid`, `key` empty) or a poster on
+// a wall (its save `key`, `eid` zero). The name is UTF-16, `len` units; never the picture itself.
+struct CustomPicturePayload {
+    uint32_t eid;
+    WireKey  key;
+    uint8_t  len;        // 0..94; 0 no picture
+    uint8_t  pad[3];     // zero
+    uint16_t name[94];
+};
+static_assert(sizeof(CustomPicturePayload) == 228, "CustomPicturePayload must be 228 bytes (the reliable cap)");
 
 // A wall builder's aiming preview (WallPreview): the tool's own components, in world space.
 struct WallPreviewPayload {
