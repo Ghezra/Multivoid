@@ -38,6 +38,7 @@
 #include "ue_wrap/devices/cremator.h"
 #include "ue_wrap/core/fname_utils.h"
 #include "ue_wrap/actors/floppy_disc.h"
+#include "ue_wrap/core/field_io.h"
 #include "ue_wrap/devices/window_canvas.h"
 #include "coop/interactables/window_stroke_sync.h"
 #include "ue_wrap/core/object_index.h"
@@ -1257,6 +1258,112 @@ void GrimeStep(bool host, uint64_t t) {
     if (host && t >= 140000u) UE_LOGI("[ENTITY] done");
 }
 
+// VOTVCOOP_ENTITY_PROBE=rugs: rugs and stickers laid, and their custom pictures. HOST 40 s: a held custom rug
+// (prop_rug_c_C), a laid custom rug (rug_c_C) and a sticker (sticker_C, the gamemode's first sticker) before it. CLIENT
+// slot 1, 50 s: its own laid rug and sticker beside its body. Slot 1, 60 s and 65 s: picks the first custom rug picture
+// on the held rug and the second on the laid rug nearest the host's body. HOST 80 s: picks the first on that rug. Every
+// peer, each 5 s from 35 s (`[RUG]`): its laid rugs and stickers, their pictures, and the held rug's.
+bool RugMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "rugs";
+    return v;
+}
+
+// The gamemode's `names` list's `i`th entry, as a string.
+std::wstring GmName(void* piece, const wchar_t* names, int i) {
+    static R::InstanceOffset s_gm(L"gamemode");
+    const int32_t go = piece ? s_gm.Of(piece) : -1;
+    void* const gm = go >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(piece) + go) : nullptr;
+    const int32_t no = gm ? R::FindPropertyOffset(R::ClassOf(gm), names) : -1;
+    if (no < 0) return L"";
+    struct Arr {
+        R::FName* data;
+        int32_t num, max;
+    };
+    const Arr* const a = reinterpret_cast<const Arr*>(static_cast<char*>(gm) + no);
+    return i < a->num ? R::ToString(a->data[i]) : L"";
+}
+
+void* RugSpawn(const wchar_t* cls, const ue_wrap::FVector& at, const std::wstring& sticker) {
+    const CR::Resolved rc = CR::ResolveClass(cls, CR::AnyFamily(), CR::Load::Immediate);
+    void* const a = rc.cls ? E::BeginDeferredSpawn(rc.cls, at, {}) : nullptr;
+    if (a && !sticker.empty()) {
+        const int32_t off = R::FindPropertyOffset(R::ClassOf(a), L"name");
+        if (off >= 0) ue_wrap::field_io::WriteFStringField(a, off, sticker);
+    }
+    return a && E::FinishDeferredSpawn(a, at, {}) ? a : nullptr;
+}
+
+std::wstring RugList(const wchar_t* cls, const wchar_t* field, bool fstr) {
+    static void* found[64];
+    const int n = ue_wrap::world_instances::Find(cls, found, 64);
+    std::wstring out = std::to_wstring(n) + L"[";
+    for (int i = 0; i < n; ++i) {
+        const int32_t off = R::FindPropertyOffset(R::ClassOf(found[i]), field);
+        std::wstring v = L"-";
+        if (off >= 0) v = fstr ? ue_wrap::field_io::ReadFStringAt(found[i], off)
+                               : R::ToString(*reinterpret_cast<R::FName*>(static_cast<char*>(found[i]) + off));
+        out += (i ? L"," : L"") + v;
+    }
+    return out + L"]";
+}
+
+void RugStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    void* const me = coop::players::Registry::Get().Local();
+    coop::RemotePlayer* const hp = host ? nullptr : coop::players::Registry::Get().Puppet(0);
+    void* const ref = host ? me : (hp ? hp->actor() : nullptr);
+    void* const held = PicNearest(L"prop_rug_c_C", ref);
+    void* const laid = PicNearest(L"rug_c_C", ref);
+    const uint8_t slot = host ? 0 : static_cast<uint8_t>(coop::players::Registry::Get().LocalPeerId());
+    auto before = [&](float fwd, float side) {
+        ue_wrap::FVector at{};
+        ue_wrap::FRotator rot{};
+        E::TryGetActorLocation(me, at);
+        E::TryGetActorRotation(me, rot);
+        const float yaw = rot.Yaw * 0.0174532925f;
+        return ue_wrap::FVector{at.X + fwd * std::cos(yaw) - side * std::sin(yaw),
+                                at.Y + fwd * std::sin(yaw) + side * std::cos(yaw), at.Z - 80.f};
+    };
+    if (host && s_step == 0 && t >= 40000u && me) {
+        s_step = 1;
+        void* const a = RugSpawn(L"prop_rug_c_C", before(200.f, -150.f), L"");
+        void* const b = RugSpawn(L"rug_c_C", before(250.f, 0.f), L"");
+        const std::wstring stk = GmName(b, L"filenames_stickers", 0);
+        void* const c = RugSpawn(L"sticker_C", before(200.f, 150.f), stk);
+        UE_LOGI("[RUG] host: held rug %d, laid rug %d, sticker '%ls' %d", a ? 1 : 0, b ? 1 : 0, stk.c_str(), c ? 1 : 0);
+    }
+    if (slot == 1 && s_step == 0 && t >= 50000u && me && laid) {
+        s_step = 1;
+        void* const b = RugSpawn(L"rug_c_C", before(150.f, -100.f), L"");
+        const std::wstring stk = GmName(laid, L"filenames_stickers", 1);
+        void* const c = RugSpawn(L"sticker_C", before(150.f, 100.f), stk);
+        UE_LOGI("[RUG] client: its own laid rug %d, sticker '%ls' %d", b ? 1 : 0, stk.c_str(), c ? 1 : 0);
+    }
+    std::wstring picked;
+    if (slot == 1 && s_step == 1 && t >= 60000u && held) {
+        s_step = 2;
+        const bool ran = PicPick(held, L"filenames_rugs", L"rugs", 0, picked);
+        UE_LOGI("[RUG] client: picked '%ls' for the held rug (ran=%d)", picked.c_str(), ran ? 1 : 0);
+    }
+    if (slot == 1 && s_step == 2 && t >= 65000u && laid) {
+        s_step = 3;
+        const bool ran = PicPick(laid, L"filenames_rugs", L"rugs", 1, picked);
+        UE_LOGI("[RUG] client: picked '%ls' for the laid rug (ran=%d)", picked.c_str(), ran ? 1 : 0);
+    }
+    if (host && s_step == 1 && t >= 80000u && laid) {
+        s_step = 2;
+        const bool ran = PicPick(laid, L"filenames_rugs", L"rugs", 0, picked);
+        UE_LOGI("[RUG] host: picked '%ls' for the laid rug (ran=%d)", picked.c_str(), ran ? 1 : 0);
+    }
+    static uint64_t s_next = 0;
+    if (t < 35000u || t > 150000u || t < s_next) return;
+    s_next = t + 5000u;
+    UE_LOGI("[RUG] %s t=%llu: laid rugs %ls; stickers %ls; held rug '%ls'", host ? "host" : "client",
+            static_cast<unsigned long long>(t / 1000u), RugList(L"rug_c_C", L"filename", false).c_str(),
+            RugList(L"sticker_C", L"name", true).c_str(), PicName(held).c_str());
+    if (host && t >= 140000u) UE_LOGI("[ENTITY] done");
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -1719,6 +1826,10 @@ void Tick(coop::net::Session* session) {
     }
     if (GrimeMode()) {
         GrimeStep(host, t);
+        return;
+    }
+    if (RugMode()) {
+        RugStep(host, t);
         return;
     }
     if (Catalog()) {
