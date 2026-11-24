@@ -10,7 +10,10 @@
 #include "coop/config/config.h"
 #include "coop/element/element.h"
 #include "coop/element/registry.h"
+#include "coop/dev/director/aimed_grab.h"
 #include "coop/dev/director/director.h"
+#include "coop/props/bucket_pour.h"
+#include "coop/props/bucket_sync.h"
 #include "coop/net/session.h"
 #include "coop/player/players_registry.h"
 #include "coop/player/remote_player.h"
@@ -28,7 +31,9 @@
 #include "ue_wrap/engine/engine_attach.h"
 #include "ue_wrap/engine/engine_physics.h"
 #include "ue_wrap/engine/engine_component.h"
+#include "ue_wrap/actors/bucket.h"
 #include "ue_wrap/actors/photo_store.h"
+#include "ue_wrap/devices/grime.h"
 #include "ue_wrap/actors/spawner_stamp.h"
 #include "ue_wrap/engine/data_table.h"
 #include "ue_wrap/engine/engine_pawn.h"
@@ -42,6 +47,7 @@
 #include <cstring>
 #include <cwchar>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -677,6 +683,145 @@ void PhotoStep(bool host, uint64_t t) {
     if (t >= 118000u) UE_LOGI("[ENTITY] done");
 }
 
+// VOTVCOOP_ENTITY_PROBE=pour: a client's tipped bucket over a stain. Every peer, 35 s: the cleanable decal nearest the
+// host's spot with a process of 50 or more (each peer finds the same one). HOST 40 s: a water bucket 1.2 m off, filled.
+// CLIENT slot 1, 50 s: to 1.6 m off the bucket, 52 s on: its grab (the director's aimed grab), then 6 s of its view on the
+// decal and the bucket held turned over 60 cm above it, then let go. Every peer, each 2 s to 120 s (`[POUR]`): the decal's process, the
+// bucket's water, the pour blobs standing and the lane's counts.
+bool PourMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "pour";
+    return v;
+}
+
+constexpr const wchar_t* kStains[] = {L"grime_dusty_C", L"grime_blood_C", L"grime_blood2_C",
+                                      L"grime_blood2_drip_C", L"grime_coffee_C", L"grime_grainy_C", L"grime_oil_C",
+                                      L"grime_poo_C",         L"grime_beer_C"};
+
+// The cleanable decal nearest `at` with a process of at least `min` (nullptr when none within 8 m).
+void* NearestStain(const ue_wrap::FVector& at, float min) {
+    void* best = nullptr;
+    float bestD = 800.f * 800.f;
+    void* found[64];
+    for (const wchar_t* c : kStains) {
+        const int n = ue_wrap::world_instances::Find(c, found, 64);
+        for (int i = 0; i < n; ++i) {
+            float process = 0.f;
+            bool cleanable = false;
+            ue_wrap::FVector p{};
+            if (!ue_wrap::grime::ReadProcess(found[i], process) || process < min ||
+                !ue_wrap::grime::ReadIsCleanable(found[i], cleanable) || !cleanable || !E::TryGetActorLocation(found[i], p))
+                continue;
+            const float d = (p.X - at.X) * (p.X - at.X) + (p.Y - at.Y) * (p.Y - at.Y) + (p.Z - at.Z) * (p.Z - at.Z);
+            if (d < bestD) {
+                bestD = d;
+                best = found[i];
+            }
+        }
+    }
+    return best;
+}
+
+void PourStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    static ue_wrap::FVector s_stain{};
+    static bool s_have = false;
+    static std::unique_ptr<coop::director::AimedGrab> s_grab;
+    static uint64_t s_grabbedAt = 0;
+    void* const me = coop::players::Registry::Get().Local();
+    void* const bucket = First(L"prop_bucket_C");
+    if (!s_have && t >= 35000u) {
+        s_have = true;  // the host's spot: every peer joined at the host and the decals are the save's
+        const ue_wrap::FVector spot{-1044.f, 576.f, 6651.f};
+        void* const d = NearestStain(spot, 50.f);
+        float process = -1.f;
+        if (d && E::TryGetActorLocation(d, s_stain)) ue_wrap::grime::ReadProcess(d, process);
+        else s_have = false;
+        ue_wrap::FVector centre{};
+        float half = -1.f;
+        if (d) ue_wrap::grime::ReadBox(d, centre, half);
+        UE_LOGI("[POUR] %s: the stain %ls at (%.0f,%.0f,%.0f), process %.1f, its box %.0f cm across about (%.0f,%.0f,%.0f)",
+                host ? "host" : "client", d ? R::ClassNameOf(d).c_str() : L"(none)", s_stain.X, s_stain.Y, s_stain.Z,
+                process, 2.f * half, centre.X, centre.Y, centre.Z);
+    }
+    if (host && s_step == 0 && t >= 40000u && s_have) {
+        s_step = 1;
+        const CR::Resolved rc = CR::ResolveClass(L"prop_bucket_C", CR::AnyFamily(), CR::Load::Immediate);
+        const ue_wrap::FVector to{s_stain.X + 120.f, s_stain.Y, s_stain.Z + 15.f};  // beside it: a landing splash cleans
+        UE_LOGI("[POUR] host: the bucket spawned=%d", rc.cls && E::SpawnActor(rc.cls, to) ? 1 : 0);
+    }
+    if (host && s_step == 1 && t >= 42000u && bucket) {
+        s_step = 2;
+        ue_wrap::bucket::Plain w;
+        if (ue_wrap::bucket::ReadPlain(bucket, w)) {
+            ue_wrap::bucket::WritePlain(bucket, w.maxHeight, 0, 0.f, false, false);
+            static R::InstanceOffset s_interp(L"height_interp");  // eased to the same, so the tick sees no change to pour
+            const int32_t off = s_interp.Of(bucket);
+            if (off >= 0) *reinterpret_cast<float*>(static_cast<char*>(bucket) + off) = w.maxHeight;
+        }
+        coop::bucket_sync::MarkDirty(bucket);
+        UE_LOGI("[POUR] host: the bucket filled to %.1f", w.maxHeight);
+    }
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    if (slot1 && s_step == 0 && t >= 50000u && bucket && me) {
+        s_step = 1;
+        ue_wrap::FVector b{}, body{};
+        E::TryGetActorLocation(bucket, b);
+        E::TryGetActorLocation(me, body);
+        const ue_wrap::FVector to{b.X + 160.f, b.Y, body.Z};
+        UE_LOGI("[POUR] client: stepped 1.6 m off the bucket (ok=%d)", E::TeleportTo(me, to, ue_wrap::FRotator{}) ? 1 : 0);
+    }
+    if (slot1 && s_step == 1 && t >= 52000u && bucket && me) {
+        if (!s_grab) s_grab = std::make_unique<coop::director::AimedGrab>(me, bucket);
+        const coop::director::GrabState gs = s_grab->Tick();
+        if (gs != coop::director::GrabState::Working) {
+            s_step = gs == coop::director::GrabState::Grabbed ? 2 : 9;
+            s_grabbedAt = t;
+            ue_wrap::FVector b{}, body{};
+            E::TryGetActorLocation(bucket, b);
+            E::TryGetActorLocation(me, body);
+            UE_LOGI("[POUR] client: the grab %s (%s); bucket at (%.0f,%.0f,%.0f), body at (%.0f,%.0f,%.0f)",
+                    gs == coop::director::GrabState::Grabbed ? "took the bucket" : "failed",
+                    gs == coop::director::GrabState::Grabbed ? "" : s_grab->Why(), b.X, b.Y, b.Z, body.X, body.Y,
+                    body.Z);
+        }
+    }
+    if (slot1 && s_step == 2 && bucket && me) {
+        ue_wrap::FVector eye{};
+        if (E::ReadMainPlayerCameraLocation(me, eye))
+            E::SetControlRotation(E::GetController(me), coop::director::LookAt(eye, s_stain));
+        if (t >= s_grabbedAt + 1500u) {
+            ue_wrap::FRotator over{};
+            over.Roll = 160.f;  // turned over over the stain: the rim below the base
+            E::SetActorLocation(bucket, ue_wrap::FVector{s_stain.X, s_stain.Y, s_stain.Z + 60.f});
+            E::SetActorRotation(bucket, over);
+        }
+        if (t >= s_grabbedAt + 7500u) {
+            s_step = 3;
+            coop::director::CallOnPlayer(me, L"dropGrabObject");
+            UE_LOGI("[POUR] client: let the bucket go");
+        }
+    }
+    static uint64_t s_next = 0;
+    if (t < 30000u || t > 125000u || t < s_next) return;
+    s_next = t + 2000u;
+    float process = -1.f;
+    if (s_have) {
+        void* const d = NearestStain(s_stain, 0.f);
+        ue_wrap::FVector p{};
+        if (d && E::TryGetActorLocation(d, p) && std::fabs(p.X - s_stain.X) < 5.f && std::fabs(p.Y - s_stain.Y) < 5.f)
+            ue_wrap::grime::ReadProcess(d, process);
+    }
+    ue_wrap::bucket::Plain w;
+    const bool hasW = bucket && ue_wrap::bucket::ReadPlain(bucket, w);
+    void* blobs[64];
+    const int nb = ue_wrap::world_instances::Find(L"prop_sponge_bucketPour_C", blobs, 64);
+    const coop::bucket_pour::Counts c = coop::bucket_pour::GetCounts();
+    UE_LOGI("[POUR] %s t=%llu: stain process %.1f; bucket water %.1f; blobs standing %d; asked %u spawned %u refused %u",
+            host ? "host" : "client", static_cast<unsigned long long>(t / 1000u), process, hasW ? w.height : -1.f, nb,
+            c.asked, c.spawned, c.refused);
+    if (t >= 118000u) UE_LOGI("[ENTITY] done");
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -1115,6 +1260,10 @@ void Tick(coop::net::Session* session) {
     }
     if (PhotoMode()) {
         PhotoStep(host, t);
+        return;
+    }
+    if (PourMode()) {
+        PourStep(host, t);
         return;
     }
     if (Catalog()) {
