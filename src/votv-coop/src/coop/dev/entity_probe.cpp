@@ -35,6 +35,7 @@
 #include "ue_wrap/engine/engine_component.h"
 #include "ue_wrap/actors/bucket.h"
 #include "ue_wrap/devices/atv.h"
+#include "ue_wrap/devices/cremator.h"
 #include "ue_wrap/actors/photo_store.h"
 #include "ue_wrap/devices/grime.h"
 #include "ue_wrap/actors/spawner_stamp.h"
@@ -894,6 +895,103 @@ void AtvStep(bool host, uint64_t t) {
     }
 }
 
+// VOTVCOOP_ENTITY_PROBE=gas: the cremator's valve and a gas can's fuel. HOST 40 s: the cremator's fuel to 60 and an empty
+// gas can at its nozzle (`gascanAlign1`). CLIENT slot 1, 55 s: its copy's valve pressed (the host's reach check off) (lookingAt_valve set, action 4);
+// 75 s: pressed again; 85 s: 5 of its can copy's fuel spent. Every peer, each 2 s to 120 s (`[GAS]`): the cremator's fuel
+// and valve and the can's fuel.
+bool GasMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "gas";
+    return v;
+}
+
+bool PressValve(void* c, void* me) {
+    for (const auto& f : {std::make_pair(L"lookingAt_valve", true), std::make_pair(L"lookingAt_handle", false)}) {
+        int32_t off = -1;
+        uint8_t mask = 0;
+        if (!R::FindBoolProperty(R::ClassOf(c), f.first, off, mask) || off < 0) return false;
+        uint8_t& b = *(static_cast<uint8_t*>(c) + off);
+        b = f.second ? static_cast<uint8_t>(b | mask) : static_cast<uint8_t>(b & ~mask);
+    }
+    return Press(c, me, ue_wrap::cremator::kPressAction);
+}
+
+void GasStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    void* const me = coop::players::Registry::Get().Local();
+    void* const c = First(L"cremator_C");
+    static R::InstanceOffset s_amount(L"amount");
+    static R::InstanceOffset s_align(L"gascanAlign1");
+    ue_wrap::FVector nozzle{};
+    {
+        const int32_t off = c ? s_align.Of(c) : -1;
+        void* const comp = off >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(c) + off) : nullptr;
+        if (comp) E::TryGetComponentLocation(comp, nozzle);
+    }
+    void* can = nullptr;  // the can nearest the nozzle
+    {
+        void* all[64];
+        const int n = ue_wrap::world_instances::Find(L"prop_gascan_C", all, 64);
+        float best = 300.f * 300.f;
+        for (int i = 0; i < n; ++i) {
+            ue_wrap::FVector a{};
+            if (!E::TryGetActorLocation(all[i], a)) continue;
+            const float d = (a.X - nozzle.X) * (a.X - nozzle.X) + (a.Y - nozzle.Y) * (a.Y - nozzle.Y) +
+                            (a.Z - nozzle.Z) * (a.Z - nozzle.Z);
+            if (d < best) {
+                best = d;
+                can = all[i];
+            }
+        }
+    }
+    auto amount = [&](void* a) -> float* {
+        const int32_t off = a ? s_amount.Of(a) : -1;
+        return off >= 0 ? reinterpret_cast<float*>(static_cast<char*>(a) + off) : nullptr;
+    };
+    if (host && s_step == 0 && t >= 40000u && c) {
+        s_step = 1;
+        ue_wrap::cremator::WriteGasAmount(c, 60.f);
+        ue_wrap::FVector at = nozzle;
+        const bool where = nozzle.X != 0.f || nozzle.Y != 0.f;
+        at.Z += 5.f;
+        const CR::Resolved rc = CR::ResolveClass(L"prop_gascan_C", CR::AnyFamily(), CR::Load::Immediate);
+        void* const a = where && rc.cls ? E::BeginDeferredSpawn(rc.cls, at, {}) : nullptr;
+        if (float* const am = amount(a)) *am = 0.f;
+        const bool ok = a && E::FinishDeferredSpawn(a, at, {});
+        UE_LOGI("[GAS] host: the cremator's fuel to 60; an empty can at its nozzle (%.0f,%.0f,%.0f) spawned=%d", at.X,
+                at.Y, at.Z, ok ? 1 : 0);
+    }
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    if (slot1 && c && me) {
+        if (s_step == 0 && t >= 55000u) {
+            s_step = 1;
+            UE_LOGI("[GAS] client: pressed the cremator's valve (ran=%d)", PressValve(c, me) ? 1 : 0);
+        }
+        if (s_step == 1 && t >= 75000u) {
+            s_step = 2;
+            UE_LOGI("[GAS] client: pressed the cremator's valve again (ran=%d)", PressValve(c, me) ? 1 : 0);
+        }
+        if (s_step == 2 && t >= 85000u && can) {
+            s_step = 3;
+            float* const am = amount(can);
+            if (am) *am = *am > 5.f ? *am - 5.f : 0.f;
+            UE_LOGI("[GAS] client: spent 5 of its can copy's fuel (%.1f left)", am ? *am : -1.f);
+        }
+    }
+    static uint64_t s_next = 0;
+    if (t < 30000u || t > 125000u || t < s_next) return;
+    s_next = t + 2000u;
+    float gas = -1.f;
+    bool pouring = false;
+    if (c) {
+        ue_wrap::cremator::ReadGasAmount(c, gas);
+        ue_wrap::cremator::ReadPouring(c, pouring);
+    }
+    const float* const am = amount(can);
+    UE_LOGI("[GAS] %s t=%llu: cremator fuel %.1f valve %s; can fuel %.1f", host ? "host" : "client",
+            static_cast<unsigned long long>(t / 1000u), gas, pouring ? "open" : "shut", am ? *am : -1.f);
+    if (t >= 118000u) UE_LOGI("[ENTITY] done");
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -1340,6 +1438,10 @@ void Tick(coop::net::Session* session) {
     }
     if (AtvMode()) {
         AtvStep(host, t);
+        return;
+    }
+    if (GasMode()) {
+        GasStep(host, t);
         return;
     }
     if (Catalog()) {
