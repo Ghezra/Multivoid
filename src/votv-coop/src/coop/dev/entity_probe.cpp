@@ -38,6 +38,8 @@
 #include "ue_wrap/devices/cremator.h"
 #include "ue_wrap/core/fname_utils.h"
 #include "ue_wrap/actors/floppy_disc.h"
+#include "ue_wrap/devices/window_canvas.h"
+#include "coop/interactables/window_stroke_sync.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/actors/save_record.h"
 #include "ue_wrap/actors/photo_store.h"
@@ -1175,6 +1177,86 @@ void ZipStep(bool host, uint64_t t) {
     UE_LOGI("[ENTITY] done");
 }
 
+// VOTVCOOP_ENTITY_PROBE=grime: the bay window's dirt. HOST 40 s: its window's dirtify run six times. CLIENT slot 1,
+// 50 s: its own dirtify run (refused). HOST 65 s: a sponge no one holds spawned; 70 s: the window's own cleanAtPoint
+// with it, five dabs at the window's middle, which the stroke lane cannot send (as a thrown sponge's). Every peer, each
+// 10 s from 35 s: its window's picture's size and hash, the picture written beside the log (`grime-<slot>.jpg`).
+bool GrimeMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "grime";
+    return v;
+}
+
+uint32_t GrimeFnv(const std::vector<uint8_t>& b) {
+    uint32_t h = 2166136261u;
+    for (uint8_t c : b) h = (h ^ c) * 16777619u;
+    return h;
+}
+
+void GrimeStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    static uint64_t s_next = 35000;
+    void* const me = coop::players::Registry::Get().Local();
+    void* const win = coop::window_stroke_sync::Window();
+    const uint8_t slot = host ? 0 : static_cast<uint8_t>(coop::players::Registry::Get().LocalPeerId());
+    auto call = [&](const wchar_t* fn) {
+        ue_wrap::ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(win), fn));
+        return f.valid() && ue_wrap::Call(win, f);
+    };
+    if (!win) return;
+    if (host && s_step == 0 && t >= 40000u) {
+        s_step = 1;
+        int ran = 0;
+        for (int i = 0; i < 6; ++i) ran += call(L"dirtify") ? 1 : 0;
+        UE_LOGI("[GRIME] host: its window's dirtify run %d times", ran);
+    }
+    if (slot == 1 && s_step == 0 && t >= 50000u) {
+        s_step = 1;
+        UE_LOGI("[GRIME] client: its window's dirtify run (ran=%d)", call(L"dirtify") ? 1 : 0);
+    }
+    static void* s_sponge = nullptr;
+    if (host && s_step == 1 && t >= 65000u) {
+        s_step = 2;
+        ue_wrap::FVector at{};
+        E::TryGetActorLocation(win, at);
+        at.Z -= 300.f;
+        const CR::Resolved rc = CR::ResolveClass(L"prop_sponge_C", CR::AnyFamily(), CR::Load::Immediate);
+        s_sponge = rc.cls ? E::SpawnActor(rc.cls, at) : nullptr;
+        UE_LOGI("[GRIME] host: a sponge spawned=%d", s_sponge ? 1 : 0);
+    }
+    if (host && s_step == 2 && t >= 70000u && s_sponge && R::IsLive(s_sponge)) {
+        s_step = 3;
+        ue_wrap::FVector at{};
+        E::TryGetActorLocation(win, at);
+        void* const fn = R::FindDispatchFunctionCached(R::ClassOf(win), L"cleanAtPoint");
+        const int32_t pw = R::FindPropertyOffset(R::ClassOf(s_sponge), L"power");
+        int ran = 0;
+        for (int i = 0; i < 5; ++i) {
+            if (pw >= 0) *reinterpret_cast<float*>(static_cast<char*>(s_sponge) + pw) = 100.f;
+            ue_wrap::ParamFrame f(fn);
+            f.Set<void*>(L"sponge", s_sponge);
+            f.Set<ue_wrap::FVector>(L"location", ue_wrap::FVector{at.X + 40.f * i, at.Y, at.Z});
+            ran += f.valid() && ue_wrap::Call(win, f) ? 1 : 0;
+        }
+        UE_LOGI("[GRIME] host: the window's cleanAtPoint run %d times with an unheld sponge", ran);
+    }
+    if (t < s_next || t > 150000u) return;
+    s_next = t + 10000u;
+    std::vector<uint8_t> pic;
+    const bool ok = ue_wrap::window_canvas::ReadImage(win, pic);
+    UE_LOGI("[GRIME] %s t=%llu: its window's picture read=%d, %zu bytes, hash %08x", host ? "host" : "client",
+            static_cast<unsigned long long>(t / 1000u), ok ? 1 : 0, pic.size(), GrimeFnv(pic));
+    // Each peer's newest picture beside its log (`grime-<slot>.jpg`), to be compared by eye.
+    if (ok) {
+        char name[32];
+        std::snprintf(name, sizeof(name), "grime-%u.jpg", static_cast<unsigned>(slot));
+        if (FILE* f = std::fopen(name, "wb")) {
+            std::fwrite(pic.data(), 1, pic.size(), f);
+            std::fclose(f);
+        }
+    }
+    if (host && t >= 140000u) UE_LOGI("[ENTITY] done");
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -1633,6 +1715,10 @@ void Tick(coop::net::Session* session) {
     }
     if (ZipMode()) {
         ZipStep(host, t);
+        return;
+    }
+    if (GrimeMode()) {
+        GrimeStep(host, t);
         return;
     }
     if (Catalog()) {
