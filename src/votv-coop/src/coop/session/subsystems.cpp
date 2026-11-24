@@ -251,6 +251,8 @@
 #include "coop/interactables/serverbox_sync.h"  // host-authoritative signal-server sim state
 #include "coop/interactables/server_upgrade_sync.h"  // the servers' physical upgrades
 #include "coop/creatures/roach_sync.h"  // host-authoritative roach-infestation mirror
+#include "coop/props/photo_sync.h"  // a printed photo's picture is the host's save's on every peer
+#include "coop/props/tape_sync.h"   // a tape's repair is the host's
 #include "coop/props/rdrone_sync.h"  // the remote drone is the host's; a ridden sled its rider's to sync
 #include "coop/props/butter_churn_sync.h"  // a butter churn's milk, speed and butter are the host's
 #include "coop/props/prop_switch_sync.h"  // a light's or the hot plate's switch is the host's
@@ -326,6 +328,8 @@ void Install(coop::net::Session& session) {
     coop::ufo_sync::Install(&session);  // the ambient UFOs fly the host's paths; the Midas run is relayed
     coop::roomba_sync::Install(&session);  // the robot cleaner: a client refuses its tick and pickup, its switch is the host's
     coop::puppet_identity::Install(&session);  // a puppet's touch of a wisp, a grunt, a trigger box or a dream box acts on no machine's player
+    coop::photo_sync::Install(&session);  // a printed photo's picture is the host's save's on every peer
+    coop::tape_sync::Install(&session);   // a tape's repair is the host's
     coop::rdrone_sync::Install(&session);  // the remote drone is the host's; a ridden sled its rider's to sync
     coop::butter_churn_sync::Install(&session);  // a butter churn's milk, speed and butter are the host's
     coop::prop_switch_sync::Install(&session);  // a light's or the hot plate's switch is the host's
@@ -504,6 +508,7 @@ void DisconnectSlot(coop::net::Session& session, int slot) {
     coop::sat_console_sync::OnPeerGone(static_cast<uint8_t>(slot));  // its chunks, owed blobs and pace; the consoles it used run on
     coop::daily_task_sync::OnPeerGone(static_cast<uint8_t>(slot));  // a departed slot is owed no task
     coop::kerfur_command_wire::OnPeerGone(static_cast<uint8_t>(slot));  // a kerfur command it had half sent
+    coop::photo_sync::OnPeerGone(static_cast<uint8_t>(slot));  // a picture it had half sent
     coop::garbage_bin_sync::OnPeerGone(static_cast<uint8_t>(slot));  // a replay it was still owed
     coop::kerfur_command_answer::OnPeerGone(static_cast<uint8_t>(slot));  // a consumed-held answer it was owed
     coop::signal_sync::OnDisconnectSlot(slot);
@@ -655,6 +660,8 @@ DisconnectStats DisconnectAll() {
     coop::prop_switch_sync::OnDisconnect();  // the switches held and seen
     coop::butter_churn_sync::OnDisconnect();  // the churn states held, the asks timed
     coop::rdrone_sync::OnDisconnect();  // the drone states held and known, the sled ridden
+    coop::photo_sync::OnDisconnect();  // the parts held, the prints due, the pictures sent
+    coop::tape_sync::OnDisconnect();  // the counts said
     coop::roach_sync::OnDisconnect();  // drop snapshot assembly + tracked set + baselines
     coop::owner_entity_sync::OnDisconnect();  // destroy ALL owner-entity mirrors (our spawned actors must not linger into SP)
     coop::hook_sync::OnDisconnect();  // same, for every hook mirror, anchored included
@@ -784,7 +791,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:atv"}; coop::atv_sync::Tick(); }  // ATV: the host judges its own seat and grab, a client asks the host; the syncer streams its pose (host+client)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:drone"}; coop::drone_sync::Tick(); }  // delivery drone: host streams transform / client suppresses tick + mirrors
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:turbine"}; coop::turbine_sync::Tick(); }  // wind turbines: host ~1 Hz driver-float poll / client deferred-apply retry
-    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:woodchipper"}; coop::woodchipper_sync::Tick(); coop::generator_sync::Tick(); coop::flood_sync::Tick(); coop::kerfur_dress_sync::Tick(); coop::chip_scrap_sync::Tick(); coop::prop_switch_sync::Tick(); coop::butter_churn_sync::Tick(); coop::rdrone_sync::Tick(); coop::kerfur_camera::Tick(session); coop::arir_ship_sync::Tick(); coop::shrimp_eater_authority::Tick(); coop::arir_rep_sync::Tick(); coop::arir_tower_ship_sync::Tick(); coop::obelisk_sync::Tick(); coop::scout_target::Tick(); coop::soltomia_sync::Tick(); coop::flyover_sync::Tick(); coop::hole_sync::Tick(); coop::firetank_sync::Tick(); coop::gray_sync::Tick(); coop::sirenpost_sync::Tick(); coop::wanderer_sync::Tick(); coop::hexpillar_sync::Tick(); coop::nisse_sync::Tick(); coop::wolfgang_sync::Tick(); coop::birch_sync::Tick(); coop::event_box_authority::Tick(); coop::cave_rock_sync::Tick(); coop::chair_seat::Tick(); }  // woodchippers: the host's intents and its changed chippers, the burn read once a second / the client's held states
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:woodchipper"}; coop::woodchipper_sync::Tick(); coop::generator_sync::Tick(); coop::flood_sync::Tick(); coop::kerfur_dress_sync::Tick(); coop::chip_scrap_sync::Tick(); coop::prop_switch_sync::Tick(); coop::butter_churn_sync::Tick(); coop::rdrone_sync::Tick(); coop::photo_sync::Tick(); coop::tape_sync::Tick(); coop::kerfur_camera::Tick(session); coop::arir_ship_sync::Tick(); coop::shrimp_eater_authority::Tick(); coop::arir_rep_sync::Tick(); coop::arir_tower_ship_sync::Tick(); coop::obelisk_sync::Tick(); coop::scout_target::Tick(); coop::soltomia_sync::Tick(); coop::flyover_sync::Tick(); coop::hole_sync::Tick(); coop::firetank_sync::Tick(); coop::gray_sync::Tick(); coop::sirenpost_sync::Tick(); coop::wanderer_sync::Tick(); coop::hexpillar_sync::Tick(); coop::nisse_sync::Tick(); coop::wolfgang_sync::Tick(); coop::birch_sync::Tick(); coop::event_box_authority::Tick(); coop::cave_rock_sync::Tick(); coop::chair_seat::Tick(); }  // woodchippers: the host's intents and its changed chippers, the burn read once a second / the client's held states
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:glowstick"}; coop::glowstick_sync::Tick(); }  // a glowstick's stick: the sticks a player ended published, the waits for a struck prop retried
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:atv_host"}; coop::atv_host_sync::Tick(); }  // the ATVs' fuel, health and modules
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:alarm"}; coop::alarm_sync::Tick(); }  // base radar alarm: 1 Hz active-bit poll BOTH roles (host broadcasts transitions; client forwards local ones)

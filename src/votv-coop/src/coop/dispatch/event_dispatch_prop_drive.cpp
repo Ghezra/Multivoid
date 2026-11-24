@@ -26,6 +26,8 @@
 #include "coop/props/prop_fire_sync.h"
 #include "coop/props/roomba_sync.h"  // a robot cleaner's switch, the host's
 #include "coop/props/prop_switch_sync.h"  // a light's or the hot plate's switch, the host's
+#include "coop/props/photo_sync.h"  // a printed photo's picture, the host's save's
+#include "coop/props/tape_sync.h"   // a tape's repair, the host's
 #include "coop/props/rdrone_sync.h"  // a remote drone's flight, switch and energy, the host's
 #include "coop/props/butter_churn_sync.h"  // a butter churn's milk, speed and butter, the host's
 #include "coop/props/miner_sync.h"   // a GPU mining rig's counts and points, the host's
@@ -514,6 +516,50 @@ bool HandlePropDriveEvent(net::Session& session,
         }
         if (intent) ::coop::roomba_sync::OnIntent(msg.senderPeerSlot, p);
         else ::coop::roomba_sync::OnState(p);
+        break;
+    }
+    case net::ReliableKind::PhotoImage: {
+        // Both ways, chunked (coop/props/photo_sync); the handler checks each op's direction.
+        if (msg.payloadLen < sizeof(net::BlobChunkPayload)) {
+            UE_LOGW("event_feed: PhotoImage payload too short (%zu < %zu)", static_cast<size_t>(msg.payloadLen),
+                    sizeof(net::BlobChunkPayload));
+            break;
+        }
+        net::BlobChunkPayload chunk{};
+        std::memcpy(&chunk, msg.payload, sizeof(chunk));
+        ::coop::photo_sync::OnChunk(session, chunk, msg.senderPeerSlot);
+        break;
+    }
+    case net::ReliableKind::TapeAsk: {
+        // CLIENT->HOST (coop/props/tape_sync). Exact length.
+        net::TapeAskPayload p{};
+        if (session.role() != net::Role::Host || msg.payloadLen != sizeof(p)) {
+            UE_LOGW("event_feed: a tape ask the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.tape == 0 || p.prop == 0) {
+            UE_LOGW("event_feed: a tape ask malformed -- dropping");
+            break;
+        }
+        ::coop::tape_sync::OnAsk(msg.senderPeerSlot, p);
+        break;
+    }
+    case net::ReliableKind::TapeState: {
+        // HOST->the asker (coop/props/tape_sync). Exact length.
+        net::TapeStatePayload p{};
+        if (session.role() == net::Role::Host || msg.payloadLen != sizeof(p)) {
+            UE_LOGW("event_feed: a tape answer the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.tape == 0 || p.result < net::kTapeMended || p.result > net::kTapeRefused) {
+            UE_LOGW("event_feed: a tape answer malformed -- dropping");
+            break;
+        }
+        ::coop::tape_sync::OnState(p);
         break;
     }
     case net::ReliableKind::RdroneState: {

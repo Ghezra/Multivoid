@@ -85,6 +85,8 @@ set(VOTVCOOP_SOURCES
     src/coop/props/prop_switch_sync.cpp
     src/coop/props/butter_churn_sync.cpp
     src/coop/props/rdrone_sync.cpp
+    src/coop/props/photo_sync.cpp
+    src/coop/props/tape_sync.cpp
     src/coop/world/sound_relay.cpp
     src/coop/world/sound_catalog.cpp
     src/coop/world/sound_judge.cpp
@@ -402,6 +404,7 @@ set(VOTVCOOP_SOURCES
     src/ue_wrap/hotbar/icons.cpp
     src/coop/items/hotbar_icon_edge.cpp
     src/ue_wrap/actors/save_record.cpp
+    src/ue_wrap/actors/photo_store.cpp
     src/coop/world/email_sync.cpp
     src/coop/interactables/signal_wire.cpp
     src/coop/interactables/meadow_db_sync.cpp

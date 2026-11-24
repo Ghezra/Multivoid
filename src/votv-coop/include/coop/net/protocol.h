@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 355;
+inline constexpr uint16_t kProtocolVersion = 356;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1698,6 +1698,15 @@ enum class ReliableKind : uint16_t {
     // CLIENT->HOST: this client's flight of a drone from its laptop (op 1, the sliders' summed moves) or its press of
     // the drone's switch (op 2, judged by reach). The host runs it on its own copy. Never relayed. RdroneAskPayload.
     RdroneAsk = 330,
+    // Both ways, chunked (BlobChunkPayload), a picture in parts (coop/props/photo_sync): CLIENT->HOST op 1, this
+    // client's camera print, its capture; HOST->ALL op 2, a printed photo's picture with its index in the host's save,
+    // naming the printer when a client's print filed it. Never relayed; not pre-world.
+    PhotoImage = 331,
+    // CLIENT->HOST: this client's tape click on a prop (coop/props/tape_sync). Never relayed. TapeAskPayload.
+    TapeAsk = 332,
+    // HOST->the asker: the host's answer to a tape click: mended, at full or refused, and the tape's uses left. Never
+    // relayed. TapeStatePayload.
+    TapeState = 333,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2709,6 +2718,26 @@ struct RdroneAskPayload {
     uint8_t  pad[3];            // zero
 };
 static_assert(sizeof(RdroneAskPayload) == 20, "RdroneAskPayload must be 20 bytes");
+
+// A client's tape click (TapeAsk): the tape's element id and the prop's it names.
+struct TapeAskPayload {
+    uint32_t tape;
+    uint32_t prop;
+};
+static_assert(sizeof(TapeAskPayload) == 8, "TapeAskPayload must be 8 bytes");
+
+// The host's answer (TapeState): the click's result and the tape's uses after it.
+inline constexpr uint8_t kTapeMended  = 1;  // the host's prop is at full again; one use taken
+inline constexpr uint8_t kTapeFine    = 2;  // the host's prop was at full; no use taken
+inline constexpr uint8_t kTapeRefused = 3;  // no tape, no prop or not in reach
+struct TapeStatePayload {
+    uint32_t tape;
+    uint32_t prop;
+    int32_t  uses;
+    uint8_t  result;
+    uint8_t  pad[3];  // zero
+};
+static_assert(sizeof(TapeStatePayload) == 16, "TapeStatePayload must be 16 bytes");
 
 // A wall builder's aiming preview (WallPreview): the tool's own components, in world space.
 struct WallPreviewPayload {
