@@ -137,4 +137,12 @@ set(VOTVCOOP_PROPS_SOURCES
     src/coop/props/container_truth.cpp
     src/coop/props/container_view_close.cpp
     src/coop/props/container_writer_watch.cpp
+    src/coop/props/chip_scrap_sync.cpp
+    src/coop/props/prop_switch_sync.cpp
+    src/coop/props/butter_churn_sync.cpp
+    src/coop/props/rdrone_sync.cpp
+    src/coop/props/photo_sync.cpp
+    src/coop/props/tape_sync.cpp
+    src/coop/props/custom_picture_sync.cpp
+    src/coop/props/bucket_pour.cpp
 )

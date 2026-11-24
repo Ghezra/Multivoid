@@ -81,14 +81,6 @@ set(VOTVCOOP_SOURCES
     src/coop/interactables/woodchipper_sync.cpp
     src/coop/world/flood_sync.cpp
     src/coop/creatures/kerfur_dress_sync.cpp
-    src/coop/props/chip_scrap_sync.cpp
-    src/coop/props/prop_switch_sync.cpp
-    src/coop/props/butter_churn_sync.cpp
-    src/coop/props/rdrone_sync.cpp
-    src/coop/props/photo_sync.cpp
-    src/coop/props/tape_sync.cpp
-    src/coop/props/custom_picture_sync.cpp
-    src/coop/props/bucket_pour.cpp
     src/coop/world/sound_relay.cpp
     src/coop/world/sound_catalog.cpp
     src/coop/world/sound_judge.cpp
