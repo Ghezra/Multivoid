@@ -58,6 +58,8 @@ bool ReadPayload(AtvEntry& e, const std::wstring& key, uint8_t occupantSlot, uin
     if (A::IsDriven(actor)) sb |= 0x1;
     if (grabbed)            sb |= 0x4;
     p.stateBits = sb;
+    // The driver's throttle: the copy's own keys, or on the host for a client syncer the last it admitted.
+    p.driveBits = ((host && syncerSlot != 0) ? e.throttle : A::GetThrottle(actor)) ? coop::net::kAtvThrottle : 0;
     p.adopt = adopt ? 1 : 0;
     // The riding kerfur is the host's word: every block it sends names it, a client's carries 0.
     static const bool s_redStamp = coop::dev::atv_riders_arm::Is("rider_stamp_off");   // the riders drill's red

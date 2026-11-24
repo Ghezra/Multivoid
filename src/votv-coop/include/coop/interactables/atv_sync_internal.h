@@ -72,6 +72,10 @@ struct AtvEntry {
     // one due at once, ControlsDue), and the horn key (the honk rows, NoteHorn): down on this seated copy, and a press no
     // block has carried yet, which the block that carries it clears.
     uint8_t  sentControlBits = 0;
+    // The engine's sound on this copy while another peer drives it (SettleEngine): shown, and the driver's throttle as of
+    // the last block this peer took it from (on the host, a client syncer's, which the host's own blocks carry on).
+    bool     engineShown  = false;
+    bool     throttle     = false;
     bool     hornHeld     = false;
     bool     hornLatch    = false;
     // Host: this ATV's syncer reported its explosion and the host has accepted the request; no second one is taken
@@ -214,6 +218,11 @@ void SendStamps(coop::net::Session& s, uint64_t nowMs);
 void StampHostTrap(const AtvEntry& e, coop::net::AtvStatePayload& p);
 void TakeStampTrap(AtvEntry& e, bool stamped, bool owns);
 void TakeControls(AtvEntry& e, uint8_t stateBits);
+// The driver's throttle from a block (driveBits), replayed on this copy's drive sound while another peer drives it.
+void TakeThrottle(AtvEntry& e, uint8_t driveBits);
+// The engine's sound on this copy: started while another peer holds its driver's seat, stopped when the seat empties or
+// this peer sits in it (the game's own sit runs its own). Each tick.
+void SettleEngine(AtvEntry& e, uint8_t localSlot);
 uint8_t BlockControlBits(AtvEntry& e, bool host);
 bool ControlsDue(AtvEntry& e);
 void NoteControlsSent(AtvEntry& e, uint8_t stateBits);

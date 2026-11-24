@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 358;
+inline constexpr uint16_t kProtocolVersion = 359;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -4418,6 +4418,7 @@ static_assert(sizeof(FuseTowerPayload) <= 256 - 20 - 8, "FuseTowerPayload must f
 // physics running and is corrected: the velocity is written from the wire every packet, the
 // position error is closed by a bounded corrective velocity, and past a speed-scaled threshold the
 // game's own teleportVehicle re-places the whole rig.
+inline constexpr uint8_t kAtvThrottle = 1;  // AtvStatePayload::driveBits
 struct AtvStatePayload {
     WireKey  key;          // 32 -- the ATV's Key (FName string)
     float    x, y, z;      // 12 -- root body world location (cm; the root Mesh == the actor)
@@ -4441,7 +4442,8 @@ struct AtvStatePayload {
     uint32_t riderEid;     // 4
     uint8_t  passengerSlot; // 1 -- the host's stamp: the peer slot in the passenger spot behind the driver (0xFF = free),
                            //      the spot a riding kerfur otherwise takes
-    uint8_t  pad[3];       // 3  -- zero
+    uint8_t  driveBits;    // 1  -- bit0 kAtvThrottle: the driver's forward or back key is down (its engine's drive sound)
+    uint8_t  pad[2];       // 2  -- zero
     // The condition block: the tires' and dirt's accumulators travel from the syncer (fuel and health are the host
     // copy's absolute, a client syncer's burn taken only under its ack, see ackSeq); a mirror's own accrual is held at
     // zero, so overwriting never races an irreversible act. Presence (tiresMask, hasSpare) is consumed

@@ -11,6 +11,7 @@
 #include "coop/config/config_registry.h"
 #include "coop/interactables/atv_drill_events.h"
 #include "coop/interactables/atv_host_sync.h"
+#include "ue_wrap/core/log.h"
 #include "coop/interactables/atv_sync.h"
 
 #include "coop/net/protocol.h"
@@ -113,6 +114,29 @@ void TakeControls(AtvEntry& e, uint8_t stateBits) {
         if (turbo == A::GetTurbo(e.actor)) equal |= coop::net::kAtvTurbo;
         coop::atv_drill_events::Note(coop::atv_drill_events::kControls, changed, changed & equal, written | hornSounded, bits);
     }
+}
+
+void SettleEngine(AtvEntry& e, uint8_t localSlot) {
+    // The seat names this peer for a moment after its own dismount: its own sit and dismount run its own sound.
+    const bool want = e.seatOccupant != 0xFF && e.seatOccupant != localSlot && !e.localSeated;
+    if (want == e.engineShown) return;
+    e.engineShown = want;
+    coop::atv_host_sync::ApplyScope applying;   // our own replay is no key press
+    const bool ok = A::EngineSound(e.actor, want);
+    if (want && e.throttle) A::ReplayThrottle(e.actor, true);
+    UE_LOGI("atv_sync: the engine of an ATV driven by slot %u %s on this peer's copy (ok=%d)",
+            static_cast<unsigned>(e.seatOccupant), want ? "started" : "stopped", ok ? 1 : 0);
+}
+
+void TakeThrottle(AtvEntry& e, uint8_t driveBits) {
+    const bool throttle = (driveBits & coop::net::kAtvThrottle) != 0;
+    if (throttle == e.throttle) return;
+    e.throttle = throttle;
+    if (!e.engineShown || e.localSeated) return;
+    coop::atv_host_sync::ApplyScope applying;
+    const bool ran = A::ReplayThrottle(e.actor, throttle);
+    UE_LOGI("atv_sync: the driver's throttle %s on this peer's copy (sound_drive ran=%d)", throttle ? "down" : "up",
+            ran ? 1 : 0);
 }
 
 // The control bits a block built from `e`'s copy carries. The copy's own brake, lights and turbo; the horn is the key's

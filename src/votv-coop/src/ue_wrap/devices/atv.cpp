@@ -582,6 +582,34 @@ void* ReadObj(void* atv, int32_t off) {
     return o && R::IsLive(o) ? o : nullptr;
 }
 
+// The engine's sound and smoke components, which the game switches only in its own sit, dismount and key events.
+Field g_audioStart{L"audio_car_start_cue"}, g_audioLoop{L"audio_car_drive_loop"}, g_exhaust{L"eff_atvExhaust"},
+    g_audioDriveStart{L"audio_car_drive_start"}, g_audioBrake{L"audio_car_drive_brake"}, g_audioTurbo{L"audio_car_turbo"},
+    g_audioStop{L"audio_car_stop"};
+
+bool SetComponentActive(void* atv, Field& f, bool on) {
+    void* const c = ReadObj(atv, f.Get());
+    void* const fn = c ? R::FindDispatchFunctionCached(R::ClassOf(c), L"SetActive") : nullptr;
+    ParamFrame p(fn);
+    return fn && p.valid() && p.Set<bool>(L"bNewActive", on) && p.Set<bool>(L"bReset", true) && Call(c, p);
+}
+
+bool WriteBool(void* atv, const wchar_t* name, bool v) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!atv || !R::FindBoolProperty(R::ClassOf(atv), name, off, mask) || off < 0) return false;
+    uint8_t& b = *(static_cast<uint8_t*>(atv) + off);
+    b = v ? static_cast<uint8_t>(b | mask) : static_cast<uint8_t>(b & ~mask);
+    return true;
+}
+
+bool ReadBool(void* atv, const wchar_t* name) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!atv || !R::FindBoolProperty(R::ClassOf(atv), name, off, mask) || off < 0) return false;
+    return (*(static_cast<const uint8_t*>(atv) + off) & mask) != 0;
+}
+
 bool WriteKerfurList(void* atv, const std::vector<void*>& list) {
     const int32_t off = g_allKerfuros.Get();
     if (off < 0) return false;
@@ -610,6 +638,35 @@ bool GetSeatTransform(void* atv, FVector& loc, FRotator& rot) {
     loc = FVector{eye.X + std::cos(pitch) * std::cos(yaw) * kForwardCm, eye.Y + std::cos(pitch) * std::sin(yaw) * kForwardCm,
                   seat.Z + std::sin(pitch) * kForwardCm + kUpCm};
     return true;
+}
+
+bool GetThrottle(void* atv) {
+    return atv && R::IsLive(atv) && (ReadBool(atv, L"input_forward") || ReadBool(atv, L"input_back"));
+}
+
+bool ReplayThrottle(void* atv, bool on) {
+    if (!atv || !R::IsLive(atv) || !WriteBool(atv, L"input_forward", on) || !WriteBool(atv, L"input_back", false))
+        return false;
+    void* const fn = R::FindDispatchFunctionCached(R::ClassOf(atv), L"sound_drive");
+    ParamFrame f(fn);
+    return fn && f.valid() && Call(atv, f);
+}
+
+bool EngineSound(void* atv, bool on) {
+    if (!atv || !R::IsLive(atv)) return false;
+    bool ok = SetComponentActive(atv, g_audioStart, on);
+    ok = SetComponentActive(atv, g_audioLoop, on) && ok;
+    ok = SetComponentActive(atv, g_exhaust, on) && ok;
+    if (!on) {
+        SetComponentActive(atv, g_audioDriveStart, false);
+        SetComponentActive(atv, g_audioBrake, false);
+        SetComponentActive(atv, g_audioTurbo, false);
+        WriteBool(atv, L"input_forward", false);
+        WriteBool(atv, L"input_back", false);
+        WriteBool(atv, L"isDrive", false);
+        ok = SetComponentActive(atv, g_audioStop, true) && ok;
+    }
+    return ok;
 }
 
 bool GetSitArrowLocation(void* atv, FVector& loc) {

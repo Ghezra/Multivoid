@@ -201,6 +201,14 @@ there floated behind the driver's seat (issue 46, an upstream change to `playerH
 with its collision off so it cannot push the ATV. When the seat ends, the body is detached and the stream places it again
 (`coop/player/puppet_seat`).
 
+The engine's sound is switched only in the game's own sit (the start cue, the drive loop and the exhaust), its dismount
+(all off, the stop cue) and the driver's keys (`sound_drive`: the drive or brake sound and the loop's volume and pitch),
+so only the driver heard it (issue 46). Every other peer's copy now starts it while another peer holds the driver's seat
+and stops it, with the stop cue, when the seat empties (`SettleEngine`, each tick), and the driver's throttle rides each
+block (`AtvStatePayload::driveBits`, its forward or back key) into the copy's own `sound_drive` (`TakeThrottle`). `[V]`
+(`VOTVCOOP_ENTITY_PROBE=atv`, three peers on build 359): slot 1's seat started the engine on the host and on a slot that
+joined while it sat, its throttle down and up ran the host's copy's drive sound, and its getting off stopped both.
+
 The kerfur passenger is the host's. The ATV's own sit asks every kerfur to come (`tryToOccupyCar`) and its dismount
 sends the rider off, but on the host that runs only for the host's own player. When a client's seat begins, the host
 runs the same steps on its copy at the seat's edge, not on a scan: it fills `allKerfuros` and asks each kerfur. When the

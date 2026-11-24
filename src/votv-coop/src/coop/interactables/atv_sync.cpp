@@ -253,6 +253,7 @@ void OnReliable(const coop::net::AtvStatePayload& payload, uint8_t senderPeerSlo
         coop::atv_drill_events::NotePoseApplied(key, e.actor, true, 0, false);
         coop::atv_condition_sync::ApplyPayload(e, payload, /*fromHost*/ false);
         TakeControls(e, payload.stateBits);
+        TakeThrottle(e, payload.driveBits);
         NoteSyncerHealth(e, senderPeerSlot, A::GetHealth(e.actor));
         coop::net::AtvStatePayload out = payload;
         // Fuel and health are the host's copy's (atv_host_sync.h), as the syncer's block left them, and the ack is the
@@ -309,6 +310,7 @@ void OnReliable(const coop::net::AtvStatePayload& payload, uint8_t senderPeerSlo
     // host's, and its presence is consumed only for the host's own copy (atv_condition_sync.h).
     coop::atv_condition_sync::ApplyPayload(e, payload, /*fromHost*/ true);
     TakeControls(e, payload.stateBits);
+    TakeThrottle(e, payload.driveBits);
 }
 
 // The mirror half (atv_runtime_mirror.cpp) reaches the map through these (atv_sync_internal.h);
@@ -541,6 +543,7 @@ void Tick() {
     for (auto& kv : g_atvs) {
         AtvEntry& e = kv.second;
         if (!R::IsLiveByIndex(e.actor, e.idx)) continue;
+        SettleEngine(e, localSlot);
         if (!isHost) {
             TickClientBody(*s, e, kv.first, localPlayer, localSlot, gateOpen);
             A::ReadTrap(e.actor, e.copyTrapSeen);   // this copy's own trap, kept for the explosion request

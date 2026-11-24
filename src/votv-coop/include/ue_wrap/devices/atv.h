@@ -194,6 +194,17 @@ bool Dismount(void* atv);
 // or component, or an unreadable transform. Game thread.
 bool GetSeatTransform(void* atv, FVector& loc, FRotator& rot);
 
+// The engine's sound on a copy no local player drives. The game switches it only in its own sit (the start cue, the drive
+// loop and the exhaust on), its dismount (all off, the stop cue played) and the driver's keys (sound_drive: the drive or
+// the brake sound, the loop's volume and pitch eased, from input_forward, input_back and brake).
+// GetThrottle: the driver's forward or back key is down on this copy. ReplayThrottle: input_forward set to `on` (input_back
+// clear) and the copy's sound_drive run. EngineSound: on, the start cue, the drive loop and the exhaust started; off, every
+// engine sound stopped, the keys cleared and the stop cue played. False on null, an unresolved field or a failed call.
+// Game thread.
+bool GetThrottle(void* atv);
+bool ReplayThrottle(void* atv, bool on);
+bool EngineSound(void* atv, bool on);
+
 // The world location of the ATV's `sitarrow`, the point a riding kerfur's pivot goes. False on null, an unresolved ATV_C or
 // an unreadable component. Game thread.
 bool GetSitArrowLocation(void* atv, FVector& loc);
