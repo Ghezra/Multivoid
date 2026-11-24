@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 356;
+inline constexpr uint16_t kProtocolVersion = 357;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1707,6 +1707,9 @@ enum class ReliableKind : uint16_t {
     // HOST->the asker: the host's answer to a tape click: mended, at full or refused, and the tape's uses left. Never
     // relayed. TapeStatePayload.
     TapeState = 333,
+    // CLIENT->HOST: the pour blobs this client's tipped bucket spawned in its world, their place and velocity, which the
+    // host spawns itself (coop/props/bucket_pour). Never relayed; not pre-world. BucketPourAskPayload.
+    BucketPourAsk = 334,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2738,6 +2741,21 @@ struct TapeStatePayload {
     uint8_t  pad[3];  // zero
 };
 static_assert(sizeof(TapeStatePayload) == 16, "TapeStatePayload must be 16 bytes");
+
+// One pour blob of a client's tipped bucket (BucketPourAsk): where it was born and its velocity, cm and cm/s.
+struct BucketPourBlob {
+    float px, py, pz;
+    float vx, vy, vz;
+};
+inline constexpr uint8_t kBucketPourMaxBlobs = 8;
+struct BucketPourAskPayload {
+    uint32_t       eid;     // the bucket's element id
+    uint8_t        count;   // 1..kBucketPourMaxBlobs
+    uint8_t        pad[3];  // zero
+    float          level;   // the client's copy's `height` after the pour, which the host takes within a bound per blob
+    BucketPourBlob blobs[kBucketPourMaxBlobs];
+};
+static_assert(sizeof(BucketPourAskPayload) == 204, "BucketPourAskPayload must be 204 bytes");
 
 // A wall builder's aiming preview (WallPreview): the tool's own components, in world space.
 struct WallPreviewPayload {

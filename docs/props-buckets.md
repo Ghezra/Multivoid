@@ -60,6 +60,23 @@ follows it); the mix and transfer judges refuse what the count cannot pay, and a
 count `[?]`. A trowel's take is the game's own rule. The host's own player's verb on a target a client has reserved is
 cancelled for that round trip.
 
+## A tipped bucket's pour
+
+A water bucket tipped while it simulates, in a player's grab, pours from its tick: 0.1 s after the tick cuts `height` to what
+the tipped rim holds, it spawns one `prop_sponge_bucketpour_C` per 2 of the eased drop at its `pour` point, with the bucket's
+velocity and a scatter. The tipped pour reads neither `soap` nor the brew, so plain, soapy and brewing water pour alike. A
+blob that lands cleans the grime whose box holds its hit point (`cleanSponge`), puts out fires near it and shorts a screen.
+A client's pour was its own world's (Ghezra/Multivoid issue 44): its blobs never crossed, its cleaning was a fall the host's
+judge refuses for want of a sponge (`coop/interactables/grime_judge`), and the host's copy, moved by the client's grab,
+never poured. Now (`coop/props/bucket_pour`, `BucketPourAsk`) a blob born near a bucket the client moves, and not a host
+blob's copy (bound to an element by the next frame), is sent to the host with its place and velocity and the copy's level
+after the pour, and removed on the client. The host takes it when the bucket is in the sender's grab, the blob within 3 m
+of its copy and the sender within sixty blobs a second: it spawns the blob itself, so every peer sees it and its cleaning,
+fire and short are the host's, and takes its water to the client's level, at least 2 and at most 6 a blob, refusing blobs
+once it is empty. `[V]` (`coop/dev/entity_probe`, `VOTVCOOP_ENTITY_PROBE=pour`, three peers on build 357): slot 1 grabbed
+a full bucket (36.6) and held it turned over a blood stain; the host spawned its 8 blobs and refused 3 past empty, its
+water fell to 0 on every peer, and the stain fell from 100 to 56.8 on the host, on slot 1 and on a slot that joined after.
+
 ## A dropped item
 
 A bucket, bag or trowel a client drops reaches the host in the drop's save record. A class gate refuses a record the sender's own
@@ -70,8 +87,7 @@ host's copy has an element id `[?]`.
 
 ## Open
 
-- The pour props a dip or a tip births (`prop_sponge_bucketpour_C`) come from every peer's own tick, the client's matched to
-  the host's births `[?]`.
+- The pour props a sponge's dip births (`prop_sponge_bucketpour_C`, the bucket's `getFromWater`) come from its own peer `[?]`.
 - A soap's and a sponge's own amounts are not in their drop records: the host's copies read the class defaults `[?]`.
 - A watered plant from a held bucket and a trowel's wall repair belong to other lanes.
 - Every behaviour above is `[?]` until the lane's drill has run on the rig.

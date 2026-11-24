@@ -106,6 +106,7 @@ inline constexpr RefFn kRefFns[] = {
     {L"prop_sled_c", L"playerunsit", L"prop_sled_c.playerunsit", 0x5de5f12d89a97b5eull, 0xc80330e0a438eb4full},
     {L"prop_smokedetec_c", L"alarm", L"prop_smokedetec_c.alarm", 0xa8e5c532be8faa23ull, 0xa8a87f6eb31ee180ull},
     {L"prop_smokedetec_c", L"check", L"prop_smokedetec_c.check", 0x6a2d5d90ab51fa2dull, 0x249b324724dd76a2ull},
+    {L"prop_sponge_bucketpour_c", L"receivebeginplay", L"prop_sponge_bucketpour_c.receivebeginplay", 0x6a2d5d90ab51fa2dull, 0xfdeb19d0b033b691ull},
     {L"prop_spotlighthead_c", L"upd", L"prop_spotlighthead_c.upd", 0x6a2d5d90ab51fa2dull, 0x98983d0780731adaull},
     {L"prop_xmastree_c", L"woken", L"prop_xmastree_c.woken", 0x6a2d5d90ab51fa2dull, 0x66d70d36fe9e422aull},
     {L"rufus_skeleton_animblueprint_c", L"blueprintupdateanimation", L"rufus_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0xf4ab9b5d37adac21ull},
