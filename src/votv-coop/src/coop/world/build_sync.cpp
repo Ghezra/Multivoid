@@ -208,7 +208,8 @@ std::unordered_map<std::wstring, void*> PiecesByKey() {
     std::unordered_map<std::wstring, void*> out;
     for (void* p : pieces) {
         const std::wstring key = B::KeyOf(p);
-        if (ValidKey(key)) out.emplace(key, p);
+        // Only a piece this lane can send: one the host cannot name is never judged here as not the host's.
+        if (ValidKey(key) && B::KindOf(p) != B::Kind::None) out.emplace(key, p);
     }
     return out;
 }

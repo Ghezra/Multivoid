@@ -12,6 +12,7 @@
 #include "ue_wrap/engine/engine_pawn.h"
 
 #include <cstdint>
+#include <cwchar>
 #include <cstring>
 #include <unordered_map>
 
@@ -139,9 +140,12 @@ void* ClassFor(const std::wstring& className) {
 
 }  // namespace
 
+// Without regard to case, as List finds the classes (object_index::ClassByName): the name's case differs between worlds
+// (a save's poster reads poster_c where a new game's reads poster_C), and a case-sensitive match left the host's level
+// posters unsent, so a client removed them as not the host's (issue 49: the radar room's map is one).
 Kind KindOfClass(const std::wstring& className) {
     for (const ClassRow& c : kClasses)
-        if (className == c.name) return c.kind;
+        if (_wcsicmp(className.c_str(), c.name) == 0) return c.kind;
     return Kind::None;
 }
 
