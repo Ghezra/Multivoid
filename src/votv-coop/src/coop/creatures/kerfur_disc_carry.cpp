@@ -121,7 +121,7 @@ TailVerdict JudgeTail(const SR::SaveRecord& tail, uint8_t slot, uint64_t arrival
         return TailVerdict::Malformed;
     }
     int32_t maxReadWrites = 0;
-    if (!ue_wrap::floppy_disc::ReadDefaultReadWrites(maxReadWrites)) {
+    if (!ue_wrap::floppy_disc::ReadDefaultReadWrites(cls, maxReadWrites)) {
         if (why) *why = "the disc class default is not read yet";
         return TailVerdict::Unavailable;
     }

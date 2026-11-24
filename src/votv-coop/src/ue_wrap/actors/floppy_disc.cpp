@@ -8,6 +8,7 @@
 #include "ue_wrap/core/reflection.h"
 
 #include <chrono>
+#include <unordered_map>
 
 namespace ue_wrap::floppy_disc {
 namespace {
@@ -63,15 +64,19 @@ bool ReadDiscContent(void* discActor, DiscContent& out) {
     return true;
 }
 
-bool ReadDefaultReadWrites(int32_t& out) {
-    static int32_t sDefault = -1;   // the class default never changes within a process: read once
-    if (sDefault < 0) {
-        if (!EnsureResolved()) return false;
-        void* cdo = R::FindClassDefaultObject(L"prop_floppyDisc_C");
-        if (!cdo) return false;
-        sDefault = *reinterpret_cast<const int32_t*>(reinterpret_cast<const uint8_t*>(cdo) + g_offReadWrites);
+bool ReadDefaultReadWrites(void* discClass, int32_t& out) {
+    // A class default never changes within a process: each class's is read once.
+    static std::unordered_map<void*, int32_t> sDefaults;
+    if (!discClass || !IsDiscClass(discClass)) return false;
+    const auto it = sDefaults.find(discClass);
+    if (it != sDefaults.end()) {
+        out = it->second;
+        return true;
     }
-    out = sDefault;
+    void* const cdo = R::FindClassDefaultObject(R::ToString(R::NameOf(discClass)).c_str());
+    if (!cdo) return false;
+    out = *reinterpret_cast<const int32_t*>(reinterpret_cast<const uint8_t*>(cdo) + g_offReadWrites);
+    sDefaults.emplace(discClass, out);
     return true;
 }
 

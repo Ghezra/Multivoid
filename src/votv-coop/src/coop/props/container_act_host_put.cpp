@@ -113,7 +113,9 @@ void ReadPutInputs(uint8_t slot, uint32_t eid, const SR::SaveRecord& record, boo
     // A client's floppy disc has leaf values that are its word, as a carried disc's are: held to what a game disc can
     // hold. `slowable` is false for the host's own capture, which is not bounded (internal::FloppyBoundOk).
     int32_t maxReadWrites = 0;
-    const bool disc = ue_wrap::floppy_disc::IsDiscClass(cls) && ue_wrap::floppy_disc::ReadDefaultReadWrites(maxReadWrites);
+    // Each disc class's own default bounds it: a zip drive holds 1024, a plain floppy 32 (issue 52).
+    const bool disc =
+        ue_wrap::floppy_disc::IsDiscClass(cls) && ue_wrap::floppy_disc::ReadDefaultReadWrites(cls, maxReadWrites);
     p.leafOk = internal::FloppyBoundOk(slowable, disc, record, maxReadWrites);
     if (!p.leafOk) return;
     p.filterRead = ci::FilterHolds(ci::InventoryOf(actor), cls, p.filterHolds);

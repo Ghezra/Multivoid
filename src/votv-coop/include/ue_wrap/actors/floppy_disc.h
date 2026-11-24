@@ -40,9 +40,10 @@ struct DiscContent {
 
 bool ReadDiscContent(void* discActor, DiscContent& out);
 
-// The disc class's default `readWrites` (prop_floppyDisc_C's default object, the most a disc holds; it only counts down, and
-// no skin overrides it), read once. False until the class loads. Game thread.
-bool ReadDefaultReadWrites(int32_t& out);
+// A disc class's default `readWrites` (its default object: the most a disc of it holds, as it only counts down), read once
+// per class. Each colour sets its own: the plain floppy 32, the zip drive (prop_floppyDisc_Wh_C) 1024, the blue disc 512,
+// the black 16. False until the class loads, or for a class that is not a disc. Game thread.
+bool ReadDefaultReadWrites(void* discClass, int32_t& out);
 
 // Pure: a disc record's leaf values are ones a game disc can hold: `readWrites` (ints[0][0]) within 0..`maxReadWrites` (the
 // class default, above), and the `data` array (strings[0]) present; its size is held by the record's own byte cap. False,
