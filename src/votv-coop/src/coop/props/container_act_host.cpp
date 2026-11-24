@@ -50,8 +50,9 @@ using coop::net::ReliableKind;
 constexpr size_t kCap = 2;
 // A sender's acts at once and per second. A player emptying or filling a container clicks several items a second, and
 // the old 4 at once and 2 a second slowed every act past the first second to one per 500 ms (issue 45); the queue's cap,
-// one held act per player and the client's one pending act still bound what a sender costs.
-constexpr coop::net::IntentBudget kBudget{16.0f, 8.0f};
+// one held act per player and the client's one pending act still bound what a sender costs. 12 a second is a very fast
+// click, kept up.
+constexpr coop::net::IntentBudget kBudget{16.0f, 12.0f};
 constexpr uint64_t kSecondMs = 1000;
 constexpr uint64_t kOwedErrorEveryMs = 60000;
 constexpr std::chrono::seconds kAssemblyTtl{10};
