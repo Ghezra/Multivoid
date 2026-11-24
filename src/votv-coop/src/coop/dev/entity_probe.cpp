@@ -10,7 +10,9 @@
 #include "coop/config/config.h"
 #include "coop/element/element.h"
 #include "coop/element/registry.h"
+#include "atv_seat.h"
 #include "coop/dev/director/aimed_grab.h"
+#include "coop/interactables/atv_sync.h"
 #include "coop/dev/director/director.h"
 #include "coop/props/bucket_pour.h"
 #include "coop/props/bucket_sync.h"
@@ -32,6 +34,7 @@
 #include "ue_wrap/engine/engine_physics.h"
 #include "ue_wrap/engine/engine_component.h"
 #include "ue_wrap/actors/bucket.h"
+#include "ue_wrap/devices/atv.h"
 #include "ue_wrap/actors/photo_store.h"
 #include "ue_wrap/devices/grime.h"
 #include "ue_wrap/actors/spawner_stamp.h"
@@ -822,6 +825,75 @@ void PourStep(bool host, uint64_t t) {
     if (t >= 118000u) UE_LOGI("[ENTITY] done");
 }
 
+// VOTVCOOP_ENTITY_PROBE=atv: a remote driver's body on the ATV. HOST 40 s: an ATV 4 m before the host. CLIENT slot 1,
+// 55 s on: sits in it (the game's own seat verb). The host and slot 2, once slot 1 is seated there: each logs slot 1's
+// body against the seat and `sitarrow`, looks at the seat from where it stands and captures
+// its screen (coop-screenshots/, `atv-host`, `atv-slot2`).
+bool AtvMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "atv";
+    return v;
+}
+
+void AtvStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    static coop::dev::atv_seat::SitTry s_try;
+    static uint64_t s_seatedAt = 0;
+    static ue_wrap::FVector s_look{};
+    void* const me = coop::players::Registry::Get().Local();
+    void* const atv = First(L"ATV_C");
+    if (host && s_step == 0 && t >= 40000u && me) {
+        s_step = 1;
+        ue_wrap::FVector at{};
+        ue_wrap::FRotator rot{};
+        E::TryGetActorLocation(me, at);
+        E::TryGetActorRotation(me, rot);
+        const float yaw = rot.Yaw * 0.0174532925f;
+        const CR::Resolved rc = CR::ResolveClass(L"ATV_C", CR::AnyFamily(), CR::Load::Immediate);
+        const ue_wrap::FVector to{at.X + 400.f * std::cos(yaw), at.Y + 400.f * std::sin(yaw), at.Z};
+        UE_LOGI("[ATV] host: an ATV spawned=%d", rc.cls && E::SpawnActor(rc.cls, to) ? 1 : 0);
+    }
+    const uint8_t mySlot = host ? 0 : static_cast<uint8_t>(coop::players::Registry::Get().LocalPeerId());
+    if (mySlot == 1 && s_step < 2 && t >= 55000u && atv && me) {
+        s_step = 1;
+        if (coop::dev::atv_seat::TrySit(me, atv, s_try)) {
+            s_step = 2;
+            UE_LOGI("[ATV] client: the seat verb finished (seated=%d)",
+                    coop::atv_sync::ActorSeatedBy(1) == atv ? 1 : 0);
+        }
+    }
+    if (mySlot != 1 && atv && me && coop::atv_sync::ActorSeatedBy(1) == atv) {
+        if (!s_seatedAt) s_seatedAt = t;
+        coop::RemotePlayer* const rp = coop::players::Registry::Get().Puppet(1);
+        void* const body = rp ? rp->actor() : nullptr;
+        ue_wrap::FVector root{}, b{}, seat{}, sit{};
+        ue_wrap::FRotator rot{}, seatRot{};
+        if (t >= s_seatedAt + 2000u && s_step < 10 && body && ue_wrap::atv::GetRootTransform(atv, root, rot) &&
+            E::TryGetActorLocation(body, b) && ue_wrap::atv::GetSeatTransform(atv, seat, seatRot) &&
+            ue_wrap::atv::GetSitArrowLocation(atv, sit)) {
+            s_step = 10;
+            UE_LOGI("[ATV] %s: slot 1's body (%.0f,%.0f,%.0f), the seat (%.0f,%.0f,%.0f), sitarrow (%.0f,%.0f,%.0f); body - "
+                    "seat (%.0f,%.0f,%.0f), body above sitarrow %.0f cm",
+                    host ? "host" : "client", b.X, b.Y, b.Z, seat.X, seat.Y, seat.Z, sit.X, sit.Y, sit.Z, b.X - seat.X,
+                    b.Y - seat.Y, b.Z - seat.Z, b.Z - sit.Z);
+            s_look = ue_wrap::FVector{seat.X, seat.Y, seat.Z + 30.f};
+        }
+        ue_wrap::FVector eye{};
+        if (s_step == 10 && t >= s_seatedAt + 3500u && E::ReadMainPlayerCameraLocation(me, eye)) {
+            E::SetControlRotation(E::GetController(me), coop::director::LookAt(eye, s_look));
+            if (t >= s_seatedAt + 5000u) {
+                s_step = 11;
+                const wchar_t* const label = host ? L"atv-host" : L"atv-slot2";
+                UE_LOGI("[ATV] %s: screenshot %ls saved=%d", host ? "host" : "client", label,
+                        harness::screenshot::Capture(label) ? 1 : 0);
+            }
+        }
+    }
+    if (host && t >= 140000u && s_step != 99) {
+        s_step = 99;
+        UE_LOGI("[ENTITY] done");
+    }
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -1264,6 +1336,10 @@ void Tick(coop::net::Session* session) {
     }
     if (PourMode()) {
         PourStep(host, t);
+        return;
+    }
+    if (AtvMode()) {
+        AtvStep(host, t);
         return;
     }
     if (Catalog()) {
