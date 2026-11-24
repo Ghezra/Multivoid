@@ -136,6 +136,15 @@ host's down, and the client's new poster was made on the host with its picture, 
 posters). A custom poster's image is a file in each player's own posters folder, so another peer shows its own image by
 that name, or none.
 
+Rugs laid on the floor and stickers ride the same lane. A held rug's put leaves a `rug_C` (`rug_c_C` for a custom
+one), whose record carries its type, skin and custom picture file and whose action 7 takes it back into the hand; a
+sticker sheet's press leaves a `sticker_C` on what it hit, whose record carries its picture's name and the key of the
+actor it is stuck to, and whose action 7 peels it off. Neither crossed before: a rug or sticker laid by one player was on
+that player's machine alone. Now each is a piece as a poster is, a record applied to a rug repaints it through its own
+`setSkin`, and a sticker is attached to the actor its key names here `[V]` (`coop/dev/entity_probe`, `rugs`, three
+peers: the host's laid rug and sticker were made on slot 1, slot 1's were made on the host, and a slot joining later
+found all four, every sticker's picture the same everywhere; a sticker stuck to a moving prop is not run).
+
 ## Who owns what
 
 | State | Owner | Shape |
@@ -146,7 +155,7 @@ that name, or none.
 | an anchored hook taken back with the use key | the host | a client's pickup is asked of the host by the hook's save key; the taker's copy runs the game's pickup once the host has taken its hook away |
 | a garden hose being laid | the peer whose player lays it | not sent until it is finished |
 | a finished garden hose, its points and its two ends | the host | the hose's own save record; a client's change is a route the host checks |
-| a nail, a custom wall in each stage, and a poster on a wall | the host | the piece's own save record; a client's new piece or removal is an intent the host checks |
+| a nail, a custom wall in each stage, a poster on a wall, a laid rug and a sticker | the host | the piece's own save record; a client's new piece or removal is an intent the host checks |
 
 ## Wire messages
 

@@ -265,6 +265,8 @@ const char* KindName(B::Kind k) {
     case B::Kind::Wall: return "wall";
     case B::Kind::WetWall: return "wet wall";
     case B::Kind::Poster: return "poster";
+    case B::Kind::Rug: return "rug";
+    case B::Kind::Sticker: return "sticker";
     default: return "piece";
     }
 }
@@ -476,8 +478,9 @@ bool Lost(coop::net::Session& s, const std::wstring& key, Known& k, Clock::time_
     void* a = nullptr;
     void* b = nullptr;
     // A nail whose ends are gone went with them; an end the host still has comes back, and the nail with it. A poster
-    // goes into the hand of the player who takes it down (its action 7).
-    const bool takeable = kind == B::Kind::Unfinished || kind == B::Kind::Poster ||
+    // goes into the hand of the player who takes it down (its action 7), as a rug does; a sticker's action 7 peels it off.
+    const bool takeable = kind == B::Kind::Unfinished || kind == B::Kind::Poster || kind == B::Kind::Rug ||
+                          kind == B::Kind::Sticker ||
                           (kind == B::Kind::Nail && NailEnds(k.rec, a, b));
     if (k.confirmed && takeable && near) {
         if (!SendIntent(s, kOpGone, key, nullptr)) return false;

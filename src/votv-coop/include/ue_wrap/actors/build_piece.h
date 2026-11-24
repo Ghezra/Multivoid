@@ -22,7 +22,11 @@
 
 namespace ue_wrap::build_piece {
 
-enum class Kind { None, Nail, Unfinished, Wall, WetWall, Poster };
+// A rug on the floor (rug_C, rug_c_C the custom one) is what a held rug's put leaves; its record carries its type, skin,
+// name and custom picture file, and its action 7 takes it back into the hand. A sticker (sticker_C) is what a sticker
+// sheet's press leaves on what it hit: its record carries its picture's name (strings[0]) and the key of the actor it
+// is stuck to (names[0], attachto), which the save's load attaches it to.
+enum class Kind { None, Nail, Unfinished, Wall, WetWall, Poster, Rug, Sticker };
 
 // The kind of a class this file names, by its leaf name ("nail_long_C"). None for any other.
 Kind KindOfClass(const std::wstring& className);
@@ -44,11 +48,12 @@ void* Spawn(const save_record::SaveRecord& r);
 
 // Hand `r` to the piece (loadData, which runs a wall's Init). A nail then takes `endA` and `endB`, the actors its record's
 // keys name in this world (NailKeys; either may be null), and its `aea` attaches and ties it, as the save's load does a
-// frame after processKeys; a broken record's `aea` only attaches it, so a tie the nail still has is broken first.
+// frame after processKeys; a broken record's `aea` only attaches it, so a tie the nail still has is broken first. A
+// sticker is attached to `endA`, the actor it is stuck to; a poster or rug is painted again.
 // `load` governs how the record's classes resolve (see save_record::ClassLoad).
 bool Apply(void* piece, const save_record::SaveRecord& r, void* endA, void* endB, save_record::ClassLoad load);
 
-// A nail's two end keys (names[0]); false when the record does not carry them.
+// A nail's two end keys (names[0]), or a sticker's one (`b` empty); false when the record does not carry them.
 bool NailKeys(const save_record::SaveRecord& r, std::wstring& a, std::wstring& b);
 
 // A nail's live ends as it holds them, or null.

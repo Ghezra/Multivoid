@@ -4,6 +4,7 @@
 
 #include "ue_wrap/core/asset_load.h"
 #include "ue_wrap/core/call.h"
+#include "ue_wrap/core/class_resolve.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/reflection_props.h"
@@ -42,6 +43,10 @@ constexpr ClassRow kClasses[] = {
     {L"poster_C", Kind::Poster},
     {L"poster_c_C", Kind::Poster},
     {L"poster_treehouse_C", Kind::Poster},
+    // A rug on the floor (a held rug's put), and a sticker on what it hit (a sticker sheet's press).
+    {L"rug_C", Kind::Rug},
+    {L"rug_c_C", Kind::Rug},
+    {L"sticker_C", Kind::Sticker},
 };
 
 template <class T>
@@ -135,7 +140,9 @@ void* ClassFor(const std::wstring& className) {
     if (KindOfClass(className) == Kind::None) return nullptr;
     if (void* cls = object_index::ClassByName(className.c_str())) return cls;
     const std::wstring leaf = className.substr(0, className.size() - 2);   // without _C
-    return asset_load::LoadObjectByPath((L"/Game/objects/" + leaf + L"." + className).c_str());
+    if (void* cls = asset_load::LoadObjectByPath((L"/Game/objects/" + leaf + L"." + className).c_str())) return cls;
+    // A class outside /Game/objects (a rug's, a sticker's) is found through the asset registry.
+    return class_resolve::ResolveClass(className.c_str(), class_resolve::AnyFamily(), class_resolve::Load::Immediate).cls;
 }
 
 }  // namespace
@@ -196,6 +203,15 @@ bool Apply(void* piece, const SR::SaveRecord& r, void* endA, void* endB, SR::Cla
     // A poster's loadData restores its picture (`type`, `filename`) but paints nothing: its begin play's setPoster does,
     // a frame after a spawn, so a record applied to a poster already up repaints it here.
     if (KindOf(piece) == Kind::Poster) return CallNoArgs(piece, L"setPoster") || true;
+    // A rug's loadData restores its type, skin and custom picture; setSkin paints them on the rug already laid.
+    if (KindOf(piece) == Kind::Rug) return CallNoArgs(piece, L"setSkin") || true;
+    // A sticker's loadData paints it (setPoster); it is stuck to the actor its key names, as the sheet's press sticks it.
+    if (KindOf(piece) == Kind::Sticker) {
+        void* parent = nullptr;
+        if (endA && R::IsLive(endA) && !(engine::GetAttachParentActor(piece, parent) && parent == endA))
+            engine::AttachActorToActorKeepWorld(piece, endA, false);
+        return true;
+    }
     if (KindOf(piece) != Kind::Nail) return true;
     // A broken record's aea only attaches the nail, so a tie this copy still has is broken here.
     if (NailBroken(piece))
@@ -206,9 +222,11 @@ bool Apply(void* piece, const SR::SaveRecord& r, void* endA, void* endB, SR::Cla
 }
 
 bool NailKeys(const SR::SaveRecord& r, std::wstring& a, std::wstring& b) {
-    if (r.names.empty() || r.names[0].size() < 2) return false;
+    if (r.names.empty() || r.names[0].empty()) return false;
+    const bool sticker = KindOfClass(r.className) == Kind::Sticker;
+    if (!sticker && r.names[0].size() < 2) return false;
     a = r.names[0][0];
-    b = r.names[0][1];
+    b = sticker ? std::wstring() : r.names[0][1];
     return true;
 }
 

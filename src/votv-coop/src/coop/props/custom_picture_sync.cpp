@@ -5,7 +5,9 @@
 // picture of that `filename` (lib's get custom pic) onto `dynmat`. prop_poster_C: its RMB opens the picker over
 // `posters`; the apply sets `filename` and runs setTex, which, `custom` set, finds `filename` in filenames_posters. Its
 // put spawns a poster_C with its `type`, `filename` and `custom`. poster_C: its press, `custom` set, opens the picker;
-// the apply sets `filename` and runs setPoster. Each saves `filename` in its record's strings.
+// the apply sets `filename` and runs setPoster. prop_rug_c_C (a held custom rug) and rug_C (one laid, rug_c_C the
+// custom one): the apply sets `filename` and runs setSkin, which finds it in the gamemode's `rugs`. Each saves
+// `filename` in its record's strings.
 
 #include "coop/props/custom_picture_sync.h"
 
@@ -48,6 +50,8 @@ namespace B  = ue_wrap::build_piece;
 UE_FACT_FN(kRowFrame, "custom_picture_sync", L"prop_picture_h_C", L"intComs_texturePickerApply", Declared);
 UE_FACT_FN(kRowHeld, "custom_picture_sync", L"prop_poster_C", L"intComs_texturePickerApply", Declared);
 UE_FACT_FN(kRowWall, "custom_picture_sync", L"poster_C", L"intComs_texturePickerApply", Declared);
+UE_FACT_FN(kRowHeldRug, "custom_picture_sync", L"prop_rug_c_C", L"intComs_texturePickerApply", Declared);
+UE_FACT_FN(kRowRug, "custom_picture_sync", L"rug_C", L"intComs_texturePickerApply", Declared);
 constexpr int kTag = 0x43505301;  // 'CPS'
 
 constexpr float kReachCm = 800.f;
@@ -59,9 +63,14 @@ constexpr const wchar_t* kPropClasses[] = {
     L"prop_picture_h_C", L"prop_picture_s_C", L"prop_picture_t_C", L"prop_picture_v_C", L"prop_poster_C",
     L"prop_poster_C_C",  L"prop_poster_0_C",  L"prop_poster_1_C",  L"prop_poster_2_C",  L"prop_poster_3_C",
     L"prop_poster_4_C",  L"prop_poster_5_C",  L"prop_poster_6_C",  L"prop_poster_7_C",  L"prop_poster_8_C",
+    L"prop_rug_c_C",
 };
 
-enum class Family : uint8_t { None, Frame, Held, Wall };
+// A frame; a held poster; a poster on a wall; a held custom rug; a rug laid. A wall poster and a laid rug are build
+// pieces (coop/world/build_sync), named on the wire by their save key; the rest by their element id.
+enum class Family : uint8_t { None, Frame, Held, Wall, HeldRug, Rug };
+
+bool Keyed(Family f) { return f == Family::Wall || f == Family::Rug; }
 
 N::Session* g_session = nullptr;
 bool g_watched = false;
@@ -81,6 +90,8 @@ Family FamilyOf(void* obj) {
     if (R::NameStartsWith(cls, L"prop_picture_")) return Family::Frame;
     if (R::NameStartsWith(cls, L"prop_poster_")) return Family::Held;
     if (R::NameStartsWith(cls, L"poster_")) return Family::Wall;
+    if (R::NameStartsWith(cls, L"prop_rug_")) return Family::HeldRug;
+    if (R::NameStartsWith(cls, L"rug_")) return Family::Rug;
     return Family::None;
 }
 
@@ -89,6 +100,8 @@ const wchar_t* PaintFn(Family f) {
     case Family::Frame: return L"upd";
     case Family::Held: return L"setTex";
     case Family::Wall: return L"setPoster";
+    case Family::HeldRug:
+    case Family::Rug: return L"setSkin";
     default: return nullptr;
     }
 }
@@ -98,6 +111,8 @@ const char* FamilyName(Family f) {
     case Family::Frame: return "frame";
     case Family::Held: return "held poster";
     case Family::Wall: return "wall poster";
+    case Family::HeldRug: return "held rug";
+    case Family::Rug: return "laid rug";
     default: return "?";
     }
 }
@@ -135,17 +150,17 @@ uint32_t EidOf(void* obj) {
     return eid == EL::kInvalidId ? 0u : static_cast<uint32_t>(eid);
 }
 
-void* WallByKey(const std::wstring& key) {
+void* PieceByKey(const std::wstring& key) {
     std::vector<void*> pieces;
     B::List(pieces);
     for (void* p : pieces)
-        if (FamilyOf(p) == Family::Wall && B::KeyOf(p) == key) return p;
+        if (Keyed(FamilyOf(p)) && B::KeyOf(p) == key) return p;
     return nullptr;
 }
 
-// The piece's wire name: a prop's element id, a wall poster's save key. False when the host could not name it.
+// The piece's wire name: a prop's element id, a build piece's save key. False when the host could not name it.
 bool Identify(void* obj, Family f, N::CustomPicturePayload& p) {
-    if (f == Family::Wall) {
+    if (Keyed(f)) {
         const std::wstring key = B::KeyOf(obj);
         if (key.empty() || key.size() > sizeof(p.key.data)) return false;
         N::WireKeyFromString(key, p.key);
@@ -156,7 +171,7 @@ bool Identify(void* obj, Family f, N::CustomPicturePayload& p) {
 }
 
 void* Resolve(const N::CustomPicturePayload& p) {
-    void* const obj = p.key.len ? WallByKey(N::StringFromWireKey(p.key))
+    void* const obj = p.key.len ? PieceByKey(N::StringFromWireKey(p.key))
                                 : EL::LiveActorOfType(static_cast<EL::ElementId>(p.eid), EL::ElementType::Prop);
     return FamilyOf(obj) == Family::None ? nullptr : obj;
 }
@@ -229,7 +244,7 @@ void Install(N::Session* session) {
     g_session = session;
     if (g_watched) return;
     g_watched = true;
-    for (const auto* row : {&kRowFrame, &kRowHeld, &kRowWall})
+    for (const auto* row : {&kRowFrame, &kRowHeld, &kRowWall, &kRowHeldRug, &kRowRug})
         if (!sg::WatchName(*row, kTag, nullptr, &OnApplyPost))
             UE_LOGE("custom_picture_sync: a watch on a picker's apply was refused");
 }
@@ -237,13 +252,14 @@ void Install(N::Session* session) {
 void Tick() {
     if (!g_watched || g_settled) return;
     sg::ResolvePendingNames();
-    for (const auto* row : {&kRowFrame, &kRowHeld, &kRowWall})
+    for (const auto* row : {&kRowFrame, &kRowHeld, &kRowWall, &kRowHeldRug, &kRowRug})
         if (!sg::NameWatchSettled(*row, kTag)) return;
     g_settled = true;
     int live = 0;
-    for (const auto* row : {&kRowFrame, &kRowHeld, &kRowWall}) live += sg::NameWatchLive(*row, kTag) ? 1 : 0;
-    if (live == 3) UE_LOGI("custom_picture_sync: the watches on the pickers' apply are live");
-    else UE_LOGE("custom_picture_sync: %d of 3 picker watches live -- a pick on the others stays on its picker's machine",
+    for (const auto* row : {&kRowFrame, &kRowHeld, &kRowWall, &kRowHeldRug, &kRowRug})
+        live += sg::NameWatchLive(*row, kTag) ? 1 : 0;
+    if (live == 5) UE_LOGI("custom_picture_sync: the watches on the pickers' apply are live");
+    else UE_LOGE("custom_picture_sync: %d of 5 picker watches live -- a pick on the others stays on its picker's machine",
                  live);
 }
 

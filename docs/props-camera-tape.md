@@ -20,10 +20,12 @@ none, or says the prop is fine when it is at full. A prop's health is the host's
 client's repair mended its own copy and the host's prop broke as before.
 
 A picture frame (`prop_picture_h_C`, and its `_s`, `_t` and `_v` sizes, which inherit it), a held poster
-(`prop_poster_C`) and a poster on a wall (`poster_C`), pressed with the world's custom content on, open the gamemode's
+(`prop_poster_C`), a poster on a wall (`poster_C`), a held custom rug (`prop_rug_c_C`) and a laid one (`rug_c_C`),
+pressed with the world's custom content on, open the gamemode's
 picker over the player's own custom pictures (the files in `%LOCALAPPDATA%\VotV\Assets\paintings\<size>` and
-`posters`). The pick (`intComs_texturePickerApply`) sets the piece's `filename` and paints it: a frame through `upd`, a
-held poster through `setTex`, a wall poster through `setPoster`, each loading that file. Each saves `filename` in its
+`posters` and `rugs`). The pick (`intComs_texturePickerApply`) sets the piece's `filename` and paints it: a frame through
+`upd`, a held poster through `setTex`, a wall poster through `setPoster`, a rug through `setSkin`, each loading that
+file. A sticker sheet's pick only names the next sticker it presses, whose record carries the name. Each saves `filename` in its
 record. A pick set it on the picker's machine alone.
 
 ## How it works
@@ -47,13 +49,13 @@ at the last use, the tape's own going (as a held cement bag's last unit goes) ar
 view runs as the game's, and the host's own repairs run as the game's.
 
 Custom pictures (`coop/props/custom_picture_sync`): a watch after each picker's apply reads the piece's new `filename`.
-A client's pick is sent to the host (`PictureAsk`), naming a frame or held poster by its element and a wall poster by
-its save key; the picture itself never crosses. The host judges it (the piece within 8 m of the sender's body, four asks
+A client's pick is sent to the host (`PictureAsk`), naming a frame, held poster or held rug by its element and a wall
+poster or laid rug by its save key; the picture itself never crosses. The host judges it (the piece within 8 m of the sender's body, four asks
 a second), writes the name on its own piece, paints it with the piece's own function and sends the name to every client
 (`PictureState`); its own picks are sent the same way. A client writes the name on its copy and paints it, which loads
 that file from its own folder, so every player is taken to have the same custom picture files. A refused pick is
-answered with the host's name, which takes it back. A poster put on a wall carries its name in its build record
-([deployables.md](deployables.md)).
+answered with the host's name, which takes it back. A poster put on a wall, a laid rug and a sticker carry their
+picture's name in their build record ([deployables.md](deployables.md)).
 
 ## Who owns what
 
@@ -64,7 +66,7 @@ answered with the host's name, which takes it back. A poster put on a wall carri
 | the gallery a capture appends to | each machine | a client's print is also appended to the host's |
 | a prop's health under the tape | the host | a client's click asked; the answer runs the click on its copy |
 | the tape's uses | the host | in each answer |
-| a frame's or poster's custom picture | the host | a client's pick asked by its file name; the name sent to all |
+| a frame's, poster's or rug's custom picture | the host | a client's pick asked by its file name; the name sent to all |
 | the custom picture files | each player's own folder | never; every player is taken to have the same files |
 
 ## Wire messages
@@ -74,13 +76,14 @@ answered with the host's name, which takes it back. A poster put on a wall carri
 | `PhotoImage` | a client to the host (op 1); the host to all, or to a joiner (op 2) | a client's capture with its camera; a picture with its index and its printer |
 | `TapeAsk` | a client to the host | the tape and the prop it names |
 | `TapeState` | the host to the asker | mended, at full or refused, and the tape's uses |
-| `PictureAsk` | a client to the host | a frame, held poster or wall poster and the picked file name |
+| `PictureAsk` | a client to the host | a frame, poster or rug and the picked file name |
 | `PictureState` | the host to all, a joiner or a refused asker | a piece and its file name |
 
 ## Late join
 
 A joiner's save carries no pictures, so the host's connect replay sends it every printed picture in its save. It also
-sends every frame and held poster with a custom picture by its name; wall posters come with their build records.
+sends every frame, held poster and held rug with a custom picture by its name; wall posters and laid rugs come with
+their build records.
 
 ## Measured
 
@@ -96,7 +99,8 @@ slot 1's picture as the host's: the hold above came from it; its rerun did not c
 `[V]` (`picture` mode, three peers on build 360, two test pictures in each custom folder): slot 1's picks on a frame, a
 held poster and a wall poster showed the same file names on the host; the host's later pick on the frame reached slot 1;
 slot 2, joining after the first two picks, got all three names and then the host's pick. Before it, a pick reached no
-other peer.
+other peer. In `rugs` mode, slot 1's picks on a held rug and a laid rug reached the host, the host's later pick on the
+laid rug reached slot 1, and a slot joining later got both names.
 
 ## Known limits
 
