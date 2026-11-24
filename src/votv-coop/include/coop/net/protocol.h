@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 354;
+inline constexpr uint16_t kProtocolVersion = 355;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1691,6 +1691,13 @@ enum class ReliableKind : uint16_t {
     // CLIENT->HOST: this client's churn, pour or take of a churn's butter. The host judges the sender's reach and runs
     // it on its own copy; a take is granted to one asker. Never relayed. ButterChurnAskPayload.
     ButterChurnAsk = 328,
+    // HOST->ALL: a remote drone's switch and energy (coop/props/rdrone_sync), when its switch changes or its energy
+    // crosses a 5% step; to a joiner, every drone; to one asker, a refused switch's state. The host flies the drone and
+    // its pose rides the drive stream. Never relayed; not pre-world. RdroneStatePayload.
+    RdroneState = 329,
+    // CLIENT->HOST: this client's flight of a drone from its laptop (op 1, the sliders' summed moves) or its press of
+    // the drone's switch (op 2, judged by reach). The host runs it on its own copy. Never relayed. RdroneAskPayload.
+    RdroneAsk = 330,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2442,6 +2449,7 @@ enum class PropSyncReason : uint8_t {
     DevDrill = 1,
     SwingerParent = 2,   // unused until the swinger-parent feeder
     BodyPush = 3,        // the client's own player walked into the prop and set it moving (coop/props/body_push)
+    Ride = 4,            // the client's own player rides the prop: a sled (coop/props/rdrone_sync)
 };
 
 // A client's request to be a prop's syncer (PropSyncClaim): the prop by its key when it has one and by its host eid,
@@ -2683,6 +2691,24 @@ struct ButterChurnAskPayload {
     uint8_t  pad[3];  // zero
 };
 static_assert(sizeof(ButterChurnAskPayload) == 8, "ButterChurnAskPayload must be 8 bytes");
+
+// A remote drone's state (RdroneState): its element id, its `energy` and whether it is on.
+struct RdroneStatePayload {
+    uint32_t eid;
+    float    energy;  // 0..100
+    uint8_t  active;  // 1 on
+    uint8_t  pad[3];  // zero
+};
+static_assert(sizeof(RdroneStatePayload) == 12, "RdroneStatePayload must be 12 bytes");
+
+// A client's act on a remote drone (RdroneAsk): op 1 flies it by the summed slider moves, op 2 presses its switch.
+struct RdroneAskPayload {
+    uint32_t eid;
+    float    forward, rot, up;  // op 1: the sums of `move`'s arguments since the last ask; op 2: zero
+    uint8_t  op;
+    uint8_t  pad[3];            // zero
+};
+static_assert(sizeof(RdroneAskPayload) == 20, "RdroneAskPayload must be 20 bytes");
 
 // A wall builder's aiming preview (WallPreview): the tool's own components, in world space.
 struct WallPreviewPayload {

@@ -113,6 +113,7 @@
 #include "coop/interactables/car_charger_sync.h"
 #include "coop/props/bucket_sync.h"
 #include "coop/props/prop_rest_sync.h"  // the joiner's rest rest pass
+#include "coop/props/rdrone_sync.h"  // every remote drone's switch and energy
 #include "coop/props/butter_churn_sync.h"  // every butter churn's milk, speed and butter
 #include "coop/props/prop_switch_sync.h"  // every light's and hot plate's switch
 #include "coop/props/roomba_sync.h"  // every robot cleaner's switch
@@ -262,6 +263,8 @@ void ConnectReplayForSlot(int slot) {
     coop::prop_switch_sync::SendJoinSnapshotForSlot(slot);
     // Every butter churn's milk, speed and butter.
     coop::butter_churn_sync::SendJoinSnapshotForSlot(slot);
+    // Every remote drone's switch and energy.
+    coop::rdrone_sync::SendJoinSnapshotForSlot(slot);
     // The desk's back plates and every transformer station's door.
     coop::cover_sync::SendJoinSnapshotForSlot(slot);
     // Every spray, every thrusting extinguisher and every partly spent charge.
