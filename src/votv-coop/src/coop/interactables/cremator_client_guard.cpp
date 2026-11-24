@@ -6,7 +6,9 @@
 #include "coop/config/config_registry.h"
 #include "coop/interactables/cremator_state.h"      // the cremator a door belongs to, and the want held for it
 #include "coop/interactables/interactable_sync.h"   // the lane's key, for the lines
+#include "coop/net/protocol.h"
 #include "coop/net/session.h"
+#include "coop/net/wire_key_util.h"
 #include "coop/session/net_pump.h"                  // IsInAnnouncedWorld: a client's own world load runs natively
 
 #include "ue_wrap/core/log.h"
@@ -48,7 +50,6 @@ constexpr int kTagSpit      = 0x43475346;  // 'CGSF'
 // "Gas tanks is empty". The game has no hint for a refused valve (its valve press toggles `pouring` and says nothing),
 // so the text is ours: what the player did, and who pours.
 constexpr uint8_t kHintRefusal = 1;
-constexpr const wchar_t* kValveHint = L"Turning the valve does nothing: the host pours the fuel";
 
 // A valve press is one line a burst: the next press within this gap belongs to the same burst.
 constexpr uint64_t kBurstGapMs = 3000;
@@ -130,8 +131,9 @@ sg::Verdict OnDoorOpenPre(const sg::Call& call) {
     return sg::Verdict::Cancel;
 }
 
-// Before the body, on a client: a press of the fuel valve is refused and not sent. The pour runs from `gasAmount`,
-// which does not cross, so the copy holds no fuel to show; the host pours until the gasoline package carries it.
+// Before the body, on a client: a press of the fuel valve is the host's. It is refused here and asked of the host as the
+// cremator intent's action 2 (open) or 3 (shut), the opposite of what this copy shows; the host's valve and fuel reach
+// the copy (coop/interactables/gasoline_sync), and its pour fills the host's can, whose fuel reaches every peer.
 sg::Verdict OnValvePre(const sg::Call& call) {
     if (GuardOff() || !OnClient()) return sg::Verdict::Run;
     if (!call.object || !C::IsCremator(call.object)) return sg::Verdict::Run;
@@ -150,17 +152,22 @@ sg::Verdict OnValvePre(const sg::Call& call) {
     if (C::ReadLookingAtHandle(call.object, handle) && handle) return sg::Verdict::Run;  // the handle's press
     ++g_valveRefused;
     const uint64_t now = NowMs();
-    if (!g_valveEver || now - g_valveLastMs > kBurstGapMs) {
-        ++g_valveBursts;
-        UE_LOGI("[CREMATOR-GUARD] a client cannot open the cremator's fuel valve until the gasoline package carries the "
-                "fuel; the host pours (key='%ls', burst #%llu)", coop::interactable_sync::CrematorKey(call.object).c_str(),
-                static_cast<unsigned long long>(g_valveBursts));
-        // The first press of a burst only: the player is told through the game's own hint, as the machine does for its
-        // own refusals.
-        ue_wrap::votv_lib::AddHint(kValveHint, kHintRefusal, call.object);
-    }
     g_valveEver = true;
     g_valveLastMs = now;
+    const std::wstring key = coop::interactable_sync::CrematorKey(call.object);
+    bool pouring = false;
+    auto* const s = g_session.load(std::memory_order_acquire);
+    if (key.empty() || !C::ReadPouring(call.object, pouring) || !s) {
+        UE_LOGW("[CREMATOR-GUARD] a valve press on cremator '%ls' could not be asked (unkeyed or unread)", key.c_str());
+        return sg::Verdict::Cancel;
+    }
+    coop::net::KeyedTogglePayload p{};
+    coop::net::WireKeyFromString(key, p.key);
+    p.action = pouring ? 3 : 2;
+    const bool ok = s->SendReliable(coop::net::ReliableKind::CrematorIntent, &p, sizeof(p));
+    ++g_valveBursts;
+    UE_LOGI("[CREMATOR-GUARD] CLIENT asked the host to %s the fuel valve of cremator '%ls' (ok=%d)",
+            pouring ? "shut" : "open", key.c_str(), ok ? 1 : 0);
     return sg::Verdict::Cancel;
 }
 

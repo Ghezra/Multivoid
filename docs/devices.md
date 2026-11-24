@@ -133,9 +133,16 @@ holds no prop to burn or destroy: the burn a client's player takes is the host's
 and a burnt prop's destruction is the host's, which reaches the client like any destroy. The copy's door is
 not opened by a player's use while the copy runs or the lane holds an on want for it (the host's door is
 locked for the run; a client's is unlocked until the host's state arrives, so the window is the state's trip).
-A press of the fuel valve is refused and not sent: the pour runs from the fuel the machine makes, which does
-not cross, so the copy holds none to show, and the host pours until the gasoline package carries it. A
-client's fuel gauge therefore reads zero `[?]`. The blow-out's fireballs (`spitFireballs_timer`, every 0.2 s while
+A press of the fuel valve is the host's (issue 50): the client's press is refused on its copy and asked of the host
+as the cremator intent's action 2 (open) or 3 (shut), judged by the same reach, and the host sets its valve as the
+machine's own press does (`pouring` and `updPour`). The host's fuel and valve reach every client five times a second
+(`CrematorFuel`, `coop/interactables/gasoline_sync`), shown through the copy's own `updPour`, and a client's copy pours
+nothing (`pourOut` refused): the host's pour fills the host's can, and a gas can's fuel is the host's too (`GasCanState`,
+every can to a joiner). A client's pour from a can into a generator, a woodchipper or a lamp lowers its copy, and the
+host takes the lower value (`GasCanSpend`), never a higher one; a copy that rose is put back. `[V]` (`coop/dev/entity_probe`,
+`VOTVCOOP_ENTITY_PROBE=gas`, three peers on build 358): slot 1's valve press opened the host's, its 60 of fuel filled
+an empty can at the nozzle on every peer, the second press shut it, slot 1's spend of 5 left 55 on the host, and a slot
+that joined after found 55 and the valve shut. The blow-out's fireballs (`spitFireballs_timer`, every 0.2 s while
 the lid is open on an active machine) are refused on the copy too: a client sees none, and the host's are not
 synced either, a host-only effect. A refused valve press shows the player the game's own hint, once a burst.
 Until the host's forward finish its lid is still unlocked, so a client's own open of the cremator's lid in that
@@ -537,6 +544,7 @@ removed from its author's hand -- and a joiner gets every box's count at its wor
 | `CameraToggleIntent` | a client to the host | a camera's key, which bit, the value wanted |
 | `CrematorState`, `CargoLiftState` | the host to all | a cremator's key and its lever run: on or off; a cargo lift's key and its direction |
 | `CrematorIntent`, `CargoLiftIntent` | a client to the host | a cremator's key and the state the press wants: the handle was pressed; a cargo lift's key and the direction its press wants |
+| `CrematorFuel`, `GasCanState`; `GasCanSpend` | the host to all, every one to a joiner; a client to the host | a cremator's key, fuel and valve; a gas can's id and fuel; a client's can after its own pour, taken only when lower |
 | `CrematorHit` | the host to the victim | a cremator's key and a hit on that peer's player: damage, or an ignite with its seconds |
 | `KeypadState` | the host to all | a verb the host's keypad ran, or the state a chain settled on: the buffer, the verdict, the set-new-code mode, the password, and whether the chain handed the verdict on |
 | `KeypadIntent` | a client to the host | a keypad's key and the entry: a digit, a submit, a cancel, a keycard's verdict, a reset |
@@ -572,7 +580,7 @@ state it shows, and the first rows a world takes play no sound.
 | A cord's link is the host's: a client reports the plug its player made and the host's answer settles both copies, so two clients on one cord settle in arrival order and a claim on a cord the host's player is dragging is answered with the host's link. A socket's power, a generator's outlets and a Kerfus's charging are not this lane's. Not yet exercised in a two-peer game run | `[RD]` the cord and socket Blueprint call surface; `[?]` `coop/interactables/cord_sync`, `ue_wrap/devices/cord` |
 | A client's spill from its hand lands where its own flight put it, which the host takes as is within 15 m. A bottle's opening click and a liquid that leaves something other than a grime decal are not carried | `[V]` `prop_snack_beer_C`'s `openBottle` plays `impact_plastic_cue`; `coop/world/spill_sync` |
 | A client's light-group index has been reported dropping to zero after a join; not reproduced | `[?]` [issue 11](https://github.com/VOTV-MP/Multivoid/issues/11) |
-| A woodchipper's chip animation and chip sound, and the gas can's fuel on the other peers after a pour, are not carried; a client's pour is the fuel its own copy gained, which the host takes up to the room in the tank | `[?]` `coop/interactables/woodchipper_sync`; no lane carries the can's fuel |
+| A woodchipper's chip animation and chip sound are not carried; a client's pour is the fuel its own copy gained, which the host takes up to the room in the tank | `[?]` `coop/interactables/woodchipper_sync`; the can's fuel is `coop/interactables/gasoline_sync`'s |
 
 ## Code map
 

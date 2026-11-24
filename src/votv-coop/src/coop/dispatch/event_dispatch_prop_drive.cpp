@@ -28,7 +28,8 @@
 #include "coop/props/prop_switch_sync.h"  // a light's or the hot plate's switch, the host's
 #include "coop/props/photo_sync.h"  // a printed photo's picture, the host's save's
 #include "coop/props/tape_sync.h"
-#include "coop/props/bucket_pour.h"  // a client's tipped bucket's pour, the host's to spawn   // a tape's repair, the host's
+#include "coop/props/bucket_pour.h"
+#include "coop/interactables/gasoline_sync.h"  // the cremator's fuel and a gas can's, the host's  // a client's tipped bucket's pour, the host's to spawn   // a tape's repair, the host's
 #include "coop/props/rdrone_sync.h"  // a remote drone's flight, switch and energy, the host's
 #include "coop/props/butter_churn_sync.h"  // a butter churn's milk, speed and butter, the host's
 #include "coop/props/miner_sync.h"   // a GPU mining rig's counts and points, the host's
@@ -545,6 +546,41 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         ::coop::tape_sync::OnAsk(msg.senderPeerSlot, p);
+        break;
+    }
+    case net::ReliableKind::CrematorFuel: {
+        // HOST->ALL (coop/interactables/gasoline_sync). Exact length.
+        net::CrematorFuelPayload p{};
+        if (session.role() == net::Role::Host || msg.payloadLen != sizeof(p)) {
+            UE_LOGW("event_feed: a cremator fuel row the wrong way or of %zu bytes -- dropping",
+                    static_cast<size_t>(msg.payloadLen));
+            break;
+        }
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.key.len > sizeof(p.key.data) || p.pouring > 1 || !std::isfinite(p.gas)) {
+            UE_LOGW("event_feed: a cremator fuel row malformed -- dropping");
+            break;
+        }
+        ::coop::gasoline_sync::OnCrematorFuel(p);
+        break;
+    }
+    case net::ReliableKind::GasCanState:
+    case net::ReliableKind::GasCanSpend: {
+        // HOST->ALL a can's fuel; CLIENT->HOST a client's spend of it (coop/interactables/gasoline_sync). Exact length.
+        net::GasCanPayload p{};
+        const bool state = msg.kind == net::ReliableKind::GasCanState;
+        if ((session.role() == net::Role::Host) == state || msg.payloadLen != sizeof(p)) {
+            UE_LOGW("event_feed: a gas can row the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.eid == 0 || !std::isfinite(p.amount)) {
+            UE_LOGW("event_feed: a gas can row malformed -- dropping");
+            break;
+        }
+        if (state) ::coop::gasoline_sync::OnCanState(p);
+        else ::coop::gasoline_sync::OnCanSpend(msg.senderPeerSlot, p);
         break;
     }
     case net::ReliableKind::BucketPourAsk: {

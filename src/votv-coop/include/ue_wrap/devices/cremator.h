@@ -40,6 +40,13 @@ bool ReadLookingAtValve(void* cremator, bool& value);
 bool WriteLookingAtHandle(void* cremator, bool value);
 bool ReadWindup(void* cremator, float& value);
 bool ReadGasAmount(void* cremator, float& value);
+// The fuel valve: `pouring` (the pour timer moves gasAmount into a can under the nozzle while it is set) and the
+// machine's own updPour, which shows the stream and plays its sound for `pouring` and the fuel. The writes set the field
+// alone. False for another class or a field or function that did not resolve.
+bool ReadPouring(void* cremator, bool& value);
+bool WritePouring(void* cremator, bool value);
+bool WriteGasAmount(void* cremator, float value);
+bool CallUpdPour(void* cremator);
 
 // What the machine holds: `actors` Num and `health[0]`. -1 and kNoHealth when unreadable or empty.
 inline constexpr float kNoHealth = -999.f;

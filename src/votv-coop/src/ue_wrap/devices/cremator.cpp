@@ -51,6 +51,7 @@ BoolField g_closed{L"isClosed"};
 BoolField g_lookingHandle{L"lookingAt_handle"};
 BoolField g_lookingValve{L"lookingAt_valve"};
 BoolField g_doorOpened{L"opened"};
+BoolField g_pouring{L"pouring"};
 
 R::InstanceOffset g_windup{L"windup"};
 R::InstanceOffset g_gas{L"gasAmount"};
@@ -124,6 +125,22 @@ bool ReadLookingAtValve(void* c, bool& v) { return ReadFlag(c, g_lookingValve, v
 bool WriteLookingAtHandle(void* c, bool v) { return WriteFlag(c, g_lookingHandle, v); }
 bool ReadWindup(void* c, float& v) { return ReadFloat(c, g_windup, v); }
 bool ReadGasAmount(void* c, float& v) { return ReadFloat(c, g_gas, v); }
+bool ReadPouring(void* c, bool& v) { return ReadFlag(c, g_pouring, v); }
+bool WritePouring(void* c, bool v) { return WriteFlag(c, g_pouring, v); }
+bool WriteGasAmount(void* c, float v) {
+    if (!IsCremator(c)) return false;
+    const int32_t o = g_gas.Of(c);
+    if (o < 0) return false;
+    std::memcpy(static_cast<char*>(c) + o, &v, sizeof(v));
+    return true;
+}
+bool CallUpdPour(void* c) {
+    if (!IsCremator(c)) return false;
+    void* fn = R::FindDispatchFunctionCached(R::ClassOf(c), L"updPour");
+    if (!fn) return false;
+    ParamFrame f(fn);
+    return f.valid() && Call(c, f);
+}
 
 Machine ReadMachine(void* c) {
     Machine m;

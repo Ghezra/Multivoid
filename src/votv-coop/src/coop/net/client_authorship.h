@@ -51,6 +51,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::PhotoImage:  // op 1 a client's print; op 2 is the host's, its handler checks the role
     case ReliableKind::TapeAsk:
     case ReliableKind::BucketPourAsk:
+    case ReliableKind::GasCanSpend:
     case ReliableKind::MinerIntent:
     case ReliableKind::FireExtIntent:
     case ReliableKind::CoverIntent:
@@ -315,6 +316,8 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::ButterChurnState:
     case ReliableKind::RdroneState:
     case ReliableKind::TapeState:
+    case ReliableKind::CrematorFuel:
+    case ReliableKind::GasCanState:
     case ReliableKind::MinerState:
     case ReliableKind::FireExtState:
     case ReliableKind::CoverState:

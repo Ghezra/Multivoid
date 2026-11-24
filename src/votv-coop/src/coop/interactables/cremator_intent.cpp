@@ -1,6 +1,7 @@
 // coop/interactables/cremator_intent.cpp -- see coop/interactables/cremator_intent.h.
 
 #include "coop/interactables/cremator_intent.h"
+#include "coop/interactables/gasoline_sync.h"
 
 #include "coop/config/config.h"
 #include "coop/config/config_registry.h"
@@ -145,6 +146,30 @@ bool Execute(coop::net::Session& s, const coop::net::KeyedTogglePayload& p, uint
     // Authorize answers reach only; the key is the sender's word, so the actor it names must be a cremator.
     if (!C::IsCremator(cremator)) {
         Refuse(kWrongClass, slot, key, nullptr);
+        return true;
+    }
+    // A press of the fuel valve (action 2 open, 3 shut, coop/interactables/cremator_client_guard): the host's valve is
+    // set to it as the machine's own press does (`pouring` and updPour), and its pour fills the can under the nozzle,
+    // whose fuel reaches every peer (coop/interactables/gasoline_sync).
+    if (p.action >= 2) {
+        const bool wantPour = p.action == 2;
+        bool pouring = false;
+        if (!C::ReadPouring(cremator, pouring)) {
+            Refuse(kNotRun, slot, key, "the valve does not read");
+            return true;
+        }
+        if (pouring == wantPour) {
+            Refuse(kAlready, slot, key, wantPour ? "pouring" : "shut");
+            return true;
+        }
+        if (!C::WritePouring(cremator, wantPour) || !C::CallUpdPour(cremator)) {
+            Refuse(kNotRun, slot, key, "updPour");
+            return true;
+        }
+        coop::gasoline_sync::MarkCremator(cremator);
+        ++g_ran;
+        UE_LOGI("[CREMATOR-INTENT] host %s the fuel valve for slot %u on key='%ls'", wantPour ? "opened" : "shut",
+                static_cast<unsigned>(slot), key.c_str());
         return true;
     }
     // The machine's own guard: a press while the handle is moving does nothing (it sits at the press, not in

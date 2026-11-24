@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 357;
+inline constexpr uint16_t kProtocolVersion = 358;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1710,6 +1710,15 @@ enum class ReliableKind : uint16_t {
     // CLIENT->HOST: the pour blobs this client's tipped bucket spawned in its world, their place and velocity, which the
     // host spawns itself (coop/props/bucket_pour). Never relayed; not pre-world. BucketPourAskPayload.
     BucketPourAsk = 334,
+    // HOST->ALL: a cremator's fuel and fuel valve (coop/interactables/gasoline_sync), on a change; to a joiner, every
+    // cremator. Never relayed; not pre-world. CrematorFuelPayload.
+    CrematorFuel = 335,
+    // HOST->ALL: a gas can's fuel (coop/interactables/gasoline_sync), on a change; to a joiner, every can. Never relayed;
+    // not pre-world. GasCanPayload.
+    GasCanState = 336,
+    // CLIENT->HOST: this client's copy of a gas can lost fuel to its player's pour; the host takes it as the can's fuel,
+    // never higher. Never relayed. GasCanPayload.
+    GasCanSpend = 337,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2756,6 +2765,22 @@ struct BucketPourAskPayload {
     BucketPourBlob blobs[kBucketPourMaxBlobs];
 };
 static_assert(sizeof(BucketPourAskPayload) == 204, "BucketPourAskPayload must be 204 bytes");
+
+// A cremator's fuel and valve (CrematorFuel), named by the cremator lane's key.
+struct CrematorFuelPayload {
+    WireKey key;
+    float   gas;      // gasAmount
+    uint8_t pouring;  // 1 the valve is open
+    uint8_t pad[3];   // zero
+};
+static_assert(sizeof(CrematorFuelPayload) == 40, "CrematorFuelPayload must be 40 bytes");
+
+// A gas can's fuel (GasCanState from the host, GasCanSpend from a client): its element id and `amount`.
+struct GasCanPayload {
+    uint32_t eid;
+    float    amount;
+};
+static_assert(sizeof(GasCanPayload) == 8, "GasCanPayload must be 8 bytes");
 
 // A wall builder's aiming preview (WallPreview): the tool's own components, in world space.
 struct WallPreviewPayload {

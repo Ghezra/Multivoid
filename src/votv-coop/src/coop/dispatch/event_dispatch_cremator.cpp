@@ -65,8 +65,8 @@ bool HandleCrematorEvent(net::Session& session,
             coop::cremator_intent::CountDropped(coop::cremator_intent::Drop::Key);
             break;
         }
-        // The action is the state the press wants: only 0 and 1 are meaningful.
-        if (p.action != 0 && p.action != 1) {
+        // The action is the state the press wants: 0 and 1 the lever's off and on, 2 and 3 the fuel valve open and shut.
+        if (p.action > 3) {
             coop::cremator_intent::CountDropped(coop::cremator_intent::Drop::Wanted);
             break;
         }

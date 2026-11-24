@@ -113,6 +113,7 @@
 #include "coop/interactables/car_charger_sync.h"
 #include "coop/props/bucket_sync.h"
 #include "coop/props/prop_rest_sync.h"  // the joiner's rest rest pass
+#include "coop/interactables/gasoline_sync.h"  // every cremator's fuel and every gas can's
 #include "coop/props/photo_sync.h"  // every printed picture
 #include "coop/props/rdrone_sync.h"  // every remote drone's switch and energy
 #include "coop/props/butter_churn_sync.h"  // every butter churn's milk, speed and butter
@@ -268,6 +269,8 @@ void ConnectReplayForSlot(int slot) {
     coop::rdrone_sync::SendJoinSnapshotForSlot(slot);
     // Every printed picture: a joiner's save carries none.
     coop::photo_sync::SendJoinSnapshotForSlot(slot);
+    // Every cremator's fuel and every gas can's.
+    coop::gasoline_sync::SendJoinSnapshotForSlot(slot);
     // The desk's back plates and every transformer station's door.
     coop::cover_sync::SendJoinSnapshotForSlot(slot);
     // Every spray, every thrusting extinguisher and every partly spent charge.
