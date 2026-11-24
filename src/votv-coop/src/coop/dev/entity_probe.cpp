@@ -827,7 +827,8 @@ void PourStep(bool host, uint64_t t) {
 }
 
 // VOTVCOOP_ENTITY_PROBE=atv: a remote driver's body on the ATV. HOST 40 s: an ATV 4 m before the host. CLIENT slot 1,
-// 55 s on: sits in it (the game's own seat verb). The host and slot 2, once slot 1 is seated there: each logs slot 1's
+// 55 s on: sits in it (the game's own seat verb), 10 s on its throttle down 4 s, 20 s on gets off. The host and slot 2, once
+// slot 1 is seated there: each logs slot 1's
 // body against the seat and `sitarrow`, looks at the seat from where it stands and captures
 // its screen (coop-screenshots/, `atv-host`, `atv-slot2`).
 bool AtvMode() {
@@ -854,12 +855,29 @@ void AtvStep(bool host, uint64_t t) {
         UE_LOGI("[ATV] host: an ATV spawned=%d", rc.cls && E::SpawnActor(rc.cls, to) ? 1 : 0);
     }
     const uint8_t mySlot = host ? 0 : static_cast<uint8_t>(coop::players::Registry::Get().LocalPeerId());
+    static uint64_t s_satAt = 0;
     if (mySlot == 1 && s_step < 2 && t >= 55000u && atv && me) {
         s_step = 1;
         if (coop::dev::atv_seat::TrySit(me, atv, s_try)) {
             s_step = 2;
+            s_satAt = t;
             UE_LOGI("[ATV] client: the seat verb finished (seated=%d)",
                     coop::atv_sync::ActorSeatedBy(1) == atv ? 1 : 0);
+        }
+    }
+    // The driver's throttle held 4 s from 10 s after the seat, then up; 20 s after it the driver gets off.
+    if (mySlot == 1 && atv && s_satAt) {
+        if (s_step == 2 && t >= s_satAt + 10000u) {
+            s_step = 3;
+            UE_LOGI("[ATV] client: throttle down (ran=%d)", ue_wrap::atv::ReplayThrottle(atv, true) ? 1 : 0);
+        }
+        if (s_step == 3 && t >= s_satAt + 14000u) {
+            s_step = 4;
+            UE_LOGI("[ATV] client: throttle up (ran=%d)", ue_wrap::atv::ReplayThrottle(atv, false) ? 1 : 0);
+        }
+        if (s_step == 4 && t >= s_satAt + 20000u) {
+            s_step = 5;
+            UE_LOGI("[ATV] client: got off (ran=%d)", ue_wrap::atv::Dismount(atv) ? 1 : 0);
         }
     }
     if (mySlot != 1 && atv && me && coop::atv_sync::ActorSeatedBy(1) == atv) {
