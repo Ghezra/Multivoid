@@ -114,6 +114,7 @@
 #include "coop/props/bucket_sync.h"
 #include "coop/props/prop_rest_sync.h"  // the joiner's rest rest pass
 #include "coop/interactables/gasoline_sync.h"  // every cremator's fuel and every gas can's
+#include "coop/interactables/window_dirt_sync.h"  // the bay window's grime picture
 #include "coop/props/custom_picture_sync.h"  // every named frame and held poster
 #include "coop/props/photo_sync.h"  // every printed picture
 #include "coop/props/rdrone_sync.h"  // every remote drone's switch and energy
@@ -274,6 +275,8 @@ void ConnectReplayForSlot(int slot) {
     coop::gasoline_sync::SendJoinSnapshotForSlot(slot);
     // Every frame and held poster with a custom picture, by its file name.
     coop::custom_picture_sync::SendJoinSnapshotForSlot(slot);
+    // The bay window's grime as the host's window shows it now.
+    coop::window_dirt_sync::SendJoinSnapshotForSlot(slot);
     // The desk's back plates and every transformer station's door.
     coop::cover_sync::SendJoinSnapshotForSlot(slot);
     // Every spray, every thrusting extinguisher and every partly spent charge.

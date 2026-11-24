@@ -192,6 +192,7 @@
 #include "coop/world/sky_sync.h"
 #include "coop/world/time_sync.h"
 #include "coop/interactables/window_stroke_sync.h"
+#include "coop/interactables/window_dirt_sync.h"
 #include "coop/interactables/window_sync.h"
 #include "coop/session/join_progress.h"
 #include "coop/session/world_load_episode.h"
@@ -432,6 +433,7 @@ void Install(coop::net::Session& session) {
     coop::voice_chat::Install(&session);  // proximity voice chat (opus over the session; PTT X)
     coop::window_sync::Install(&session);  // base-window dirt scalar (the "main huge window")
     coop::window_stroke_sync::Install(&session);  // the bay window's render-target dabs
+    coop::window_dirt_sync::Install(&session);  // the bay window's grime is the host's picture
     coop::grime_sync::Install(&session);  // surface grime (walls/ceiling/floor dirt decals)
     coop::trash_pile_sync::Install(&session);  // trash pile collect counters
     coop::broom_stroke::Install(&session);  // a client's broom stroke is run by the host, with what the client's stroke read
@@ -742,6 +744,7 @@ DisconnectStats DisconnectAll() {
     coop::voice_chat::OnDisconnect();
     coop::window_sync::OnDisconnect();
     coop::window_stroke_sync::OnDisconnect();
+    coop::window_dirt_sync::OnDisconnect();
     coop::broom_stroke::OnDisconnect();  // with no session the game's broom sweeps as written
     coop::verb_lanes::OnDisconnect();  // and each verb lane's counters and summary line (a sender's queue goes with its slot)
     coop::kerfus_lanes::OnDisconnect();  // and the Kerfus lanes' records and waiting states
@@ -875,7 +878,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     // later, where a dispatch is safe.
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:coingun"}; coop::coingun_sync::Tick(); }
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:window"}; coop::window_sync::Tick(); }  // base-window clean: deferred-apply retry (wipes go at the verb)
-    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:window_stroke"}; coop::window_stroke_sync::Tick(); }  // bay-window dabs: send observed, replay received
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:window_stroke"}; coop::window_stroke_sync::Tick(); coop::window_dirt_sync::Tick(); }  // bay-window dabs: send observed, replay received
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:grime"}; coop::grime_sync::Tick(); }  // surface grime: the lowering verbs' watches + the end-of-play subscription, until they take
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:movement_ledger"}; coop::movement_ledger::Tick(session); }  // HOST: throttled per-slot summary + the wire-vs-actor divergence sample (an ENGINE read, hence game thread)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:npc_host"}; coop::npc_sync::TickPoseStream(); }  // HOST: read NPCs -> publish EntityPose batch (host-only, no-op on client)

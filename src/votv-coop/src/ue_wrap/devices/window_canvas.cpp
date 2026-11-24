@@ -14,6 +14,7 @@
 #include "ue_wrap/core/types.h"
 
 #include <atomic>
+#include <vector>
 #include <cstdint>
 #include <cstring>
 
@@ -270,6 +271,76 @@ bool DrawDab(void* window, const Dab& d) {
     f.Set<FVector2D>(L"ScreenSize", FVector2D{d.size, d.size});
     f.Set<FVector2D>(L"CoordinatePosition", FVector2D{0.f, 0.f});
     f.Set<FVector2D>(L"CoordinateSize", FVector2D{1.f, 1.f});
+    f.Set<float>(L"Rotation", 0.f);
+    f.Set<FVector2D>(L"PivotPoint", FVector2D{0.5f, 0.5f});
+    return Call(canv, f);
+}
+
+bool SessionOpen(void* window) { return IsStrokeDraw(window); }
+
+bool ReadImage(void* window, std::vector<uint8_t>& out) {
+    out.clear();
+    if (!window || !R::IsLive(window) || !g_resolved.load(std::memory_order_acquire)) return false;
+    static void* s_getCode = nullptr;
+    if (!s_getCode) s_getCode = R::FindFunction(g_winCls, L"getCode");
+    ParamFrame f(s_getCode);
+    if (!f.valid() || f.ParamOffset(L"bytearray") < 0 || !Call(window, f)) return false;
+    struct Arr {
+        uint8_t* data;
+        int32_t num, max;
+    };
+    const Arr a = f.Get<Arr>(L"bytearray");
+    if (a.data && a.num > 0) out.assign(a.data, a.data + a.num);
+    if (a.data) R::EngineFree(a.data);  // the out copy is ours; the window keeps its own in `gotcode`
+    return !out.empty();
+}
+
+bool DrawImage(void* window, const std::vector<uint8_t>& bytes) {
+    if (!window || !R::IsLive(window) || bytes.empty() || !g_resolved.load(std::memory_order_acquire)) return false;
+    if (IsSignalPlaying()) return false;
+    static void* s_libCdo = nullptr;
+    static void* s_toImage = nullptr;
+    static void* s_drawTex = nullptr;
+    static int32_t s_offSize = -1;
+    if (!s_toImage) {
+        s_libCdo = R::FindClassDefaultObject(L"LowEntryExtendedStandardLibrary");
+        void* lib = R::FindClass(L"LowEntryExtendedStandardLibrary");
+        s_toImage = lib ? R::FindFunction(lib, L"BytesToImage") : nullptr;
+        void* canvasCls = R::FindClass(L"Canvas");
+        s_drawTex = canvasCls ? R::FindFunction(canvasCls, L"K2_DrawTexture") : nullptr;
+        s_offSize = R::FindPropertyOffset(g_winCls, L"size");
+        if (!s_libCdo || !s_toImage || !s_drawTex || s_offSize < 0)
+            UE_LOGE("window_canvas: the image draw did not resolve (lib=%p BytesToImage=%p K2_DrawTexture=%p size@%d)",
+                    s_libCdo, s_toImage, s_drawTex, s_offSize);
+    }
+    if (!s_libCdo || !s_toImage || !s_drawTex || s_offSize < 0) return false;
+    struct Arr {
+        const uint8_t* data;
+        int32_t num, max;
+    };
+    ParamFrame img(s_toImage);
+    if (!img.valid() || img.ParamOffset(L"ByteArray") < 0 || img.ParamOffset(L"ReturnValue") < 0) return false;
+    img.Set<Arr>(L"ByteArray", Arr{bytes.data(), static_cast<int32_t>(bytes.size()), static_cast<int32_t>(bytes.size())});
+    img.Set<uint8_t>(L"ImageFormat", 2);
+    img.Set<int32_t>(L"Index", 0);
+    img.Set<int32_t>(L"Length", 0x7FFFFFFF);
+    if (!Call(s_libCdo, img)) return false;
+    void* const tex = img.Get<void*>(L"ReturnValue");
+    if (!tex || !R::IsLive(tex)) return false;
+    ParamFrame open(g_canvasEvent);
+    if (!open.valid() || !Call(window, open)) return false;
+    void* const canv = ReadField<void*>(window, g_offCanv);
+    if (!canv || !R::IsLive(canv)) return false;
+    const int32_t w = ReadField<int32_t>(window, s_offSize), h = ReadField<int32_t>(window, s_offSize + 4);
+    ParamFrame f(s_drawTex);
+    if (!f.valid() || f.ParamOffset(L"RenderTexture") < 0 || f.ParamOffset(L"BlendMode") < 0) return false;
+    f.Set<void*>(L"RenderTexture", tex);
+    f.Set<FVector2D>(L"ScreenPosition", FVector2D{0.f, 0.f});
+    f.Set<FVector2D>(L"ScreenSize", FVector2D{static_cast<float>(w), static_cast<float>(h)});
+    f.Set<FVector2D>(L"CoordinatePosition", FVector2D{0.f, 0.f});
+    f.Set<FVector2D>(L"CoordinateSize", FVector2D{1.f, 1.f});
+    f.Set<FLinearColor>(L"RenderColor", FLinearColor{1.f, 1.f, 1.f, 1.f});
+    f.Set<uint8_t>(L"BlendMode", 0);  // opaque: the picture replaces the target
     f.Set<float>(L"Rotation", 0.f);
     f.Set<FVector2D>(L"PivotPoint", FVector2D{0.5f, 0.5f});
     return Call(canv, f);

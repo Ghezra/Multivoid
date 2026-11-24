@@ -15,6 +15,9 @@
 
 #pragma once
 
+#include <cstdint>
+#include <vector>
+
 namespace ue_wrap::window_canvas {
 
 // One dab, in the render target's pixel space.
@@ -50,6 +53,18 @@ bool IsSignalPlaying();
 // Replay one dab on `window`: open or join the session through Canvas, then draw with a brush
 // material instance this module owns. False when anything is unresolved. Game thread.
 bool DrawDab(void* window, const Dab& d);
+
+// True while the window's stroke session is open (`cv`): a dab drew within the last 0.25 s. Raw field read.
+bool SessionOpen(void* window);
+
+// The window's whole picture as the game saves it: its own getCode, the render target's encoded bytes (image format
+// 2, quality 90), read back without the canvas. False when unresolved or empty. Game thread.
+bool ReadImage(void* window, std::vector<uint8_t>& out);
+
+// Draw a picture ReadImage gave over the whole render target, replacing it, inside the window's own Canvas session as
+// a dab is (never through setCode, whose own endDraw can close a session another draw holds). False while a signal
+// plays or when anything is unresolved. Game thread.
+bool DrawImage(void* window, const std::vector<uint8_t>& bytes);
 
 // Release the owned brush material (session teardown). Game thread.
 void ReleaseBrush();

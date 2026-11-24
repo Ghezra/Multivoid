@@ -320,6 +320,7 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::CrematorFuel:
     case ReliableKind::GasCanState:
     case ReliableKind::PictureState:
+    case ReliableKind::WindowImage:
     case ReliableKind::MinerState:
     case ReliableKind::FireExtState:
     case ReliableKind::CoverState:

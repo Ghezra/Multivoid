@@ -63,6 +63,7 @@ struct Pending {
 std::deque<Pending> g_inbound;
 
 uint64_t g_sent = 0, g_applied = 0, g_unsent = 0, g_expired = 0;
+uint64_t g_seen = 0;  // this player's own dabs observed
 
 // ---- the window singleton, found by the shared scan ----
 void*    g_window = nullptr;
@@ -115,6 +116,7 @@ void OnDrawPost(void* /*canvas*/, void* sourceObject, void* /*result*/) {
     float x = 0.f, y = 0.f;
     if (!WC::ReadStrokeCorner(sourceObject, x, y) || g_outbound.size() >= kMaxQueued) return;
     g_outbound.emplace_back(x, y);
+    ++g_seen;
 }
 
 void SendOutbound(coop::net::Session* s) {
@@ -260,6 +262,10 @@ void Tick() {
     ApplyInbound();
 }
 
+void* Window() { return ResolveWindow(); }
+
+uint64_t DabsDrawn(bool local) { return local ? g_seen : g_seen + g_applied; }
+
 void OnDisconnect() {
     if (g_sent || g_applied || g_unsent || g_expired)
         UE_LOGI("window_stroke: session end -- sent=%llu applied=%llu unsent=%llu expired=%llu",
@@ -268,7 +274,7 @@ void OnDisconnect() {
     g_armed.store(false, std::memory_order_relaxed);
     g_outbound.clear();
     g_inbound.clear();
-    g_sent = g_applied = g_unsent = g_expired = 0;
+    g_sent = g_applied = g_unsent = g_expired = g_seen = 0;
     WC::ReleaseBrush();
 }
 

@@ -265,6 +265,7 @@ docs/**
 !docs/status.md
 !docs/votv-ui-style.md
 !docs/devices.md
+!docs/devices-window.md
 !docs/kitchen-and-media.md
 !docs/base-computer.md
 !docs/deployables.md

@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 360;
+inline constexpr uint16_t kProtocolVersion = 361;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1725,6 +1725,10 @@ enum class ReliableKind : uint16_t {
     // HOST->ALL: a frame's or poster's custom picture file name; to a joiner, every named frame and held poster; to a
     // refused asker, the host's name. Never relayed; not pre-world. CustomPicturePayload.
     PictureState = 339,
+    // HOST->ALL, chunked (BlobChunkPayload): the bay window's whole grime picture in parts
+    // (coop/interactables/window_dirt_sync), after a dirt splotch or once the dabs on it stop; to a joiner, at its
+    // connect. Never relayed; not pre-world.
+    WindowImage = 340,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender

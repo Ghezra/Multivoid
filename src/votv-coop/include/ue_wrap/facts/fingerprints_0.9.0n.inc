@@ -18,6 +18,7 @@ inline constexpr RefFn kRefFns[] = {
     {L"birchspawner_c", L"receivetick", L"birchspawner_c.receivetick", 0x6082ffdfa2cda429ull, 0x229c3f26ecc77f66ull},
     {L"comp_gravitygun_c", L"receivetick", L"comp_gravitygun_c.receivetick", 0x6082ffdfa2cda429ull, 0xb10c6585612b1346ull},
     {L"cremator_c", L"pourout", L"cremator_c.pourout", 0x6a2d5d90ab51fa2dull, 0x972ff012b98edb7bull},
+    {L"d_window_c", L"dirtify", L"d_window_c.dirtify", 0x6a2d5d90ab51fa2dull, 0x866861a4f9204260ull},
     {L"deersk_skeleton_animblueprint_c", L"blueprintupdateanimation", L"deersk_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0xace20bbd0bb7f351ull},
     {L"deerzombsk_skeleton_animblueprint_c", L"blueprintupdateanimation", L"deerzombsk_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0xa79fd56b6089193dull},
     {L"erielive_skeleton_animblueprint_c", L"blueprintupdateanimation", L"erielive_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0x38cb1b4544d0c701ull},

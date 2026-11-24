@@ -28,7 +28,8 @@
 #include "coop/props/prop_switch_sync.h"  // a light's or the hot plate's switch, the host's
 #include "coop/props/photo_sync.h"  // a printed photo's picture, the host's save's
 #include "coop/props/tape_sync.h"
-#include "coop/props/custom_picture_sync.h"  // a frame's or poster's custom picture name, the host's
+#include "coop/props/custom_picture_sync.h"
+#include "coop/interactables/window_dirt_sync.h"  // the bay window's grime picture, the host's  // a frame's or poster's custom picture name, the host's
 #include "coop/props/bucket_pour.h"
 #include "coop/interactables/gasoline_sync.h"  // the cremator's fuel and a gas can's, the host's  // a client's tipped bucket's pour, the host's to spawn   // a tape's repair, the host's
 #include "coop/props/rdrone_sync.h"  // a remote drone's flight, switch and energy, the host's
@@ -598,6 +599,18 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         ::coop::bucket_pour::OnAsk(msg.senderPeerSlot, p);
+        break;
+    }
+    case net::ReliableKind::WindowImage: {
+        // HOST->ALL, chunked (coop/interactables/window_dirt_sync); the handler takes the host's alone.
+        if (session.role() == net::Role::Host || msg.payloadLen < sizeof(net::BlobChunkPayload)) {
+            UE_LOGW("event_feed: a window picture part the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        net::BlobChunkPayload chunk{};
+        std::memcpy(&chunk, msg.payload, sizeof(chunk));
+        ::coop::window_dirt_sync::OnChunk(chunk, msg.senderPeerSlot);
         break;
     }
     case net::ReliableKind::PictureAsk:

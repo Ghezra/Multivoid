@@ -9,8 +9,8 @@
 // other clients, so the host's world -- and its save -- carries every peer's wipes. A joiner gets the
 // window as it was in the host's transferred save.
 // Known limits: a thrown sponge's dab is not sent (no hand to read its brush from); dabs that
-// arrive while a signal plays wait for playback to end; the periodic dirt splotch still rolls on
-// each peer independently.
+// arrive while a signal plays wait for playback to end. The periodic dirt splotch is the host's alone, and the
+// host's whole picture reaches every peer (coop/interactables/window_dirt_sync).
 
 #pragma once
 
@@ -31,6 +31,13 @@ void OnReliable(const coop::net::WindowStrokePayload& payload, uint8_t senderPee
 
 // Per net-pump tick: install the stroke observer once, send observed dabs, replay received ones.
 void Tick();
+
+// The window this lane found in the current world, or null. Game thread.
+void* Window();
+
+// Dabs drawn on this peer's window since the session began: `local` its own player's (sent or not), else
+// every one, its own and those replayed. Game thread.
+uint64_t DabsDrawn(bool local);
 
 // Session teardown: drop queued dabs and release the brush material.
 void OnDisconnect();

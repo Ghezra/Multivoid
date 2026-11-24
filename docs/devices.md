@@ -348,15 +348,8 @@ on the client at its place and none of its own; a cup in the client's hand spill
 there and back on the client once; the host's 16 bottle pours all heard on the client and a pour of a beer in the
 client's hand heard on the host; the client killed and rejoined, all 40 and 41 live spills there, none twice).
 
-The base's bay window is not one of those: its dirt is a 1645x512 render target that a sponge wipes one dab at a time,
-so there is no scalar to compare. A stroke reaches the window's own `cleanPhys` through a script call no hook here
-carries arguments for, so the dab is observed at its native draw instead -- a `UCanvas::K2_DrawMaterial` whose calling
-frame is the window with its canvas session open, which the window's periodic dirt splotch cannot be, since that
-refuses to run while the session is open. The stroking peer sends the dab's pixel, its edge and the brush's opacity
-and colour; every other peer draws the same dab through the window's own `Canvas` event with a brush material the mod
-owns, and the host relays a client's dab, so the host's save carries every peer's wipes. Never `setDraw`, `endDraw` or
-`dirty` from outside: the session belongs to the window, and an outside `endDraw` deletes the world canvas the game's
-own next dab draws into (`coop/interactables/window_stroke_sync`, `ue_wrap/devices/window_canvas`).
+The base's bay window is not one of those: its grime is a picture its sponge dabs clean, and the host's picture is
+every peer's ([devices-window.md](devices-window.md)).
 
 ### The fuse towers
 
