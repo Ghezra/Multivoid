@@ -36,6 +36,10 @@
 #include "ue_wrap/actors/bucket.h"
 #include "ue_wrap/devices/atv.h"
 #include "ue_wrap/devices/cremator.h"
+#include "ue_wrap/core/fname_utils.h"
+#include "ue_wrap/actors/floppy_disc.h"
+#include "ue_wrap/core/object_index.h"
+#include "ue_wrap/actors/save_record.h"
 #include "ue_wrap/actors/photo_store.h"
 #include "ue_wrap/devices/grime.h"
 #include "ue_wrap/actors/spawner_stamp.h"
@@ -1010,6 +1014,167 @@ void GasStep(bool host, uint64_t t) {
     if (t >= 118000u) UE_LOGI("[ENTITY] done");
 }
 
+// VOTVCOOP_ENTITY_PROBE=picture: a custom picture's pick on a frame, a held poster and a wall poster. HOST 40 s: a
+// frame (prop_picture_h_C), a held custom poster (prop_poster_C_C) and a wall poster (poster_C, custom) before it.
+// CLIENT slot 1, 55, 60 and 65 s: picks, on its copies nearest the host, the gamemode's first frame picture, first poster
+// and second poster (each piece's intComs_texturePickerApply, as the picker's apply calls it). HOST 80 s: picks the
+// second frame picture on its frame. Every peer, each 5 s to 140 s (`[PIC]`): the three pieces' file names.
+bool PicMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "picture";
+    return v;
+}
+
+void* PicNearest(const wchar_t* cls, void* ref) {
+    static void* found[64];
+    ue_wrap::FVector at{}, b{};
+    if (!ref || !E::TryGetActorLocation(ref, at)) return nullptr;
+    const int n = ue_wrap::world_instances::Find(cls, found, 64);
+    void* best = nullptr;
+    float bestD = 1e18f;
+    for (int i = 0; i < n; ++i) {
+        if (!R::IsLive(found[i]) || !E::TryGetActorLocation(found[i], b)) continue;
+        const float d = (b.X - at.X) * (b.X - at.X) + (b.Y - at.Y) * (b.Y - at.Y) + (b.Z - at.Z) * (b.Z - at.Z);
+        if (d < bestD) {
+            bestD = d;
+            best = found[i];
+        }
+    }
+    return best;
+}
+
+// The gamemode's `names`[i] and `texs`[i] (its picker lists), handed to the piece's apply as the picker does.
+bool PicPick(void* piece, const wchar_t* names, const wchar_t* texs, int i, std::wstring& picked) {
+    static R::InstanceOffset s_gm(L"gamemode");
+    const int32_t go = piece ? s_gm.Of(piece) : -1;
+    void* const gm = go >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(piece) + go) : nullptr;
+    if (!gm || !R::IsLive(gm)) return false;
+    const int32_t no = R::FindPropertyOffset(R::ClassOf(gm), names), to = R::FindPropertyOffset(R::ClassOf(gm), texs);
+    if (no < 0 || to < 0) return false;
+    struct Arr {
+        void* data;
+        int32_t num, max;
+    };
+    const Arr* const na = reinterpret_cast<const Arr*>(static_cast<char*>(gm) + no);
+    const Arr* const ta = reinterpret_cast<const Arr*>(static_cast<char*>(gm) + to);
+    if (i >= na->num || i >= ta->num) return false;
+    const R::FName name = static_cast<const R::FName*>(na->data)[i];
+    void* const tex = static_cast<void* const*>(ta->data)[i];
+    picked = R::ToString(name);
+    ue_wrap::ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(piece), L"intComs_texturePickerApply"));
+    if (!f.valid()) return false;
+    f.Set<void*>(L"texture", tex);
+    f.Set<int32_t>(L"index", i);
+    f.Set<R::FName>(L"pickedfilename", name);
+    return ue_wrap::Call(piece, f);
+}
+
+std::wstring PicName(void* piece) {
+    static R::InstanceOffset s_fn(L"filename");
+    const int32_t off = piece ? s_fn.Of(piece) : -1;
+    return off >= 0 ? R::ToString(*reinterpret_cast<R::FName*>(static_cast<char*>(piece) + off)) : L"-";
+}
+
+void PicStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    void* const me = coop::players::Registry::Get().Local();
+    coop::RemotePlayer* const hp = host ? nullptr : coop::players::Registry::Get().Puppet(0);
+    void* const ref = host ? me : (hp ? hp->actor() : nullptr);
+    void* const frame = PicNearest(L"prop_picture_h_C", ref);
+    void* const held = PicNearest(L"prop_poster_C_C", ref);
+    void* const wall = PicNearest(L"poster_C", ref);
+    if (host && s_step == 0 && t >= 40000u && me) {
+        s_step = 1;
+        ue_wrap::FVector at{};
+        ue_wrap::FRotator rot{};
+        E::TryGetActorLocation(me, at);
+        E::TryGetActorRotation(me, rot);
+        const float yaw = rot.Yaw * 0.0174532925f;
+        int k = 0;
+        for (const wchar_t* c : {L"prop_picture_h_C", L"prop_poster_C_C", L"poster_C"}) {
+            const CR::Resolved rc = CR::ResolveClass(c, CR::AnyFamily(), CR::Load::Immediate);
+            const float side = (static_cast<float>(k++) - 1.f) * 120.f;
+            const ue_wrap::FVector to{at.X + 250.f * std::cos(yaw) - side * std::sin(yaw),
+                                      at.Y + 250.f * std::sin(yaw) + side * std::cos(yaw), at.Z};
+            void* const a = rc.cls ? E::BeginDeferredSpawn(rc.cls, to, {}) : nullptr;
+            int32_t off = -1;
+            uint8_t mask = 0;
+            if (a && R::FindBoolProperty(R::ClassOf(a), L"custom", off, mask) && off >= 0)
+                *(static_cast<uint8_t*>(a) + off) |= mask;
+            UE_LOGI("[PIC] host: %ls spawned=%d", c, a && E::FinishDeferredSpawn(a, to, {}) ? 1 : 0);
+        }
+    }
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    std::wstring picked;
+    if (slot1 && s_step == 0 && t >= 55000u && frame) {
+        s_step = 1;
+        const bool ran = PicPick(frame, L"filenames_picsh", L"pics_h", 0, picked);
+        UE_LOGI("[PIC] client: picked '%ls' for its frame (ran=%d)", picked.c_str(), ran ? 1 : 0);
+    }
+    if (slot1 && s_step == 1 && t >= 60000u && held) {
+        s_step = 2;
+        const bool ran = PicPick(held, L"filenames_posters", L"posters", 0, picked);
+        UE_LOGI("[PIC] client: picked '%ls' for its held poster (ran=%d)", picked.c_str(), ran ? 1 : 0);
+    }
+    if (slot1 && s_step == 2 && t >= 65000u && wall) {
+        s_step = 3;
+        const bool ran = PicPick(wall, L"filenames_posters", L"posters", 1, picked);
+        UE_LOGI("[PIC] client: picked '%ls' for its wall poster (ran=%d)", picked.c_str(), ran ? 1 : 0);
+    }
+    if (host && s_step == 1 && t >= 80000u && frame) {
+        s_step = 2;
+        const bool ran = PicPick(frame, L"filenames_picsh", L"pics_h", 1, picked);
+        UE_LOGI("[PIC] host: picked '%ls' for its frame (ran=%d)", picked.c_str(), ran ? 1 : 0);
+    }
+    static uint64_t s_next = 0;
+    if (t < 30000u || t > 145000u || t < s_next) return;
+    s_next = t + 5000u;
+    UE_LOGI("[PIC] %s t=%llu: frame '%ls', held poster '%ls', wall poster '%ls'", host ? "host" : "client",
+            static_cast<unsigned long long>(t / 1000u), PicName(frame).c_str(), PicName(held).c_str(),
+            PicName(wall).c_str());
+    if (t >= 140000u) UE_LOGI("[ENTITY] done");
+}
+
+// VOTVCOOP_ENTITY_PROBE=zipcheck: HOST 30 s: each floppy class's default readWrites, and a spawned one's record run
+// through the bound a client's put of it meets (floppy_disc::DiscLeafOk against prop_floppyDisc_C's default).
+bool ZipMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "zipcheck";
+    return v;
+}
+
+void ZipStep(bool host, uint64_t t) {
+    static bool s_done = false;
+    if (!host || s_done || t < 30000u) return;
+    s_done = true;
+    void* const me = coop::players::Registry::Get().Local();
+    ue_wrap::FVector at{};
+    if (me) E::TryGetActorLocation(me, at);
+    at.X += 200.f;
+    int32_t base = -1;
+    ue_wrap::floppy_disc::ReadDefaultReadWrites(ue_wrap::object_index::ClassByName(L"prop_floppyDisc_C"), base);
+    for (const wchar_t* c : {L"prop_floppyDisc_C", L"prop_floppyDisc_Wh_C", L"prop_floppyDisc_R_C", L"prop_floppyDisc_B_C",
+                             L"prop_floppyDisc_Bl_C", L"prop_floppyDisc_G_C", L"prop_floppyDisc_O_C",
+                             L"prop_floppyDisc_Y_C"}) {
+        void* const cdo = R::FindClassDefaultObject(c);
+        const int32_t off = cdo ? R::FindPropertyOffset(R::ClassOf(cdo), L"readWrites") : -1;
+        const int32_t def = off >= 0 ? *reinterpret_cast<const int32_t*>(static_cast<const char*>(cdo) + off) : -1;
+        const CR::Resolved rc = CR::ResolveClass(c, CR::AnyFamily(), CR::Load::Immediate);
+        void* const a = rc.cls ? E::SpawnActor(rc.cls, at) : nullptr;
+        ue_wrap::save_record::SaveRecord rec;
+        const bool cap = a && ue_wrap::save_record::CaptureRecord(a, rec);
+        const char* why = "";
+        int32_t own = -1;
+        ue_wrap::floppy_disc::ReadDefaultReadWrites(rc.cls, own);
+        const bool ok = cap && ue_wrap::floppy_disc::DiscLeafOk(rec, own, &why);
+        UE_LOGI("[ZIP] %ls: default readWrites %d (bound %d, the old bound %d); disc class %d; record captured %d, ints %d, readWrites %d, "
+                "strings %d; a client's put passes %d (%s)",
+                c, def, own, base, rc.cls && ue_wrap::floppy_disc::IsDiscClass(rc.cls) ? 1 : 0, cap ? 1 : 0,
+                static_cast<int>(rec.ints.size()), !rec.ints.empty() && !rec.ints[0].empty() ? rec.ints[0][0] : -99,
+                static_cast<int>(rec.strings.size()), ok ? 1 : 0, ok ? "ok" : why);
+        at.Y += 40.f;
+    }
+    UE_LOGI("[ENTITY] done");
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -1460,6 +1625,14 @@ void Tick(coop::net::Session* session) {
     }
     if (GasMode()) {
         GasStep(host, t);
+        return;
+    }
+    if (PicMode()) {
+        PicStep(host, t);
+        return;
+    }
+    if (ZipMode()) {
+        ZipStep(host, t);
         return;
     }
     if (Catalog()) {
