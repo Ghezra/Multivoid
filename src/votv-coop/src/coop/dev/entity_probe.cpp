@@ -1364,6 +1364,86 @@ void RugStep(bool host, uint64_t t) {
     if (host && t >= 140000u) UE_LOGI("[ENTITY] done");
 }
 
+// VOTVCOOP_ENTITY_PROBE=atvsound: HOST 40 s: an ATV spawned; each of its engine audio components' spatialization and
+// attenuation (its own override, its attenuation asset, or its sound's), logged (`[ATVSND]`).
+bool AtvSoundMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "atvsound";
+    return v;
+}
+
+int SndFlag(void* obj, const wchar_t* name) {
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!obj || !R::FindBoolProperty(R::ClassOf(obj), name, off, mask) || off < 0) return -1;
+    return (static_cast<uint8_t*>(obj)[off] & mask) ? 1 : 0;
+}
+
+void* SndObj(void* obj, const wchar_t* name) {
+    const int32_t off = obj ? R::FindPropertyOffset(R::ClassOf(obj), name) : -1;
+    void* v = off >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(obj) + off) : nullptr;
+    return v && R::IsLive(v) ? v : nullptr;
+}
+
+// An FSoundAttenuationSettings at `base`: whether it attenuates and spatializes, its falloff and its inner radius.
+std::string SndSettings(void* st, const uint8_t* base) {
+    if (!st || !base) return "-";
+    auto boolAt = [&](const wchar_t* n) {
+        int32_t off = -1;
+        uint8_t mask = 0;
+        return R::FindBoolProperty(st, n, off, mask) && off >= 0 ? ((base[off] & mask) ? 1 : 0) : -1;
+    };
+    auto floatAt = [&](const wchar_t* n) {
+        const int32_t off = R::FindPropertyOffset(st, n);
+        float v = -1.f;
+        if (off >= 0) std::memcpy(&v, base + off, sizeof(v));
+        return v;
+    };
+    const int32_t ext = R::FindPropertyOffset(st, L"AttenuationShapeExtents");
+    float inner = -1.f;
+    if (ext >= 0) std::memcpy(&inner, base + ext, sizeof(inner));
+    char b[160];
+    std::snprintf(b, sizeof(b), "attenuate=%d spatialize=%d falloff=%.0f cm inner=%.0f cm", boolAt(L"bAttenuate"),
+                  boolAt(L"bSpatialize"), floatAt(L"FalloffDistance"), inner);
+    return b;
+}
+
+void AtvSoundStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    void* const me = coop::players::Registry::Get().Local();
+    if (!host || !me) return;
+    if (s_step == 0 && t >= 30000u) {
+        s_step = 1;
+        ue_wrap::FVector at{};
+        E::TryGetActorLocation(me, at);
+        at.X += 400.f;
+        const CR::Resolved rc = CR::ResolveClass(L"ATV_C", CR::AnyFamily(), CR::Load::Immediate);
+        UE_LOGI("[ATVSND] an ATV spawned=%d", rc.cls && E::SpawnActor(rc.cls, at) ? 1 : 0);
+    }
+    void* const atv = First(L"ATV_C");
+    if (s_step != 1 || t < 35000u || !atv) return;
+    s_step = 2;
+    for (const wchar_t* n : {L"audio_car_start_cue", L"audio_car_drive_loop", L"audio_car_drive_start",
+                             L"audio_car_drive_brake", L"audio_car_turbo", L"audio_car_stop"}) {
+        void* const comp = SndObj(atv, n);
+        void* const sound = SndObj(comp, L"Sound");
+        void* const asset = SndObj(comp, L"AttenuationSettings");
+        void* const soundAsset = SndObj(sound, L"AttenuationSettings");
+        const int32_t ovOff = comp ? R::FindPropertyOffset(R::ClassOf(comp), L"AttenuationOverrides") : -1;
+        void* const st = comp ? R::PropertyInnerStruct(R::ClassOf(comp), L"AttenuationOverrides") : nullptr;
+        const std::string ov = ovOff >= 0 ? SndSettings(st, static_cast<uint8_t*>(comp) + ovOff) : "-";
+        void* const use = asset ? asset : soundAsset;
+        const int32_t aOff = use ? R::FindPropertyOffset(R::ClassOf(use), L"Attenuation") : -1;
+        void* const ast = use ? R::PropertyInnerStruct(R::ClassOf(use), L"Attenuation") : nullptr;
+        const std::string as = aOff >= 0 ? SndSettings(ast, static_cast<uint8_t*>(use) + aOff) : "-";
+        UE_LOGI("[ATVSND] %ls: comp=%d sound='%ls' spatialization=%d override=%d (override: %s); attenuation asset "
+                "'%ls' from %s (%s)", n, comp ? 1 : 0, sound ? R::ToString(R::NameOf(sound)).c_str() : L"-",
+                SndFlag(comp, L"bAllowSpatialization"), SndFlag(comp, L"bOverrideAttenuation"), ov.c_str(),
+                use ? R::ToString(R::NameOf(use)).c_str() : L"-", asset ? "the component" : (soundAsset ? "the sound" : "none"),
+                as.c_str());
+    }
+    UE_LOGI("[ENTITY] done");
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -1830,6 +1910,10 @@ void Tick(coop::net::Session* session) {
     }
     if (RugMode()) {
         RugStep(host, t);
+        return;
+    }
+    if (AtvSoundMode()) {
+        AtvSoundStep(host, t);
         return;
     }
     if (Catalog()) {
