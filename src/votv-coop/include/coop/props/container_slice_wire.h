@@ -17,9 +17,10 @@
 
 namespace coop::props::container_slice_wire {
 
-// A container with more records than this is neither shipped nor accepted: the blob would approach
-// the transport ceiling, and a truncated blob is a silent lie. Real containers hold single digits.
-inline constexpr size_t kMaxRecords = 512;
+// A container with more records than this is neither shipped nor accepted: a truncated blob is a silent lie. Most
+// containers hold single digits, but the drone storage holds thousands (issue 47): 4096 records of about 130 bytes is
+// the raw blob bound (blob_chunks::MaxRawBlobBytes, 512 KB), and the header's count is a u16.
+inline constexpr size_t kMaxRecords = 4096;
 
 // The flags byte. Bit 0: the container's overlap box is armed on the host (coop/props/container_arming). The other bits
 // are zero on send and ignored on receive: a receiver masks with kKnownFlags, so no unknown bit reaches a hash.

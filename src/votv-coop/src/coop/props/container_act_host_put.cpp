@@ -58,8 +58,10 @@ OrderEvent g_order[kOrderRing];
 uint32_t g_orderSeq = 0;
 
 // The container's room for one more record of `rec`'s size plus `flagBytes` (the fridge flag the container will add to a
-// record asked; none to a record it already stored): the lane's record cap and the slice's byte ceiling, the one SendBlob enforces on what the container publishes. Done unless the
-// container moved under the read; a count past the cap does not read at all, and is the cap.
+// record asked; none to a record it already stored): the lane's record cap and the slice's byte ceiling, the one the
+// publish enforces (blob_chunks::FitsWire): raw within the chunk ceiling, or past it within the raw bound and deflated
+// within it (issue 42; issue 47: a raw-only test here capped a client's drone storage where the host's own puts went on).
+// Done unless the container moved under the read; a count past the cap does not read at all, and is the cap.
 cre::EditResult ReadFit(uint32_t eid, const SR::SaveRecord& rec, size_t flagBytes, bool& countAtCap, bool& bytesOver) {
     countAtCap = bytesOver = false;
     std::vector<SR::SaveRecord> recs;
@@ -70,8 +72,13 @@ cre::EditResult ReadFit(uint32_t eid, const SR::SaveRecord& rec, size_t flagByte
     }
     if (r != cre::EditResult::Done) return r;
     countAtCap = recs.size() >= csw::kMaxRecords;
-    bytesOver = csw::SliceBytes(recs) + prw::RecordBytes(rec) + flagBytes >
-                coop::blob_chunks::MaxBlobBytes();
+    const size_t raw = csw::SliceBytes(recs) + prw::RecordBytes(rec) + flagBytes;
+    if (raw > coop::blob_chunks::MaxRawBlobBytes()) {
+        bytesOver = true;
+    } else if (raw > coop::blob_chunks::MaxBlobBytes()) {
+        recs.push_back(rec);  // the slice as it would publish (the flag's bytes are a margin the deflate absorbs)
+        bytesOver = !coop::blob_chunks::FitsWire(csw::Pack(eid, recs, 0));
+    }
     return cre::EditResult::Done;
 }
 
