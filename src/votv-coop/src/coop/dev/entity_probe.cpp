@@ -34,6 +34,7 @@
 #include "ue_wrap/engine/engine_physics.h"
 #include "ue_wrap/engine/engine_component.h"
 #include "ue_wrap/actors/bucket.h"
+#include "ue_wrap/engine/engine_physics.h"
 #include "ue_wrap/devices/atv.h"
 #include "ue_wrap/devices/cremator.h"
 #include "ue_wrap/core/fname_utils.h"
@@ -1444,6 +1445,123 @@ void AtvSoundStep(bool host, uint64_t t) {
     UE_LOGI("[ENTITY] done");
 }
 
+// VOTVCOOP_ENTITY_PROBE=fill: a client's bucket fill judged by the host's water. HOST 40 s: an empty bucket upright in the
+// water volume nearest the host (its bottom 15 cm under the surface, its own tick off, so only an ask fills it) and an empty
+// one 3 m before the host on dry land. CLIENT slot 1, 45 s: beside the wet bucket; 55 s: its copy of it to 30 cm (the
+// game's own fill as the client sees it); 65 s: back beside the dry bucket; 75 s: its copy of that to 25 cm. Every peer,
+// each 5 s (`[FILL]`): both buckets' water.
+bool FillMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "fill";
+    return v;
+}
+
+void FillStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    static ue_wrap::FVector s_wetAt{}, s_dryAt{};
+    static bool s_placed = false;
+    void* const me = coop::players::Registry::Get().Local();
+    if (!me) return;
+    auto nearestBucket = [&](const ue_wrap::FVector& at) -> void* {
+        static void* found[64];
+        const int n = ue_wrap::world_instances::Find(L"prop_bucket_C", found, 64);
+        void* best = nullptr;
+        float bestD = 1e18f;
+        for (int i = 0; i < n; ++i) {
+            ue_wrap::FVector b{};
+            if (!R::IsLive(found[i]) || !E::TryGetActorLocation(found[i], b)) continue;
+            const float d = (b.X - at.X) * (b.X - at.X) + (b.Y - at.Y) * (b.Y - at.Y) + (b.Z - at.Z) * (b.Z - at.Z);
+            if (d < bestD) {
+                bestD = d;
+                best = found[i];
+            }
+        }
+        return bestD < 300.f * 300.f ? best : nullptr;
+    };
+    auto height = [](void* b) {
+        ue_wrap::bucket::Plain p;
+        return b && ue_wrap::bucket::ReadPlain(b, p) ? p.height : -1.f;
+    };
+    // Where the host put them: the host logs them; a client finds the water volume and the host's start the same way.
+    if (!s_placed && t >= 38000u) {
+        ue_wrap::FVector at{};
+        E::TryGetActorLocation(host ? me : (coop::players::Registry::Get().Puppet(0)
+                                                ? coop::players::Registry::Get().Puppet(0)->actor() : nullptr), at);
+        static void* vols[64];
+        const int n = ue_wrap::world_instances::Find(L"waterVolume_C", vols, 64);
+        float bestD = 1e18f;
+        for (int i = 0; i < n; ++i) {
+            const int32_t bo = R::FindPropertyOffset(R::ClassOf(vols[i]), L"Box");
+            const int32_t dw = R::FindPropertyOffset(R::ClassOf(vols[i]), L"depth_w");
+            void* const box = bo >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(vols[i]) + bo) : nullptr;
+            ue_wrap::FVector c{};
+            if (!box || dw < 0 || !E::TryGetComponentLocation(box, c)) continue;
+            float surface = 0.f;
+            std::memcpy(&surface, static_cast<char*>(vols[i]) + dw, sizeof(surface));
+            const float d = (c.X - at.X) * (c.X - at.X) + (c.Y - at.Y) * (c.Y - at.Y);
+            if (d < bestD) {
+                bestD = d;
+                s_wetAt = ue_wrap::FVector{c.X, c.Y, surface - 15.f};
+            }
+        }
+        ue_wrap::FRotator rot{};
+        E::TryGetActorRotation(host ? me : nullptr, rot);
+        s_dryAt = ue_wrap::FVector{at.X + 300.f, at.Y, at.Z - 60.f};
+        s_placed = n > 0;
+        UE_LOGI("[FILL] %s: %d water volumes; the nearest's water at (%.0f,%.0f,%.0f); dry spot (%.0f,%.0f,%.0f)",
+                host ? "host" : "client", n, s_wetAt.X, s_wetAt.Y, s_wetAt.Z, s_dryAt.X, s_dryAt.Y, s_dryAt.Z);
+    }
+    if (!s_placed) return;
+    if (host && s_step == 0 && t >= 40000u) {
+        s_step = 1;
+        const CR::Resolved rc = CR::ResolveClass(L"prop_bucket_C", CR::AnyFamily(), CR::Load::Immediate);
+        for (int i = 0; i < 2; ++i) {
+            void* const b = rc.cls ? E::SpawnActor(rc.cls, i == 0 ? s_wetAt : s_dryAt) : nullptr;
+            if (!b) continue;
+            E::SetActorTickEnabled(b, false);
+            const int32_t mo = R::FindPropertyOffset(R::ClassOf(b), L"StaticMesh");
+            void* const mesh = mo >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(b) + mo) : nullptr;
+            if (mesh) E::SetComponentSimulatePhysics(mesh, false);
+            ue_wrap::bucket::WritePlain(b, 0.f, 0, 0.f, false, false);
+            coop::bucket_sync::MarkDirty(b);
+        }
+        UE_LOGI("[FILL] host: a wet and a dry bucket spawned, empty, their own ticks off");
+    }
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    // The teleport refuses a place in water: the body is snapped there, again each tick through the wet phase so its
+    // movement neither carries it off nor lets it fall through.
+    if (slot1 && t >= 45000u && t < 64000u) {
+        const ue_wrap::FVector to{s_wetAt.X + 150.f, s_wetAt.Y, s_wetAt.Z + 100.f};
+        const bool ok = E::TeleportTo(me, to, {}) || E::SetActorLocation(me, to);
+        if (s_step == 0) {
+            UE_LOGI("[FILL] client: beside the wet bucket ok=%d", ok ? 1 : 0);
+            s_step = 1;
+        }
+    }
+    if (slot1 && s_step == 1 && t >= 55000u) {
+        s_step = 2;
+        void* const b = nearestBucket(s_wetAt);
+        UE_LOGI("[FILL] client: its copy of the wet bucket to 30 (found=%d)",
+                b && ue_wrap::bucket::WritePlain(b, 30.f, 0, 0.f, false, false) ? 1 : 0);
+    }
+    if (slot1 && s_step == 2 && t >= 65000u) {
+        s_step = 3;
+        const ue_wrap::FVector to{s_dryAt.X + 150.f, s_dryAt.Y, s_dryAt.Z + 100.f};
+        UE_LOGI("[FILL] client: beside the dry bucket ok=%d", E::TeleportTo(me, to, {}) ? 1 : 0);
+    }
+    if (slot1 && s_step == 3 && t >= 75000u) {
+        s_step = 4;
+        void* const b = nearestBucket(s_dryAt);
+        UE_LOGI("[FILL] client: its copy of the dry bucket to 25 (found=%d)",
+                b && ue_wrap::bucket::WritePlain(b, 25.f, 0, 0.f, false, false) ? 1 : 0);
+    }
+    static uint64_t s_next = 0;
+    if (t < 42000u || t > 120000u || t < s_next) return;
+    s_next = t + 5000u;
+    UE_LOGI("[FILL] %s t=%llu: wet bucket %.1f, dry bucket %.1f", host ? "host" : "client",
+            static_cast<unsigned long long>(t / 1000u), height(nearestBucket(s_wetAt)), height(nearestBucket(s_dryAt)));
+    if (host && t >= 110000u) UE_LOGI("[ENTITY] done");
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -1914,6 +2032,10 @@ void Tick(coop::net::Session* session) {
     }
     if (AtvSoundMode()) {
         AtvSoundStep(host, t);
+        return;
+    }
+    if (FillMode()) {
+        FillStep(host, t);
         return;
     }
     if (Catalog()) {
