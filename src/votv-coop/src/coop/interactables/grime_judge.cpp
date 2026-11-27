@@ -31,7 +31,9 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -43,6 +45,7 @@ namespace {
 namespace E  = ue_wrap::engine;
 namespace G  = ue_wrap::grime;
 namespace HI = coop::hand_item;
+namespace R  = ue_wrap::reflection;
 
 // ---- the game's own numbers, each with the line of the Blueprint dump it stands on ----------------------------------
 // The look-at trace every hand verb reads through: mainPlayer.armLength, 200 (mainPlayer.cpp:33, set to 200 again with
@@ -149,13 +152,29 @@ struct Route {
     const char* why = nullptr;
 };
 
+// The cleaning tool's own `strength`, read off the mirror of the sender's hand: a mop is a sponge's subclass and cleans with
+// a strength of its own (the sponge's 1.5 is only the property's default the sponge class ships), so the step a stroke is
+// allowed has to come from the tool the sender actually holds. The constant when the mirror or the property cannot be read,
+// which is the sponge's own value.
+float ToolStrength(uint8_t slot) {
+    void* const tool = HI::MirrorActorForSlot(slot);
+    float v = kSpongeStrength;
+    if (!tool) return v;
+    const int32_t off = R::FindPropertyOffset(R::ClassOf(tool), L"strength");
+    if (off < 0) return v;
+    std::memcpy(&v, static_cast<const uint8_t*>(tool) + off, sizeof(v));
+    return std::isfinite(v) && v > 0.f ? v : kSpongeStrength;
+}
+
 // The tool route: the verb's own tool in the sender's hand and the decal within the trace and overlap of it. A crack is the
 // wall fixer's (a sponge's clean returns without a fall on it), every other decal the sponge's.
 Route ToolRoute(coop::net::Session& s, uint8_t slot, void* decal, const ue_wrap::FVector& centre, float halfDiag,
                 bool& inHand) {
     Route r;
     const bool crack = G::IsCrack(decal);
-    inHand = HI::HeldClassIs(slot, crack ? kFixerCls : kSpongeCls);
+    // A base class or below: a mop (`prop_mop_C`) is a sponge's subclass and runs the sponge's own clean, so an exact class
+    // name would turn every mop stroke away as `notool`.
+    inHand = HI::HeldClassIsA(slot, crack ? kFixerCls : kSpongeCls);
     if (!inHand) { r.why = "no tool in hand"; return r; }
     if (!crack) {
         bool cleanable = false;
@@ -173,7 +192,7 @@ Route ToolRoute(coop::net::Session& s, uint8_t slot, void* decal, const ue_wrap:
     r.ok = true;
     // A sponge with soap is the strongest call it makes; the host does not read the client's soap.
     r.step = crack ? kFixerStepCm
-                   : kSpongeStrength * kSpongeSoapFactor * kSpongeSubFactor * cleanStrength * kCleanFactor;
+                   : ToolStrength(slot) * kSpongeSoapFactor * kSpongeSubFactor * cleanStrength * kCleanFactor;
     return r;
 }
 
