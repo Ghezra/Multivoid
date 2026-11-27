@@ -750,6 +750,15 @@ void OnFillAsk(int senderSlot, uint32_t eid, float level) {
     if (!(want > now.height + kFillEps)) return refuse("no rise past the host's own water");
     B::WritePlain(bucket, want, now.soap, now.alcoholP, now.alcohol, now.alcReady);
     B::CallUpd(bucket);   // a copy in a client's hand has no tick here to repaint the water it took
+    // upd turns the bucket's Sphere collision on once it holds water, and the sphere's first overlap -- its own mesh -- runs
+    // the game's splash, 1 to 2 cm off a bucket over 10 cm. In the game the bucket's tick fills it back to the surface the
+    // next frame, as it stands in water; this copy has no tick, so the level the water allows is written back once.
+    B::Plain after;
+    if (B::ReadPlain(bucket, after) && after.height < want - kFillEps) {
+        B::WritePlain(bucket, want, after.soap, after.alcoholP, after.alcohol, after.alcReady);
+        UE_LOGI("bucket_sync: bucket eid %u splashed %.1f -> %.1f as its water was written -- %.1f put back, as its own tick "
+                "would", eid, want, after.height, want);
+    }
     MarkDirty(bucket);
     Note(Count::FillApplied);
     UE_LOGI("bucket_sync: slot %d's bucket eid %u took water to %.1f (asked %.1f, its water allows %.1f) -- written on "
