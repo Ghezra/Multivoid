@@ -10,6 +10,8 @@
 #include "coop/element/registry.h"
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
+#include "coop/player/players_registry.h"
+#include "coop/player/remote_player.h"
 #include "coop/props/bucket_hold_ledger.h"
 #include "coop/dev/perf_probe.h"
 #include "coop/props/prop_element_tracker.h"
@@ -561,6 +563,80 @@ bool SendRowTo(int slot, void* actor) {
     return SendRowNow(slot, actor);
 }
 
+namespace {
+
+namespace EL = coop::element;
+namespace E  = ue_wrap::engine;
+
+// The client's asks: one element's at most ten a second, and a rise this large is a fill worth asking for (cm). The host
+// judges one by the sender's body, which a carried bucket sits on.
+constexpr uint64_t kFillGapMs = 100;
+constexpr float    kFillEps = 0.5f;
+constexpr float    kFillReachCm = 300.f;
+std::unordered_map<uint32_t, uint64_t> g_fillAsked;
+
+}  // namespace
+
+bool NoteLocalFill(void* copy) {
+    if (!detail::IsClient() || !copy) return false;
+    const uint32_t eid = detail::EidOf(copy);
+    if (!eid) return false;
+    const N::BucketRow* const row = detail::HostRow(eid);
+    if (!row || row->type != N::kBucketPlain) return false;
+    B::Plain now;
+    if (!B::ReadPlain(copy, now) || !std::isfinite(now.height) || !(now.height > row->level + kFillEps)) return false;
+    const uint64_t t = Now();
+    const auto it = g_fillAsked.find(eid);
+    // An ask of this bucket is in flight: the rise is still this player's, so the caller keeps it for this tick too.
+    if (it != g_fillAsked.end() && t - it->second < kFillGapMs) return true;
+    N::Session* const s = g_session.load(std::memory_order_acquire);
+    if (!s || !s->running() || s->role() != N::Role::Client) return false;
+    N::BucketFillAskPayload p{};
+    p.eid = eid;
+    p.level = now.height;
+    if (!s->SendReliable(N::ReliableKind::BucketFillAsk, &p, sizeof(p))) return false;
+    g_fillAsked[eid] = t;
+    Note(Count::FillAsked);
+    UE_LOGI("bucket_sync: this player's bucket eid %u took water to %.1f on its own -- asked of the host", eid, p.level);
+    return true;
+}
+
+void OnFillAsk(int senderSlot, uint32_t eid, float level) {
+    if (!detail::IsHost() || senderSlot <= 0 || senderSlot >= static_cast<int>(N::kMaxPeers) || !eid) return;
+    void* const bucket = EL::LiveActorOfType(static_cast<EL::ElementId>(eid), EL::ElementType::Prop);
+    B::Plain now;
+    if (!bucket || B::KindOf(bucket) != B::Kind::Plain || !B::ReadPlain(bucket, now)) {
+        Note(Count::FillRefused);
+        UE_LOGW("bucket_sync: slot %d's fill of eid %u refused (no water bucket stands there)", senderSlot, eid);
+        return;
+    }
+    // The sender carries the bucket, so its body is beside the host's copy of it.
+    coop::RemotePlayer* rp = coop::players::Registry::Get().Puppet(static_cast<uint8_t>(senderSlot));
+    void* body = rp && rp->valid() ? rp->GetActor() : nullptr;
+    ue_wrap::FVector at{}, by{};
+    if (!body || !R::IsLive(body) || !E::TryGetActorLocation(bucket, at) || !E::TryGetActorLocation(body, by)) {
+        Note(Count::FillRefused);
+        return;
+    }
+    const float dx = at.X - by.X, dy = at.Y - by.Y, dz = at.Z - by.Z;
+    if (dx * dx + dy * dy + dz * dz > kFillReachCm * kFillReachCm) {
+        Note(Count::FillRefused);
+        UE_LOGW("bucket_sync: slot %d's fill of eid %u refused (its body is %.0f cm from the bucket)", senderSlot, eid,
+                std::sqrt(dx * dx + dy * dy + dz * dz));
+        return;
+    }
+    const float want = level > now.maxHeight ? now.maxHeight : (level < 0.f ? 0.f : level);
+    if (!(want > now.height + kFillEps)) {   // the host's row already brings this level: nothing to write
+        Note(Count::FillRefused);
+        return;
+    }
+    B::WritePlain(bucket, want, now.soap, now.alcoholP, now.alcohol, now.alcReady);
+    B::CallUpd(bucket);   // a copy in a client's hand has no tick here to repaint the water it took
+    MarkDirty(bucket);
+    Note(Count::FillApplied);
+    UE_LOGI("bucket_sync: slot %d's bucket eid %u took water to %.1f -- written on the host", senderSlot, eid, want);
+}
+
 void OnPeerWorldReady(int slot) {
     N::Session* const s = g_session.load(std::memory_order_acquire);
     if (!s || s->role() != N::Role::Host) return;
@@ -678,6 +754,11 @@ void OnStateWire(const uint8_t* bytes, size_t len, int senderSlot) {
 }
 
 void OnDisconnect() {
+    if (CountOf(Count::FillAsked) || CountOf(Count::FillApplied) || CountOf(Count::FillRefused))
+        UE_LOGI("bucket_sync: fills -- a client asked %llu, the host wrote %llu, refused %llu",
+                static_cast<unsigned long long>(CountOf(Count::FillAsked)),
+                static_cast<unsigned long long>(CountOf(Count::FillApplied)),
+                static_cast<unsigned long long>(CountOf(Count::FillRefused)));
     if (CountOf(Count::RowsSent) || CountOf(Count::RowsApplied))
         UE_LOGI("bucket_sync: session end -- rows sent %llu (join %llu), applied %llu, refused %llu",
                 static_cast<unsigned long long>(CountOf(Count::RowsSent)),
@@ -697,6 +778,7 @@ void OnDisconnect() {
     g_firstSeq.clear();
     g_warnedRefusedKeys.clear();
     g_owed.clear();
+    g_fillAsked.clear();
     if (g_pinCalls) LogPinCost();
     g_pinCalls = g_pinTicks = 0;
     g_parkFullSaid = g_rangeSaid = false;

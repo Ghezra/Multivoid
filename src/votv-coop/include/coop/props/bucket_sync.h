@@ -58,6 +58,17 @@ void OnDisconnect();
 // element id yet (its own tick tells it) or is not the host's to send.
 uint32_t MarkDirty(void* actor);
 
+// CLIENT (coop/props/bucket_pin): `copy` took water on its own -- the game's own fill, which the host's row would overwrite
+// at the copy's next tick. The rise is asked of the host, and the caller keeps the copy's own water for that tick (the pin
+// skips its write) until the host's row brings the level back. False when the copy is not a rising water bucket, or the ask
+// could not go. True also while an ask of the same element waits out the 100 ms gap: the rise is still the client's.
+bool NoteLocalFill(void* copy);
+
+// HOST: a client's BucketFillAsk (coop/dispatch/event_dispatch_prop_drive): water the sender's carried bucket took on its own.
+// Accepted when the sender's body is within reach of the host's copy of the bucket and the level is a rise inside that copy's
+// own maxHeight; then it is written on the host's bucket, repainted and marked for a row. A refusal is counted and said.
+void OnFillAsk(int senderSlot, uint32_t eid, float level);
+
 // HOST: `actor`'s row now, to slot `slot` alone, so a copy a refused verb or record left ahead of the host is put back. False
 // when the actor has no element id or the send was refused. A row refused for want of an id is owed to the slot by the record gate,
 // and goes at the mint of the id; an element no row was numbered for takes its first number here.
@@ -66,7 +77,8 @@ bool SendRowTo(int slot, void* actor);
 // What the lane counts this session; the drills read them, nothing branches on them.
 enum class Count : uint8_t {
     RowsSent, JoinRows, RowsApplied, RowsRefused, PinWrites, PlainTicksRefused, ConcreteTicksRefused, ConcreteTicksRan,
-    DeleteAlcRefused, RecordsNotAwaited, RecordsOutOfRange, FamilyApplies, FamilyApplyFailures, WireRefused, kCount
+    DeleteAlcRefused, RecordsNotAwaited, RecordsOutOfRange, FamilyApplies, FamilyApplyFailures, WireRefused,
+    FillAsked, FillApplied, FillRefused, kCount
 };
 void Note(Count c);
 uint64_t CountOf(Count c);

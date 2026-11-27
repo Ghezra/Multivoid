@@ -601,6 +601,22 @@ bool HandlePropDriveEvent(net::Session& session,
         ::coop::bucket_pour::OnAsk(msg.senderPeerSlot, p);
         break;
     }
+    case net::ReliableKind::BucketFillAsk: {
+        // CLIENT->HOST (coop/props/bucket_sync). Exact length.
+        net::BucketFillAskPayload p{};
+        if (session.role() != net::Role::Host || msg.payloadLen != sizeof(p)) {
+            UE_LOGW("event_feed: a bucket fill the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.eid == 0 || !std::isfinite(p.level) || p.level < 0.f || p.level > 1000.f) {
+            UE_LOGW("event_feed: a bucket fill malformed -- dropping");
+            break;
+        }
+        ::coop::bucket_sync::OnFillAsk(msg.senderPeerSlot, p.eid, p.level);
+        break;
+    }
     case net::ReliableKind::WindowImage: {
         // HOST->ALL, chunked (coop/interactables/window_dirt_sync); the handler takes the host's alone.
         if (session.role() == net::Role::Host || msg.payloadLen < sizeof(net::BlobChunkPayload)) {

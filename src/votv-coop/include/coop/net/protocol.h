@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 361;
+inline constexpr uint16_t kProtocolVersion = 363;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1730,6 +1730,12 @@ enum class ReliableKind : uint16_t {
     // connect. Never relayed; not pre-world.
     WindowImage = 340,
 
+    // CLIENT->HOST: water a client's bucket took on its own -- the game's own fill while the bucket is carried,
+    // where the host's rows pin the copy and the client's change would otherwise be overwritten within a tick
+    // (coop/props/bucket_sync, from the pin). The host judges the sender (its body within reach of its copy) and
+    // writes the level on its own bucket, which goes out as a BucketState row. Never relayed; not pre-world.
+    BucketFillAsk = 341,
+
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
     // (world ready, the ATV known and synced by the host, within reach, the tool or the part in its hand, the ATV's own
@@ -2775,6 +2781,14 @@ struct BucketPourAskPayload {
     BucketPourBlob blobs[kBucketPourMaxBlobs];
 };
 static_assert(sizeof(BucketPourAskPayload) == 204, "BucketPourAskPayload must be 204 bytes");
+
+// Water a client's carried bucket took on its own (BucketFillAsk): the bucket by element id and its `height` after the
+// fill. The host accepts a rise only, keeps it inside the copy's own maxHeight, and repaints its bucket.
+struct BucketFillAskPayload {
+    uint32_t eid;    // the bucket's element id
+    float    level;  // the client's copy's `height` after the fill, cm
+};
+static_assert(sizeof(BucketFillAskPayload) == 8, "BucketFillAskPayload must be 8 bytes");
 
 // A cremator's fuel and valve (CrematorFuel), named by the cremator lane's key.
 struct CrematorFuelPayload {

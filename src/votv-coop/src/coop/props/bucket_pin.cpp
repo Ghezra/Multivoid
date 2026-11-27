@@ -58,7 +58,10 @@ sg::Verdict OnPlainTickPre(const sg::Call& c) {
     if (red == dev::Red::Pin || !IsClient()) return sg::Verdict::Run;
     const bool timed = coop::dev::perf_probe::Armed();   // the pin body's cost, counted only under the perf probe
     const unsigned long long t0 = timed ? coop::dev::perf_probe::NowTicks() : 0;
-    PinWrite(c.object);
+    // A copy that took water on its own -- the game's fill while its player carries the bucket -- is asked of the host, and
+    // its water is kept for this tick: the pin's write would put the host's older level back before the ask could land, and
+    // the host's answer (its own row) puts the copy back when it refuses.
+    if (!coop::bucket_sync::NoteLocalFill(c.object)) PinWrite(c.object);
     if (timed) NotePinCost(coop::dev::perf_probe::NowTicks() - t0);
     return sg::Verdict::Run;
 }
