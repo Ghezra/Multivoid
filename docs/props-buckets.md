@@ -7,8 +7,8 @@ on them are asked of the host. The identity, birth and drop of the props themsel
 
 A water bucket (`prop_bucket_C`, and the base's mop bucket `prop_bucket_mop_C`, a bucket with nothing of its own) holds
 `height` of water up to `maxHeight`, with `soap` and a brewing `alcoholP` that turns `alcohol` on at 1. Its tick eases
-`height_interp` toward `height` and redraws the water; tipped, it pours; under water, it fills. A held soap adds its amount
-to `soap`, a sponge dipped takes 2 cm of water or one soap, a clean jar takes a part of a brewed bucket's water. A cement bag
+`height_interp` toward `height` and redraws the water; tipped, it pours; upright and in the water float list (`waterFloatMaster`'s `actorsInWater`, which a `waterVolume_C` overlap fills), it rises to the water's surface (`depth_w`) less its bottom point (`calcPoints`), inside `maxHeight`. A held soap adds its amount
+to `soap`, a sponge or mop dipped takes 4 cm of water or one soap (a mop's dip names no tool), a clean jar takes a part of a brewed bucket's water. A cement bag
 on a bucket with water makes it (`lib.replaceProp`) a concrete bucket (`prop_concreteBucket_C`) of
 round(`height` / `maxHeight` * 20) `units`; a trowel takes one unit, the last turns the bucket back into a water bucket, and 600 s
 dry it. A bag gives or takes one unit of another bag. Before the lane, each peer ran all of it on its own copies.
@@ -44,7 +44,7 @@ Six families of `PropActRequest` (`coop/props/prop_act_bucket*`; the registry is
 |---|---|---|---|
 | 6 | a held soap on a bucket without alcohol | the held class, the amount 0 to 10 | `soap` plus the amount, the soap's use spent |
 | 7 | a clean jar on a brewed bucket | the held jar, alcohol and more than a third of the water | the water down by `maxHeight` / 2.4, the jar's use spent |
-| 8 | a held sponge dipped | water above 10 cm, the branch (soap or water) equals the host's | one soap, or 2 cm of water |
+| 8 | a held sponge or mop dipped | water above 10 cm, the branch (soap or water) equals the host's | one soap, or 4 cm of water |
 | 9 | a held cement bag on a bucket | `canConcrete`, the units the water makes equal the client's | a concrete bucket of that many units replaces the bucket |
 | 10 | a held trowel in a concrete bucket | the concrete is not dry | `takeConcrete` on the host's copy |
 | 11 | a unit between the held bag and a world bag | the world bag can give or take | the world bag's units, one more or less |
@@ -76,6 +76,20 @@ fire and short are the host's, and takes its water to the client's level, at lea
 once it is empty. `[V]` (`coop/dev/entity_probe`, `VOTVCOOP_ENTITY_PROBE=pour`, three peers on build 357): slot 1 grabbed
 a full bucket (36.6) and held it turned over a blood stain; the host spawned its 8 blobs and refused 3 past empty, its
 water fell to 0 on every peer, and the stain fell from 100 to 56.8 on the host, on slot 1 and on a slot that joined after.
+
+## A carried bucket's fill
+
+A bucket a client carries into water fills from the game's tick on the client's copy, and the host's row, written at that
+copy's next tick, took the water back. Now (`coop/props/bucket_sync`, `BucketFillAsk`) the pin reads the copy before it writes:
+a rise past the host's last row is asked of the host with the level reached, and the copy keeps its water until the host's
+answer, its row, which ends the ask; only a further rise asks again. A refused bucket waits 1 s before its next ask,
+doubling to 8 s on each refusal in a row (a copy floating in water fills at every tick of its own), and an ask with no
+answer in 3 s is given up. The host
+judges it on its own copy, by the game's own fill rule: the sender's body within 3 m of it, the copy upright, a water volume's
+box holding its bottom point, and the level no higher than that water's surface less its bottom point, nor `maxHeight`. Both
+the box and the surface are widened by 40 cm, as the host's copy of a carried bucket is its holder's hand mirror, which stands
+where the puppet's hand is. A fill is written, repainted (`upd`, which a copy in a client's hand does not tick) and sent as a
+row; a refusal sends the host's row to the sender, which puts its copy back.
 
 ## A dropped item
 

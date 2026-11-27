@@ -109,12 +109,6 @@ const PF::Registrar kRegisterDip(kDip);
 
 }  // namespace
 
-// One stroke, one dip. A mop's left click reaches `dipped` twice -- through its own playerHandUse_LMB and again through the
-// ubergraph's notify -- so the second ask of the same bucket inside a stroke's window is the same press and is not asked.
-constexpr uint64_t kAskGapMs = 150;
-uint64_t g_lastAskMs = 0;
-EL::ElementId g_lastAskEid = EL::kInvalidId;
-
 sg::Verdict PreDipped(const sg::Call& c) {
     static R::ParamOffset sSponge{L"sponge"};
     N::Session* const s = RQ::internal::LinkedSession();
@@ -132,10 +126,6 @@ sg::Verdict PreDipped(const sg::Call& c) {
     EL::ElementId eid = EL::kInvalidId;
     if (B::KindOf(bucket) != B::Kind::Plain || !PF::SharedTarget(bucket, EL::ElementType::Prop, eid))
         return sg::Verdict::Run;
-    if (eid == g_lastAskEid && N::NowMs() - g_lastAskMs < kAskGapMs) {   // the same press's second reach
-        SetDipped(c, false);
-        return sg::Verdict::Cancel;
-    }
     B::Plain p;
     if (!B::ReadPlain(bucket, p)) {
         SetDipped(c, false);
@@ -156,9 +146,9 @@ sg::Verdict PreDipped(const sg::Call& c) {
         return sg::Verdict::Run;
     PF::Verb v;
     PutVerbByte(v, p.soap > 0 ? 1 : 0);
+    // A second dip while this one waits on the host is the same press: the request lane's one open record refuses it and
+    // AskFamily cancels it, so it neither runs here nor asks again.
     SetDipped(c, false);
-    g_lastAskEid = eid;
-    g_lastAskMs = N::NowMs();
     return AskFamily(*s, local, held, bucket, eid, N::PropActFamily::BucketDip, &v);
 }
 
