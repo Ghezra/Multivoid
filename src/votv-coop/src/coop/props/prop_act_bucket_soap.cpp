@@ -115,6 +115,7 @@ std::optional<Tally> ApplyJar(uint8_t slot, void* bucket) {
     if (!coop::hand_spend::Spend(slot, j.cls.c_str(), 1)) return FailedApply(slot, bucket, "jar", Tally::FitFamilyHand);
     p.height = (std::max)(p.height - p.maxHeight / 2.4f, 0.f);
     B::WritePlain(bucket, p.height, p.soap, p.alcoholP, p.alcohol, p.alcReady);
+    B::CallUpd(bucket);   // the BP's jar repaints the water it took; a copy here has no tick to do it
     coop::bucket_sync::Note(coop::bucket_sync::Count::FamilyApplies);
     coop::bucket_sync::MarkDirty(bucket);
     UE_LOGI("prop_act: slot %u filled a jar from a brewed water bucket (water now %.1f)", static_cast<unsigned>(slot), p.height);

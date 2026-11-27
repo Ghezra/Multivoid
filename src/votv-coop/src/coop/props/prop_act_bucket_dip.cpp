@@ -21,7 +21,7 @@ constexpr int kTagDipped = 0x50424430;   // "PBD0"
 constexpr const char* kDead = "a client's sponge dipped in a water bucket runs on its own copy only, unasked, and the copies diverge";
 
 constexpr float kDipMinHeight = 10.f;    // the BP's dipped does nothing at or below this
-constexpr float kDipWater = 2.f;         // the water a dip takes
+constexpr float kDipWater = 4.f;         // the water a dip takes: prop_bucket_C::dipped's own `height -= 4` (40000000)
 
 // Set by the PRE when the nested dipped of the replay runs; the commit word.
 bool g_dipRan = false;
@@ -85,12 +85,17 @@ std::optional<Tally> ApplyDip(uint8_t slot, void* bucket) {
     } else {
         p.height -= kDipWater;
         B::WritePlain(bucket, p.height, p.soap, p.alcoholP, p.alcohol, p.alcReady);
+        B::CallUpd(bucket);   // the BP's dip repaints the water it took; a copy here has no tick to do it
         B::CallDipEffect(bucket);
     }
     coop::bucket_sync::Note(coop::bucket_sync::Count::FamilyApplies);
     coop::bucket_sync::MarkDirty(bucket);
-    UE_LOGI("prop_act: slot %u's dip took %s of a water bucket (water %.1f, soap %d)", static_cast<unsigned>(slot),
-            soapBranch ? "a soap" : "2 cm", p.height, static_cast<int>(p.soap));
+    if (soapBranch)
+        UE_LOGI("prop_act: slot %u's dip took a soap from a water bucket (soap now %d)", static_cast<unsigned>(slot),
+                static_cast<int>(p.soap));
+    else
+        UE_LOGI("prop_act: slot %u's dip took %.1f cm of a water bucket (water %.1f)", static_cast<unsigned>(slot),
+                kDipWater, p.height);
     return std::nullopt;
 }
 
@@ -103,6 +108,12 @@ const PF::Family kDip = {
 const PF::Registrar kRegisterDip(kDip);
 
 }  // namespace
+
+// One stroke, one dip. A mop's left click reaches `dipped` twice -- through its own playerHandUse_LMB and again through the
+// ubergraph's notify -- so the second ask of the same bucket inside a stroke's window is the same press and is not asked.
+constexpr uint64_t kAskGapMs = 150;
+uint64_t g_lastAskMs = 0;
+EL::ElementId g_lastAskEid = EL::kInvalidId;
 
 sg::Verdict PreDipped(const sg::Call& c) {
     static R::ParamOffset sSponge{L"sponge"};
@@ -121,6 +132,10 @@ sg::Verdict PreDipped(const sg::Call& c) {
     EL::ElementId eid = EL::kInvalidId;
     if (B::KindOf(bucket) != B::Kind::Plain || !PF::SharedTarget(bucket, EL::ElementType::Prop, eid))
         return sg::Verdict::Run;
+    if (eid == g_lastAskEid && N::NowMs() - g_lastAskMs < kAskGapMs) {   // the same press's second reach
+        SetDipped(c, false);
+        return sg::Verdict::Cancel;
+    }
     B::Plain p;
     if (!B::ReadPlain(bucket, p)) {
         SetDipped(c, false);
@@ -134,10 +149,16 @@ sg::Verdict PreDipped(const sg::Call& c) {
         SetDipped(c, false);
         return CancelUnread(why);
     }
-    if (held != ParamObject(c, sSponge)) return sg::Verdict::Run;
+    // The call names the tool it dips -- except a mop's, which passes no object at all (prop_mop_C::playerHandUse_LMB's
+    // `dipped` is called with NoObject). A call that names nothing is this player's held sponge-family item, so a mop's
+    // dip is asked like a sponge's instead of running on its own copy unasked.
+    if (void* const named = ParamObject(c, sSponge); named ? named != held : !IsClass(held, L"prop_sponge_C"))
+        return sg::Verdict::Run;
     PF::Verb v;
     PutVerbByte(v, p.soap > 0 ? 1 : 0);
     SetDipped(c, false);
+    g_lastAskEid = eid;
+    g_lastAskMs = N::NowMs();
     return AskFamily(*s, local, held, bucket, eid, N::PropActFamily::BucketDip, &v);
 }
 

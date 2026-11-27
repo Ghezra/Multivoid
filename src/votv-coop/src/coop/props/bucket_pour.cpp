@@ -235,6 +235,11 @@ void OnAsk(int senderSlot, const N::BucketPourAskPayload& p) {
         const float most = w.height + 2.f * static_cast<float>(spawned) - kMaxPerBlob * static_cast<float>(spawned);
         if (std::isfinite(p.level) && p.level >= 0.f && p.level < w.height) w.height = p.level < most ? most : p.level;
         B::WritePlain(bucket, w.height < 0.f ? 0.f : w.height, w.soap, w.alcoholP, w.alcohol, w.alcReady);
+        // The bucket in a client's hand is a copy here, so its own tick never runs to repaint what the write
+        // changed: without the game's own repaint the water mesh keeps the level it showed before the pour (a
+        // bucket emptying on the client stayed visibly full on the host). bucket_sync's Apply repaints the same
+        // way; this write is the pour's, so it owes the same call.
+        B::CallUpd(bucket);
         coop::bucket_sync::MarkDirty(bucket);
     }
     UE_LOGI("bucket_pour: HOST slot %d poured %d blobs from bucket eid %u (%d refused), the first at (%.0f,%.0f,%.0f) going "
