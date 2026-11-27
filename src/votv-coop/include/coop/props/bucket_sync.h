@@ -59,14 +59,17 @@ void OnDisconnect();
 uint32_t MarkDirty(void* actor);
 
 // CLIENT (coop/props/bucket_pin): `copy` took water on its own -- the game's own fill, which the host's row would overwrite
-// at the copy's next tick. The rise is asked of the host, and the caller keeps the copy's own water for that tick (the pin
-// skips its write) until the host's row brings the level back. False when the copy is not a rising water bucket, or the ask
-// could not go. True also while an ask of the same element waits out the 100 ms gap: the rise is still the client's.
+// at the copy's next tick. The rise is asked of the host, and the caller keeps the copy's own water (the pin skips its
+// write) until the host's answer, its row, comes: that row ends the ask, whether the host took the fill or refused it. Only a
+// further rise is asked again; a refused element waits 1 s before its next ask (doubling to 8 s on each refusal in a row),
+// and an ask with no answer in 3 s is given up and the host's row kept. False when the copy is not a rising water bucket,
+// it is waiting, or the ask could not go.
 bool NoteLocalFill(void* copy);
 
 // HOST: a client's BucketFillAsk (coop/dispatch/event_dispatch_prop_drive): water the sender's carried bucket took on its own.
-// Accepted when the sender's body is within reach of the host's copy of the bucket and the level is a rise inside that copy's
-// own maxHeight; then it is written on the host's bucket, repainted and marked for a row. A refusal is counted and said.
+// The host judges the level by the game's own fill rule on its own copy: upright, in a water volume, up to that water's
+// surface less its bottom point, inside its maxHeight; and the sender's body within reach. A fill is written on the host's
+// bucket, repainted and marked for a row; a refusal sends the host's row back to the sender, which ends its ask.
 void OnFillAsk(int senderSlot, uint32_t eid, float level);
 
 // HOST: `actor`'s row now, to slot `slot` alone, so a copy a refused verb or record left ahead of the host is put back. False

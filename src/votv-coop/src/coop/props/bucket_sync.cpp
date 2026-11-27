@@ -19,13 +19,17 @@
 #include "ue_wrap/actors/bucket.h"
 #include "ue_wrap/actors/prop.h"
 #include "ue_wrap/core/cached_obj_ref.h"
+#include "ue_wrap/core/call.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/reflection_props.h"
 #include "ue_wrap/core/script_gate.h"
+#include "ue_wrap/engine/engine.h"
+#include "ue_wrap/engine/engine_component.h"
 #include "ue_wrap/engine/world_identity.h"
 #include "ue_wrap/facts/function_row.h"
+#include "ue_wrap/world/world_instances.h"
 
 #include <windows.h>
 
@@ -326,6 +330,8 @@ bool g_wireSaid[N::kMaxPeers][static_cast<size_t>(WireCause::kCount)] = {};
 
 // Puts the row on the copy: its members written through ue_wrap::bucket, then the game's own repaint of what they show. False
 // when the copy's own maxima say the row is out of range.
+void FillAnswered(uint32_t eid, float level);   // below: a row ends this player's fill ask of its element
+
 bool Apply(void* actor, const N::BucketRow& r) {
     switch (r.type) {
     case N::kBucketPlain: {
@@ -364,6 +370,7 @@ void ApplyRow(void* actor, const N::BucketRow& r) {
     g_parked.erase(r.eid);   // a row applied now is newer than one that waited for the copy's bind
     g_hostRow[r.eid] = r;
     g_appliedSeq[r.eid] = r.seq;
+    FillAnswered(r.eid, r.level);   // the host's row answers this player's fill ask of it, whether it took the fill or not
     g_firstSeq.try_emplace(r.eid, r.seq);
     Note(Count::RowsApplied);
 }
@@ -568,13 +575,108 @@ namespace {
 namespace EL = coop::element;
 namespace E  = ue_wrap::engine;
 
-// The client's asks: one element's at most ten a second, and a rise this large is a fill worth asking for (cm). The host
-// judges one by the sender's body, which a carried bucket sits on.
-constexpr uint64_t kFillGapMs = 100;
-constexpr float    kFillEps = 0.5f;
-constexpr float    kFillReachCm = 300.f;
-std::unordered_map<uint32_t, uint64_t> g_fillAsked;
+// A rise this large is a fill worth asking for (cm). The host judges one by the sender's body, which a carried bucket sits
+// on, and by the water its own copy stands in.
+constexpr float kFillEps = 0.5f;
+constexpr float kFillReachCm = 300.f;
+// The host's copy of a carried bucket is the copy in the sender's hand mirror, which stands where the puppet's hand is, not
+// where the sender's own view holds it: the water it must stand in is widened by this much, and the surface raised by it.
+constexpr float kWaterSlackCm = 40.f;
+// A client's ask whose answer has not come by then is given up: the host's row is written again and no further ask goes
+// until the next row. The answer is reliable, so this is only the guard against one that never comes.
+constexpr uint64_t kFillAnswerMs = 3000;
+// A refused fill is not asked again at once: a copy whose own world keeps filling it (a bucket floating in water there) would
+// otherwise ask at every answer. The wait starts at 1 s and doubles to 8 s on each refusal in a row; a fill taken ends it.
+constexpr uint64_t kRefusedWaitMs = 1000;
+constexpr uint64_t kRefusedWaitMaxMs = 8000;
 
+// CLIENT: the ask of each element waiting on the host's answer -- its row, whether it took the fill or refused it.
+struct FillAsk {
+    float level = 0.f;          // the level asked
+    uint64_t sentMs = 0;
+    bool open = false;          // waiting on its answer
+    bool givenUp = false;       // no answer came: the host's row is written until the next row comes
+    uint64_t waitUntil = 0;     // refused: no ask of this element before then
+    uint64_t waitMs = 0;        // the wait the next refusal starts
+};
+std::unordered_map<uint32_t, FillAsk> g_fillAsked;
+
+void* ObjField(void* obj, const wchar_t* name) {
+    const int32_t off = obj ? R::FindPropertyOffset(R::ClassOf(obj), name) : -1;
+    void* v = nullptr;
+    if (off >= 0) std::memcpy(&v, static_cast<const char*>(obj) + off, sizeof(v));
+    return v && R::IsLive(v) ? v : nullptr;
+}
+
+// The surface of the water `bottom` stands in: a waterVolume_C whose box holds it (widened by `slack`), and that water's
+// own `depth_w`, the world height the game's float list fills a bucket to (prop_bucket_C's tick: the list's depth less
+// its bottom point). False when no water volume holds it.
+bool WaterSurfaceAt(const ue_wrap::FVector& bottom, float slack, float& surface) {
+    static void* found[64];
+    const int n = ue_wrap::world_instances::Find(L"waterVolume_C", found, 64);
+    for (int i = 0; i < n; ++i) {
+        void* const vol = found[i];
+        void* const box = ObjField(vol, L"Box");
+        const int32_t extOff = box ? R::FindPropertyOffset(R::ClassOf(box), L"BoxExtent") : -1;
+        const int32_t depthOff = vol ? R::FindPropertyOffset(R::ClassOf(vol), L"depth_w") : -1;
+        ue_wrap::FVector at{}, scale{};
+        ue_wrap::FRotator rot{};
+        if (extOff < 0 || depthOff < 0 || !E::TryGetComponentLocation(box, at) ||
+            !E::TryGetComponentWorldRotation(box, rot) || !E::TryGetComponentWorldScale(box, scale))
+            continue;
+        ue_wrap::FVector ext{};
+        std::memcpy(&ext, static_cast<const char*>(box) + extOff, sizeof(ext));
+        // The bottom point in the box's own axes (yaw only: a water volume is not tilted).
+        const float yaw = rot.Yaw * 0.0174532925f;
+        const float dx = bottom.X - at.X, dy = bottom.Y - at.Y, dz = bottom.Z - at.Z;
+        const float lx = dx * std::cos(yaw) + dy * std::sin(yaw), ly = -dx * std::sin(yaw) + dy * std::cos(yaw);
+        if (std::fabs(lx) > std::fabs(ext.X * scale.X) + slack || std::fabs(ly) > std::fabs(ext.Y * scale.Y) + slack ||
+            std::fabs(dz) > std::fabs(ext.Z * scale.Z) + slack)
+            continue;
+        std::memcpy(&surface, static_cast<const char*>(vol) + depthOff, sizeof(surface));
+        if (std::isfinite(surface)) return true;
+    }
+    return false;
+}
+
+// HOST: the most water the host's copy of `bucket` can hold where it stands, by the game's own fill rule: upright, in a
+// water volume, up to that water's surface less its bottom point (calcPoints sets it from the copy's pose), and never past
+// its own maxHeight. False, with `why`, when it is not upright in water.
+bool FillCeiling(void* bucket, float maxHeight, float& ceiling, const char*& why) {
+    ue_wrap::FRotator rot{};
+    if (!E::TryGetActorRotation(bucket, rot)) { why = "its pose did not read"; return false; }
+    const float upZ = std::cos(rot.Pitch * 0.0174532925f) * std::cos(rot.Roll * 0.0174532925f);
+    if (!(upZ > 0.f)) { why = "it is not upright"; return false; }
+    ue_wrap::ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(bucket), L"calcPoints"));
+    const int32_t botOff = R::FindPropertyOffset(R::ClassOf(bucket), L"bottomPoint");
+    if (!f.valid() || botOff < 0 || !ue_wrap::Call(bucket, f)) { why = "its bottom point did not read"; return false; }
+    ue_wrap::FVector bottom{};
+    std::memcpy(&bottom, static_cast<const char*>(bucket) + botOff, sizeof(bottom));
+    float surface = 0.f;
+    if (!WaterSurfaceAt(bottom, kWaterSlackCm, surface)) { why = "it stands in no water here"; return false; }
+    ceiling = (std::min)(surface + kWaterSlackCm - bottom.Z, maxHeight);
+    if (!(ceiling > 0.f)) { why = "its bottom is above the water here"; return false; }
+    return true;
+}
+
+}  // namespace
+
+namespace {
+// The host's row of `eid` at `level` answers this player's open ask of it: a row below the level asked is a refusal, which
+// starts the wait before the next ask; a row at it is the fill taken.
+void FillAnswered(uint32_t eid, float level) {
+    const auto it = g_fillAsked.find(eid);
+    if (it == g_fillAsked.end()) return;
+    FillAsk& ask = it->second;
+    if (!ask.open && !ask.givenUp) return;
+    if (level + kFillEps < ask.level) {
+        ask.waitMs = ask.waitMs ? (std::min)(ask.waitMs * 2, kRefusedWaitMaxMs) : kRefusedWaitMs;
+        ask.waitUntil = Now() + ask.waitMs;
+        ask.open = ask.givenUp = false;
+        return;
+    }
+    g_fillAsked.erase(it);
+}
 }  // namespace
 
 bool NoteLocalFill(void* copy) {
@@ -587,15 +689,30 @@ bool NoteLocalFill(void* copy) {
     if (!B::ReadPlain(copy, now) || !std::isfinite(now.height) || !(now.height > row->level + kFillEps)) return false;
     const uint64_t t = Now();
     const auto it = g_fillAsked.find(eid);
-    // An ask of this bucket is in flight: the rise is still this player's, so the caller keeps it for this tick too.
-    if (it != g_fillAsked.end() && t - it->second < kFillGapMs) return true;
+    if (it != g_fillAsked.end()) {
+        FillAsk& ask = it->second;
+        if (ask.givenUp) return false;   // the host never answered: its row stands until the next one comes
+        if (!ask.open && t < ask.waitUntil) return false;   // refused a moment ago: the host's row stands meanwhile
+        // The ask waits on its answer, the host's row, which ends it. Until then the rise is this player's; only a further
+        // rise is asked again.
+        if (ask.open && now.height <= ask.level + kFillEps) {
+            if (t - ask.sentMs < kFillAnswerMs) return true;
+            ask.givenUp = true;
+            UE_LOGW("bucket_sync: the host never answered this player's fill of bucket eid %u -- its row is kept", eid);
+            return false;
+        }
+    }
     N::Session* const s = g_session.load(std::memory_order_acquire);
     if (!s || !s->running() || s->role() != N::Role::Client) return false;
     N::BucketFillAskPayload p{};
     p.eid = eid;
     p.level = now.height;
     if (!s->SendReliable(N::ReliableKind::BucketFillAsk, &p, sizeof(p))) return false;
-    g_fillAsked[eid] = t;
+    FillAsk& ask = g_fillAsked[eid];
+    ask.level = now.height;
+    ask.sentMs = t;
+    ask.open = true;
+    ask.givenUp = false;
     Note(Count::FillAsked);
     UE_LOGI("bucket_sync: this player's bucket eid %u took water to %.1f on its own -- asked of the host", eid, p.level);
     return true;
@@ -610,31 +727,33 @@ void OnFillAsk(int senderSlot, uint32_t eid, float level) {
         UE_LOGW("bucket_sync: slot %d's fill of eid %u refused (no water bucket stands there)", senderSlot, eid);
         return;
     }
+    // Every refusal answers with the host's row, which ends the sender's ask and puts its copy back.
+    auto refuse = [&](const char* why) {
+        Note(Count::FillRefused);
+        const bool sent = SendRowTo(senderSlot, bucket);
+        UE_LOGW("bucket_sync: slot %d's fill of eid %u to %.1f refused (%s) -- the host's %.1f sent back (ok=%d)",
+                senderSlot, eid, level, why, now.height, sent ? 1 : 0);
+    };
     // The sender carries the bucket, so its body is beside the host's copy of it.
     coop::RemotePlayer* rp = coop::players::Registry::Get().Puppet(static_cast<uint8_t>(senderSlot));
     void* body = rp && rp->valid() ? rp->GetActor() : nullptr;
     ue_wrap::FVector at{}, by{};
-    if (!body || !R::IsLive(body) || !E::TryGetActorLocation(bucket, at) || !E::TryGetActorLocation(body, by)) {
-        Note(Count::FillRefused);
-        return;
-    }
+    if (!body || !R::IsLive(body) || !E::TryGetActorLocation(bucket, at) || !E::TryGetActorLocation(body, by))
+        return refuse("its body or the bucket did not read");
     const float dx = at.X - by.X, dy = at.Y - by.Y, dz = at.Z - by.Z;
-    if (dx * dx + dy * dy + dz * dz > kFillReachCm * kFillReachCm) {
-        Note(Count::FillRefused);
-        UE_LOGW("bucket_sync: slot %d's fill of eid %u refused (its body is %.0f cm from the bucket)", senderSlot, eid,
-                std::sqrt(dx * dx + dy * dy + dz * dz));
-        return;
-    }
-    const float want = level > now.maxHeight ? now.maxHeight : (level < 0.f ? 0.f : level);
-    if (!(want > now.height + kFillEps)) {   // the host's row already brings this level: nothing to write
-        Note(Count::FillRefused);
-        return;
-    }
+    if (dx * dx + dy * dy + dz * dz > kFillReachCm * kFillReachCm) return refuse("its body is out of reach of the bucket");
+    // The level is the host's to judge: the water its own copy stands in bounds it, as the game's own fill does.
+    float ceiling = 0.f;
+    const char* why = "";
+    if (!FillCeiling(bucket, now.maxHeight, ceiling, why)) return refuse(why);
+    const float want = (std::min)((std::max)(level, 0.f), ceiling);
+    if (!(want > now.height + kFillEps)) return refuse("no rise past the host's own water");
     B::WritePlain(bucket, want, now.soap, now.alcoholP, now.alcohol, now.alcReady);
     B::CallUpd(bucket);   // a copy in a client's hand has no tick here to repaint the water it took
     MarkDirty(bucket);
     Note(Count::FillApplied);
-    UE_LOGI("bucket_sync: slot %d's bucket eid %u took water to %.1f -- written on the host", senderSlot, eid, want);
+    UE_LOGI("bucket_sync: slot %d's bucket eid %u took water to %.1f (asked %.1f, its water allows %.1f) -- written on "
+            "the host", senderSlot, eid, want, level, ceiling);
 }
 
 void OnPeerWorldReady(int slot) {
