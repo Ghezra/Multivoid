@@ -1554,6 +1554,42 @@ void FillStep(bool host, uint64_t t) {
         UE_LOGI("[FILL] client: its copy of the dry bucket to 25 (found=%d)",
                 b && ue_wrap::bucket::WritePlain(b, 25.f, 0, 0.f, false, false) ? 1 : 0);
     }
+    // HOST: each frame, a drop of the wet bucket's water names what its Sphere overlaps (the game's splash takes 1-2 cm off
+    // a bucket over 10 cm when anything enters the sphere).
+    static float s_lastWet = -1.f;
+    if (host && s_step >= 1) {
+        void* const wet = nearestBucket(s_wetAt);
+        const float h = height(wet);
+        if (wet && s_lastWet >= 0.f && std::fabs(h - s_lastWet) > 0.01f) {
+            const int32_t so = R::FindPropertyOffset(R::ClassOf(wet), L"Sphere");
+            void* const sphere = so >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(wet) + so) : nullptr;
+            std::wstring names;
+            ue_wrap::ParamFrame f(sphere ? R::FindDispatchFunctionCached(R::ClassOf(sphere), L"GetOverlappingActors")
+                                         : nullptr);
+            if (f.valid() && ue_wrap::Call(sphere, f)) {
+                struct Arr {
+                    void** data;
+                    int32_t num, max;
+                };
+                const Arr a = f.Get<Arr>(L"OverlappingActors");
+                ue_wrap::FVector wa{};
+                E::TryGetActorLocation(wet, wa);
+                for (int32_t i = 0; i < a.num && a.data; ++i) {
+                    if (!R::IsLive(a.data[i])) continue;
+                    ue_wrap::FVector oa{};
+                    E::TryGetActorLocation(a.data[i], oa);
+                    const float d = std::sqrt((oa.X - wa.X) * (oa.X - wa.X) + (oa.Y - wa.Y) * (oa.Y - wa.Y) +
+                                              (oa.Z - wa.Z) * (oa.Z - wa.Z));
+                    names += (names.empty() ? L"" : L", ") + R::ToString(R::NameOf(R::ClassOf(a.data[i]))) +
+                             (a.data[i] == wet ? L" (itself)" : L" (another, " + std::to_wstring(static_cast<int>(d)) + L" cm)");
+                }
+                if (a.data) R::EngineFree(a.data);
+            }
+            UE_LOGI("[FILL] host: the wet bucket's water went %.1f -> %.1f; its sphere overlaps [%ls]", s_lastWet, h,
+                    names.c_str());
+        }
+        s_lastWet = h;
+    }
     static uint64_t s_next = 0;
     if (t < 42000u || t > 120000u || t < s_next) return;
     s_next = t + 5000u;
