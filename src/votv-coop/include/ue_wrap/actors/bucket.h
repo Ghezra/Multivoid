@@ -94,7 +94,8 @@ bool CallDeleteAlc(void* bucket);      // a water bucket: destroys the bread and
 // takeConcrete(dry&): takes one unit, and replaces the bucket with a water bucket at its last. `dryOut` is the out-param: true
 // when the concrete was dry and nothing was taken.
 bool CallTakeConcrete(void* bucket, bool& dryOut);
-// dipped(sponge, isDipped&): the bucket's side of a sponge's dip. `isDipped` is the out-param the sponge reads.
+// dipped(sponge, isDipped&): the bucket's side of a sponge's dip. `isDipped` is the out-param the sponge reads. A null
+// `sponge` is a mop's dip: prop_mop_C's own click names no tool.
 bool CallDipped(void* bucket, void* sponge, bool& isDipped);
 // The held item's own `playerHandUse_LMB(player)`: a sponge's stroke, a cement bag's or trowel's use.
 bool CallHandUseLmb(void* item, void* player);

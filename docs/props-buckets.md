@@ -51,7 +51,9 @@ Six families of `PropActRequest` (`coop/props/prop_act_bucket*`; the registry is
 
 A client's watch lets the game refuse where the Blueprint would refuse or do nothing; otherwise it announces the hold, asks and
 cancels. A grant reserves the target for the sender until its commit; the client replays its half (the game's own verb, or for
-9, 10 and 11 a spend of the held item) and commits 0 or 1. At 1 the host reads the judge's condition again and writes the
+9, 10 and 11 a spend of the held item) and commits 0 or 1. A dip's replay is the item's own click, which traces from the player's view at that moment: a player who looked
+away from the bucket in the round trip misses it, so the replay then runs the granted bucket's `dipped` itself (a mop's
+names no tool) and, when it dips, the item's own tail: wet, and the wade sound, without the click's arm swing. At 1 the host reads the judge's condition again and writes the
 recorded value; when its own player or tick changed the target in the round trip the apply is counted, not written, and the
 asker's copy gets the host's row, sent to the asker alone. At 0 the asker's copy gets the host's row. A verb the client cannot
 form from what it reads (the copy, the hold, the amount) is cancelled and said once, never run unasked on the shared copy. The

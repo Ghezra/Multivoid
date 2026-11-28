@@ -10,8 +10,12 @@
 
 #include "coop/props/prop_act_bucket.h"
 
+#include "ue_wrap/core/cached_obj_ref.h"
 #include "ue_wrap/core/reflection_props.h"
+#include "ue_wrap/engine/engine_audio.h"
 #include "ue_wrap/facts/function_row.h"
+
+#include <cstring>
 
 namespace coop::prop_act_bucket {
 namespace {
@@ -37,7 +41,20 @@ void SetDipped(const sg::Call& c, bool v) {
 
 // ---- the client's half ----
 
-bool RunDip(void*, void* local, const PF::Verb& verb) {
+// The item's own tail after a dip, as its click runs it once the bucket's dipped answers true: wet (`power` 1) and the
+// wade sound. The arm swing (its montage) is the click's alone and is not played here.
+void WetLikeClick(void* sponge, void* local) {
+    const int32_t off = R::FindPropertyOffset(R::ClassOf(sponge), L"power");
+    if (off >= 0) {
+        const float wet = 1.f;
+        std::memcpy(static_cast<char*>(sponge) + off, &wet, sizeof(wet));
+    }
+    static ue_wrap::CachedObjRef s_wade;
+    if (!s_wade.Alive()) s_wade.Set(R::FindObject(L"wade_cue", L"SoundCue"));
+    if (s_wade.Alive()) ue_wrap::engine::PlaySound2D(local, s_wade.Raw(), 0.5f, 1.f, 0.f, false);
+}
+
+bool RunDip(void* bucket, void* local, const PF::Verb& verb) {
     uint8_t branch = 0;
     std::wstring name;
     void* sponge = nullptr;
@@ -46,7 +63,17 @@ bool RunDip(void*, void* local, const PF::Verb& verb) {
         !IsClass(sponge, L"prop_sponge_C"))
         return false;
     g_dipRan = false;
-    return B::CallHandUseLmb(sponge, local);
+    const bool ran = B::CallHandUseLmb(sponge, local);
+    if (g_dipRan || !bucket || !R::IsLive(bucket)) return ran;
+    // The click traces from the player's view as it is now, so a player who looked away from the bucket in the round trip
+    // misses it and the dip the host granted never lands. The granted bucket's dipped is run itself, named as the item's
+    // own click names it (a mop names no tool), and the item's tail follows when it dips.
+    bool dipped = false;
+    if (!B::CallDipped(bucket, IsClass(sponge, L"prop_mop_C") ? nullptr : sponge, dipped) || !dipped) return ran;
+    WetLikeClick(sponge, local);
+    UE_LOGI("prop_act: this player's dip landed on its bucket without the click's trace (the view left it in the round "
+            "trip)");
+    return true;
 }
 
 uint8_t DipCommit(void*, const PF::Verb&) { return g_dipRan ? 1 : 0; }

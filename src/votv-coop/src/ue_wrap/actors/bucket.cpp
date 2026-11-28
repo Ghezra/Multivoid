@@ -305,7 +305,7 @@ bool CallTakeConcrete(void* bucket, bool& dryOut) {
 }
 
 bool CallDipped(void* bucket, void* sponge, bool& isDipped) {
-    if (KindOf(bucket) != Kind::Plain || !sponge) return false;
+    if (KindOf(bucket) != Kind::Plain) return false;   // a null sponge is a mop's dip, which names no tool
     ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(bucket), L"dipped"));
     if (!f.valid() || !f.Set<void*>(L"sponge", sponge) || !Call(bucket, f)) return false;
     isDipped = f.Get<bool>(L"isDipped");
