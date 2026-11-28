@@ -97,6 +97,7 @@
 #include "coop/props/prop_nametag.h"  // the tags put on this session, again
 #include "coop/player/hand_record_sync.h"  // every held item's own record
 #include "coop/world/cover_sync.h"  // the desk's plates and every station's door
+#include "coop/world/whiteboard_sync.h"
 #include "coop/props/fireext_sync.h"  // every spray, thrust and partly spent extinguisher
 #include "coop/props/miner_sync.h"   // every mining rig's counts and points
 #include "coop/world/alarm_sync.h"  // base radar alarm shared-world toggle
@@ -163,6 +164,7 @@ void ConnectReplayForSlot(int slot) {
     coop::dish_hashcode_sync::QueueConnectBroadcastForSlot(slot);
     coop::prop_snapshot::TriggerForSlot(slot);
     coop::bucket_sync::OnPeerWorldReady(slot);  // every bucket's water and concrete
+    coop::whiteboard_sync::OnPeerWorldReady(slot);  // every board's picture
     coop::battery_charger_sync::OnPeerWorldReady(slot);  // every battery charger's slots
     coop::car_charger_sync::OnPeerWorldReady(slot);  // the car chargers' clips, the loose ATV batteries
     coop::prop_rest_sync::OnPeerWorldReady(slot);  // and in 30 s, once its world settled, every keyed prop's rest pose

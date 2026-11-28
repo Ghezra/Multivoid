@@ -121,6 +121,7 @@
 #include "coop/interactables/woodchipper_gate.h"  // the chipper bodies a client refuses: its counts end with the session
 #include "coop/world/plant_sync.h"
 #include "coop/world/media_device_sync.h"
+#include "coop/world/whiteboard_sync.h"
 #include "coop/props/prop_tool_flags.h"
 #include "coop/props/prop_stick_sync.h"  // wall-attachable stick mirror (camera-on-wall)
 #include "coop/props/prop_pry_host.h"  // the host's judge of a client's pry
@@ -415,6 +416,7 @@ void Install(coop::net::Session& session) {
     coop::world_sound_sync::Install(&session);  // the sky's two sounds, a faucet's click
     coop::sound_relay::Install(&session);       // a player's own sounds at a place (a melee hit)
     coop::media_device_sync::Install(&session);  // a placed radio's track and play state
+    coop::whiteboard_sync::Install(&session);  // a whiteboard's picture: the drawing peer's, through the host, to every peer
     coop::atv_riders::Install(&session);  // a remote driver's body in the seat, the kerfurs a client's seat calls
     coop::garbage_bin_sync::Install(&session);  // what a garbage container holds, and its pickup, are the host's
     coop::props::container_break::Install(&session);  // a container a client breaks breaks on the host
@@ -636,6 +638,7 @@ DisconnectStats DisconnectAll() {
     coop::world_sound_sync::OnDisconnect();
     coop::sound_relay::OnDisconnect();
     coop::media_device_sync::OnDisconnect();
+    coop::whiteboard_sync::OnDisconnect();
     coop::garbage_bin_sync::OnDisconnect();
     coop::sleepingbag_sync::OnDisconnect();
     coop::item_activate::OnDisconnect();
@@ -836,6 +839,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     coop::walker_lanes::Tick(session, isHost);  // the walkers: HOST claims the born ones into the drive stream (before the pump below); CLIENT hears its copies end and judges its gaze
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:prop_drive_host"}; coop::prop_drive_host::Pump(session, isHost); }  // the driven props, both roles: HOST judges a syncing client's rows, publishes the props that moved, closes the streams that rested (after the hook poll that feeds it); then both park + drive what the host streams (an empty set costs one size check)
     coop::media_device_sync::Tick();  // the radios' poll
+    coop::whiteboard_sync::Tick();  // the boards, the stroke trigger's sends, and the host's change safety net
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:desk_short"}; coop::desk_short_sync::Tick(); }  // the desk short watch resolves its names, and the host serves the requests (an empty inbox costs one size check)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:garbage_bin"}; coop::garbage_bin_sync::Tick(); }  // the garbage containers: the host flushes the marks its watch made and replays to a joiner, a client applies the host's lists
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:container_break"}; coop::props::container_break::Tick(); }  // a client's break and cut requests, and the host's judgments

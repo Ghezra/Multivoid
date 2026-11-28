@@ -696,6 +696,7 @@ set(VOTVCOOP_SOURCES
     src/coop/world/soltomia_sync.cpp
     src/coop/world/flyover_sync.cpp
     src/coop/world/hole_sync.cpp
+    src/coop/world/whiteboard_sync.cpp
     src/coop/creatures/firetank_sync.cpp
     src/coop/creatures/gray_sync.cpp
     src/coop/world/sirenpost_sync.cpp

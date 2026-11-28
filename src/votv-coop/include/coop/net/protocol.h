@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 365;
+inline constexpr uint16_t kProtocolVersion = 366;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1729,6 +1729,11 @@ enum class ReliableKind : uint16_t {
     // (coop/interactables/window_dirt_sync), after a dirt splotch or once the dabs on it stop; to a joiner, at its
     // connect. Never relayed; not pre-world.
     WindowImage = 340,
+
+    // CLIENT->HOST a board's picture after a stroke, HOST->ALL the world's picture (coop/world/whiteboard_sync),
+    // chunked (BlobChunkPayload): [u64 board key][u32 picture length][base64 text]. Never relayed past the host; not
+    // pre-world.
+    BoardImage = 351,
 
     // CLIENT->HOST: water a client's bucket took on its own -- the game's own fill while the bucket is carried,
     // where the host's rows pin the copy and the client's change would otherwise be overwritten within a tick

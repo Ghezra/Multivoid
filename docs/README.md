@@ -69,6 +69,7 @@ messages, the late-join answer, the known limits with their evidence, and the co
 | [events-more.md](events-more.md) | The basement fridge's knocks and the Arirals' bomb box: the host's, heard and seen by every player |
 | [signals.md](signals.md) | The signal workstation: occupancy, the desk, the download simulation, the catch and the dishes, the deck, drives and racks, the laptop, the database, and the upgrades |
 | [devices.md](devices.md) | Doors, keypads, lights, the power panel, the turbine, windows and grime, the drone, the signal servers |
+| [devices-whiteboard.md](devices-whiteboard.md) | Whiteboards: the surface's own serialization, a stroke's picture from the drawer through the host to every peer, the joiner's replay, the clear safety net |
 | [devices-window.md](devices-window.md) | The bay window: its dabs on every peer, its grime the host's picture |
 | [devices-cameras.md](devices-cameras.md) | Security cameras: whose watching lights them, and where they point |
 | [fuel-machines.md](fuel-machines.md) | The woodchipper and the portable generator: fuel, on/off, a client's pour and press |

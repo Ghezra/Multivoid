@@ -82,6 +82,7 @@
 #include "coop/props/prop_syncer_host.h"   // the host's claim judge and a client's End
 
 #include "coop/world/anomaly_ask.h"
+#include "coop/world/whiteboard_sync.h"
 #include "coop/props/chip_scrap_sync.h"
 #include "coop/world/sus_hole_intent.h"
 #include "ue_wrap/core/log.h"
@@ -699,6 +700,19 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         ::coop::bucket_sync::OnFillAsk(msg.senderPeerSlot, p.eid, p.level);
+        break;
+    }
+    case net::ReliableKind::BoardImage: {
+        // CLIENT->HOST a board's finished picture, HOST->ALL the world's (coop/world/whiteboard_sync); the host also
+        // relays its own. Chunked, exact part fields; the lane reassembles.
+        if (msg.payloadLen != sizeof(net::BlobChunkPayload)) {
+            UE_LOGW("event_feed: a board picture part of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        net::BlobChunkPayload chunk{};
+        std::memcpy(&chunk, msg.payload, sizeof(chunk));
+        ::coop::whiteboard_sync::OnChunk(chunk, msg.senderPeerSlot);
         break;
     }
     case net::ReliableKind::WindowImage: {

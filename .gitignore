@@ -266,6 +266,7 @@ docs/**
 !docs/votv-ui-style.md
 !docs/devices.md
 !docs/devices-window.md
+!docs/devices-whiteboard.md
 !docs/devices-cameras.md
 !docs/kitchen-and-media.md
 !docs/base-computer.md
