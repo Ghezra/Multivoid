@@ -5,8 +5,8 @@
 // 60). Now, on CameraAimAsk and CameraAimState:
 //   CLIENT -- its own turn runs at once; after it, the camera's targets go to the host, at most ten times a second.
 //   HOST   -- writes a client's targets on its camera and runs move(); after its own turn, or a client's, sends the
-//             targets to every other player at most ten times a second, and to a joiner every camera turned.
-//   CLIENT -- writes the host's targets and runs move(). Game thread.
+//             targets to every client at most ten times a second, and to a joiner every camera turned.
+//   CLIENT -- writes the host's targets and runs move(), once its own turning of that camera has stopped. Game thread.
 
 #pragma once
 

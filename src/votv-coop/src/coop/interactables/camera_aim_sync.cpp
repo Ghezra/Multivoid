@@ -93,10 +93,18 @@ bool Apply(void* cam, const Aim& a) {
     return ok;
 }
 
+// CLIENT: the last time this player turned each camera. A host's aim that arrives within kOwnTurnMs of it is an echo
+// of a turn still going: it is kept and taken once the turning stops, so the head does not jump back mid-turn.
+constexpr uint64_t kOwnTurnMs = 400;
+std::unordered_map<std::wstring, uint64_t> g_ownTurnAt;
+std::unordered_map<std::wstring, N::CameraAimPayload> g_held;
+
 void OnAnglePost(const sg::Call& call) {
     if (g_applying || !call.object || !(IsHost() || IsClient())) return;
     const std::wstring key = coop::interactable_sync::CameraKeyOf(call.object);
-    if (!key.empty()) g_dirty.emplace(key, Dirty{});
+    if (key.empty()) return;
+    g_dirty.emplace(key, Dirty{});
+    if (IsClient()) g_ownTurnAt[key] = ::GetTickCount64();
 }
 
 N::CameraAimPayload PayloadOf(const std::wstring& key, const Aim& a) {
@@ -121,8 +129,9 @@ void Flush() {
         if (cam && Read(cam, a)) {
             const N::CameraAimPayload p = PayloadOf(it->first, a);
             if (IsHost()) {
-                const int except = it->second.fromSlot;
-                if (g_session->SendReliable(N::ReliableKind::CameraAimState, &p, sizeof(p), except)) ++g_states;
+                // To every client, the turner too: two players turning one camera at once each end on the host's
+                // last turn, which the turner takes once its own turning stops (OnState).
+                if (g_session->SendReliable(N::ReliableKind::CameraAimState, &p, sizeof(p))) ++g_states;
                 g_turned[it->first] = a;
             } else if (g_session->SendReliable(N::ReliableKind::CameraAimAsk, &p, sizeof(p))) {
                 ++g_asks;
@@ -180,6 +189,17 @@ void Tick() {
             }
         }
     }
+    for (auto it = g_held.begin(); it != g_held.end();) {
+        const auto own = g_ownTurnAt.find(it->first);
+        if (own != g_ownTurnAt.end() && now - own->second < kOwnTurnMs) {
+            ++it;
+            continue;
+        }
+        const N::CameraAimPayload p = it->second;
+        it = g_held.erase(it);
+        if (void* const cam = coop::interactable_sync::FindCamera(N::StringFromWireKey(p.key)))
+            if (Apply(cam, {p.rotX, p.rotY, p.zoom})) ++g_applied;
+    }
     if (!g_dirty.empty()) Flush();
 }
 
@@ -203,6 +223,12 @@ void OnAsk(int senderSlot, const N::CameraAimPayload& p) {
 void OnState(const N::CameraAimPayload& p) {
     if (!IsClient() || !Finite(p)) return;
     const std::wstring key = N::StringFromWireKey(p.key);
+    const auto own = g_ownTurnAt.find(key);
+    if (own != g_ownTurnAt.end() && ::GetTickCount64() - own->second < kOwnTurnMs) {
+        g_held[key] = p;
+        return;
+    }
+    g_held.erase(key);
     void* const cam = key.empty() ? nullptr : coop::interactable_sync::FindCamera(key);
     if (!cam) {
         if (!g_pending.count(key))
@@ -238,6 +264,8 @@ void OnDisconnect() {
     g_lastSent.clear();
     g_turned.clear();
     g_pending.clear();
+    g_held.clear();
+    g_ownTurnAt.clear();
     g_asks = g_states = g_applied = 0;
 }
 
