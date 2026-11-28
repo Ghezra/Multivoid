@@ -35,6 +35,7 @@
 #include "ue_wrap/engine/engine_physics.h"
 #include "ue_wrap/engine/engine_component.h"
 #include "ue_wrap/actors/bucket.h"
+#include "ue_wrap/actors/prop_use.h"
 #include "ue_wrap/engine/engine_physics.h"
 #include "ue_wrap/devices/atv.h"
 #include "ue_wrap/devices/cremator.h"
@@ -1697,6 +1698,46 @@ void MopStep(bool host, uint64_t t) {
     }
 }
 
+// VOTVCOOP_ENTITY_PROBE=bombbox: a client opens the Arirals' bomb box. HOST 40 s: a bomb box 2.5 m before it. CLIENT
+// slot 1, 55 s: its copy opened with action 4 (the box's own actionOptionIndex, as the player's press calls it). Every
+// peer, each 5 s from 42 s (`[BOMB]`): how many bomb boxes stand in its world.
+bool BombMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "bombbox";
+    return v;
+}
+
+void BombStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    void* const me = coop::players::Registry::Get().Local();
+    if (!me) return;
+    if (host && s_step == 0 && t >= 40000u) {
+        s_step = 1;
+        ue_wrap::FVector at{};
+        ue_wrap::FRotator rot{};
+        E::TryGetActorLocation(me, at);
+        E::TryGetActorRotation(me, rot);
+        const float yaw = rot.Yaw * 0.0174532925f;
+        const ue_wrap::FVector to{at.X + 250.f * std::cos(yaw), at.Y + 250.f * std::sin(yaw), at.Z - 40.f};
+        const CR::Resolved rc = CR::ResolveClass(L"prop_bombbox_C", CR::AnyFamily(), CR::Load::Immediate);
+        UE_LOGI("[BOMB] host: a bomb box spawned=%d", rc.cls && E::SpawnActor(rc.cls, to) ? 1 : 0);
+    }
+    void* const box = First(L"prop_bombbox_C");
+    if (!host && coop::players::Registry::Get().LocalPeerId() == 1 && s_step == 0 && t >= 55000u && box) {
+        s_step = 1;
+        ue_wrap::FVector at{};
+        E::TryGetActorLocation(box, at);
+        UE_LOGI("[BOMB] client: opened its bomb box copy (ran=%d)",
+                ue_wrap::prop_use::CallActionOptionIndex(box, me, nullptr, at, 4, nullptr) ? 1 : 0);
+    }
+    static uint64_t s_next = 0;
+    if (t < 42000u || t > 100000u || t < s_next) return;
+    s_next = t + 5000u;
+    static void* found[16];
+    UE_LOGI("[BOMB] %s t=%llu: %d bomb boxes", host ? "host" : "client", static_cast<unsigned long long>(t / 1000u),
+            ue_wrap::world_instances::Find(L"prop_bombbox_C", found, 16));
+    if (host && t >= 95000u) UE_LOGI("[ENTITY] done");
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -2175,6 +2216,10 @@ void Tick(coop::net::Session* session) {
     }
     if (MopMode()) {
         MopStep(host, t);
+        return;
+    }
+    if (BombMode()) {
+        BombStep(host, t);
         return;
     }
     if (Catalog()) {
