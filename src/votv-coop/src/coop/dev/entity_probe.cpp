@@ -46,6 +46,10 @@
 #include "ue_wrap/devices/laptop.h"
 #include "ue_wrap/devices/security_camera.h"
 #include "ue_wrap/core/fname_utils.h"
+#include "ue_wrap/core/object_path.h"
+#include "ue_wrap/core/ftext_utils.h"
+#include "ue_wrap/core/field_io.h"
+#include "ue_wrap/core/script_fingerprint.h"
 #include "ue_wrap/actors/floppy_disc.h"
 #include "ue_wrap/core/field_io.h"
 #include "ue_wrap/devices/window_canvas.h"
@@ -64,11 +68,14 @@
 
 #include <cmath>
 #include <cstdint>
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <cwchar>
 #include <map>
 #include <memory>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -1957,6 +1964,320 @@ void CamWatchStep(bool host, uint64_t t) {
     if (host && t >= 127000u) UE_LOGI("[ENTITY] done");
 }
 
+// VOTVCOOP_ENTITY_PROBE=sndpath: HOST 30 s: the Ariral follower's and the door's classes loaded; every loaded sound whose
+// name holds "alien", "slap", "hack" or "punch" said with its object path (`[SND]`).
+bool SndPathMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "sndpath";
+    return v;
+}
+
+void SndPathStep(bool host, uint64_t t) {
+    static bool s_done = false;
+    if (!host || s_done || t < 30000u) return;
+    s_done = true;
+    for (const wchar_t* c : {L"npc_arirFollower_C", L"arirSlapper_C", L"door_C"})
+        UE_LOGI("[SND] class %ls loaded=%d", c, CR::ResolveClass(c, CR::AnyFamily(), CR::Load::Immediate).cls ? 1 : 0);
+    for (const wchar_t* cls : {L"SoundCue", L"SoundWave"})
+        for (void* o : R::FindObjectsByClass(cls)) {
+            if (!o) continue;
+            std::wstring n = R::ToString(R::NameOf(o));
+            std::wstring low = n;
+            for (wchar_t& ch : low) ch = static_cast<wchar_t>(towlower(ch));
+            if (low.find(L"alien") != std::wstring::npos || low.find(L"slap") != std::wstring::npos ||
+                low.find(L"hack") != std::wstring::npos || low.find(L"punch") != std::wstring::npos || low == L"eat" ||
+                low == L"swing" || low.find(L"argemus") != std::wstring::npos || low.find(L"kerfur2meow") != std::wstring::npos)
+                UE_LOGI("[SND] %ls %ls", cls, ue_wrap::object_path::Of(o).c_str());
+        }
+    UE_LOGI("[ENTITY] done");
+}
+
+// VOTVCOOP_ENTITY_PROBE=camaim: a camera turned by one player points the same way on every peer. The camera is the
+// one of smallest key. CLIENT slot 1: 50 s setAngle(30, -10, 60) on its copy; 60 s ten addAngle(2, 0, 0), one a tick.
+// HOST: 75 s setAngle(-20, 5, 80). Every peer, each 5 s from 45 s to 100 s (`[CAMA]`): the camera's rot_x, rot_y, zoom.
+bool CamAimMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "camaim";
+    return v;
+}
+
+void CamAimStep(bool host, uint64_t t) {
+    namespace SC = ue_wrap::security_camera;
+    static int s_step = 0, s_adds = 0;
+    void* cam = nullptr;
+    std::wstring best;
+    for (const wchar_t* cls : {L"prop_camera_bad_C", L"prop_camera_C", L"prop_camera_good_C", L"prop_camera_ultra_C"}) {
+        static void* found[64];
+        const int n = ue_wrap::world_instances::Find(cls, found, 64);
+        for (int i = 0; i < n; ++i) {
+            const std::wstring k = coop::interactable_sync::CameraKeyOf(found[i]);
+            if (!k.empty() && (best.empty() || k < best)) {
+                best = k;
+                cam = found[i];
+            }
+        }
+    }
+    auto angle = [&](const wchar_t* fn, float x, float y, float z) {
+        ue_wrap::ParamFrame f(cam ? R::FindDispatchFunctionCached(R::ClassOf(cam), fn) : nullptr);
+        return f.valid() && f.Set<float>(L"rot_x", x) && f.Set<float>(L"rot_y", y) && f.Set<float>(L"zoom", z) &&
+               ue_wrap::Call(cam, f);
+    };
+    auto field = [&](const wchar_t* name) {
+        const int32_t off = cam ? R::FindPropertyOffset(R::ClassOf(cam), name) : -1;
+        return off >= 0 ? *reinterpret_cast<const float*>(static_cast<const char*>(cam) + off) : -999.f;
+    };
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    if (cam && slot1 && s_step == 0 && t >= 50000u) {
+        s_step = 1;
+        UE_LOGI("[CAMA] client: setAngle(30, -10, 60) on '%ls'=%d", best.c_str(), angle(L"setAngle", 30.f, -10.f, 60.f) ? 1 : 0);
+    }
+    if (cam && slot1 && s_step == 1 && t >= 60000u && s_adds < 10) {
+        ++s_adds;
+        const bool ok = angle(L"addAngle", 2.f, 0.f, 0.f);
+        if (s_adds == 10) UE_LOGI("[CAMA] client: ten addAngle(2, 0, 0), the last=%d", ok ? 1 : 0);
+    }
+    if (cam && host && s_step == 0 && t >= 75000u) {
+        s_step = 1;
+        UE_LOGI("[CAMA] host: setAngle(-20, 5, 80) on '%ls'=%d", best.c_str(), angle(L"setAngle", -20.f, 5.f, 80.f) ? 1 : 0);
+    }
+    static uint64_t s_next = 0;
+    if (t < 45000u || t > 100000u || t < s_next) return;
+    s_next = t + 5000u;
+    UE_LOGI("[CAMA] %s t=%llu: camera '%ls' rot_x=%.1f rot_y=%.1f zoom=%.1f", host ? "host" : "client",
+            static_cast<unsigned long long>(t / 1000u), best.c_str(), field(L"rot_x"), field(L"rot_y"), field(L"zoom"));
+    if (host && t >= 95000u) UE_LOGI("[ENTITY] done");
+}
+
+// VOTVCOOP_ENTITY_PROBE=uidump: HOST 40 s: every loaded widget or Blueprint class whose name holds one of
+// VOTVCOOP_UIDUMP_MATCH's comma-separated words, its functions as text, one file per class into VOTVCOOP_UIDUMP_DIR
+// (`[UID]`). Widgets are WidgetBlueprintGeneratedClass, which the class dump's every-class walk does not list.
+bool UiDumpMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "uidump";
+    return v;
+}
+
+void UiDumpStep(bool host, uint64_t t) {
+    static bool s_done = false;
+    if (!host || s_done || t < 40000u) return;
+    s_done = true;
+    const std::string dir = coop::config::ReadEnv("VOTVCOOP_UIDUMP_DIR");
+    std::vector<std::wstring> words;
+    {
+        std::stringstream ss(coop::config::ReadEnv("VOTVCOOP_UIDUMP_MATCH"));
+        std::string w;
+        while (std::getline(ss, w, ',')) words.emplace_back(w.begin(), w.end());
+    }
+    size_t n = 0;
+    for (const wchar_t* kind : {L"WidgetBlueprintGeneratedClass", L"BlueprintGeneratedClass"})
+        for (void* cls : R::FindObjectsByClass(kind)) {
+            const std::wstring name = R::ToString(R::NameOf(cls));
+            std::wstring low = name;
+            for (wchar_t& ch : low) ch = static_cast<wchar_t>(towlower(ch));
+            bool hit = false;
+            for (const std::wstring& w : words) hit = hit || (!w.empty() && low.find(w) != std::wstring::npos);
+            if (!hit || dir.empty()) continue;
+            std::ofstream out(dir + "/" + std::string(name.begin(), name.end()) + ".txt", std::ios::binary | std::ios::trunc);
+            for (const R::ObjectRef& o : R::ChildObjectsOf(cls)) {
+                if (o.className != L"Function") continue;
+                const ue_wrap::script_fingerprint::Result fr = ue_wrap::script_fingerprint::Of(o.object);
+                out << "=== " << std::string(o.name.begin(), o.name.end()) << '\n' << fr.text << '\n';
+            }
+            ++n;
+            UE_LOGI("[UID] %ls %ls", kind, ue_wrap::object_path::Of(cls).c_str());
+        }
+    UE_LOGI("[UID] %zu class(es) written", n);
+    UE_LOGI("[ENTITY] done");
+}
+
+// VOTVCOOP_ENTITY_PROBE=bagpile: a chip pile the host bags is gone on every peer. HOST 60 s: the three chip piles
+// nearest its player and the three farthest are destroyed as a garbage bag's use destroys the pile it hit
+// (K2_DestroyActor), their places logged (`[BAGP] host bagged`). Every peer, each 15 s from 40 s: every chip pile by
+// place (`[BAGP]`), so a bagged place still listed on a peer is a pile left there.
+bool BagPileMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "bagpile";
+    return v;
+}
+
+void BagPileStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    auto piles = [] {
+        std::vector<void*> out;
+        for (void* o : R::FindObjectsByClass(L"actorChipPile_C"))
+            if (o && R::IsLive(o) && !R::NameStartsWith(R::NameOf(o), L"Default__")) out.push_back(o);
+        return out;
+    };
+    if (host && s_step == 0 && t >= 60000u) {
+        s_step = 1;
+        void* const me = coop::players::Registry::Get().Local();
+        ue_wrap::FVector mine{};
+        if (!me || !ue_wrap::engine::TryGetActorLocation(me, mine)) return;
+        std::vector<std::pair<float, void*>> byDist;
+        for (void* pile : piles()) {
+            ue_wrap::FVector at{};
+            if (!ue_wrap::engine::TryGetActorLocation(pile, at)) continue;
+            const float d = std::sqrt((at.X - mine.X) * (at.X - mine.X) + (at.Y - mine.Y) * (at.Y - mine.Y));
+            byDist.emplace_back(d, pile);
+        }
+        std::sort(byDist.begin(), byDist.end());
+        std::vector<void*> pick;
+        for (size_t i = 0; i < byDist.size() && i < 3; ++i) pick.push_back(byDist[i].second);
+        for (size_t i = byDist.size(); i > 3 && i > byDist.size() - 3; --i) pick.push_back(byDist[i - 1].second);
+        UE_LOGI("[BAGP] host: %zu chip piles, %zu picked", byDist.size(), pick.size());
+        for (void* pile : pick) {
+            ue_wrap::FVector at{};
+            ue_wrap::engine::TryGetActorLocation(pile, at);
+            ue_wrap::ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(pile), L"K2_DestroyActor"));
+            const bool ok = f.valid() && ue_wrap::Call(pile, f);
+            UE_LOGI("[BAGP] host bagged (%.0f,%.0f,%.0f) ok=%d", at.X, at.Y, at.Z, ok ? 1 : 0);
+        }
+    }
+    static uint64_t s_next = 0;
+    if (t < 40000u || t < s_next) return;
+    s_next = t + 15000u;
+    size_t n = 0;
+    std::string where;
+    for (void* pile : piles()) {
+        ue_wrap::FVector at{};
+        if (!ue_wrap::engine::TryGetActorLocation(pile, at)) continue;
+        char buf[48];
+        std::snprintf(buf, sizeof(buf), " (%.0f,%.0f,%.0f)", at.X, at.Y, at.Z);
+        where += buf;
+        ++n;
+    }
+    UE_LOGI("[BAGP] %s t=%llu: %zu chip piles:%s", host ? "host" : "client", static_cast<unsigned long long>(t / 1000u), n,
+            where.substr(0, 3000).c_str());
+    if (host && t >= 150000u) UE_LOGI("[ENTITY] done");
+}
+
+// VOTVCOOP_ENTITY_PROBE=disclist: every peer, each 10 s from 40 s to 240 s: every floppy disc (prop_floppyDisc_C and
+// its children) by name, place, whether it simulates and what it is attached to (`[DISC]`). For the Omega's get_reports
+// with a client's disc (Ghezra/Multivoid issue 53), beside the serve drill's leg D.
+bool DiscListMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "disclist";
+    return v;
+}
+
+void DiscListStep(bool host, uint64_t t) {
+    static uint64_t s_next = 0;
+    if (t < 40000u || t > 600000u || t < s_next) return;
+    s_next = t + 10000u;
+    size_t n = 0;
+    for (const wchar_t* cls : {L"prop_floppyDisc_C", L"prop_floppyDisc_B_C", L"prop_floppyDisc_Bl_C", L"prop_floppyDisc_G_C",
+                               L"prop_floppyDisc_O_C", L"prop_floppyDisc_R_C", L"prop_floppyDisc_Wh_C", L"prop_floppyDisc_Y_C"})
+        for (void* o : R::FindObjectsByClass(cls)) {
+            if (!o || !R::IsLive(o) || R::NameStartsWith(R::NameOf(o), L"Default__")) continue;
+            ue_wrap::FVector at{};
+            ue_wrap::engine::TryGetActorLocation(o, at);
+            void* const root = ue_wrap::engine::RootComponentOf(o);
+            void* owner = nullptr;
+            ue_wrap::engine::GetAttachParentActor(o, owner);
+            UE_LOGI("[DISC] %s t=%llu %ls '%ls' at (%.0f,%.0f,%.0f) sim=%d attached=%ls", host ? "host" : "client",
+                    static_cast<unsigned long long>(t / 1000u), cls, R::ToString(R::NameOf(o)).c_str(), at.X, at.Y,
+                    at.Z, root && ue_wrap::engine::IsComponentSimulatingPhysics(root) ? 1 : 0,
+                    owner ? R::ToString(R::NameOf(owner)).c_str() : L"-");
+            ++n;
+        }
+    UE_LOGI("[DISC] %s t=%llu: %zu disc(s)", host ? "host" : "client", static_cast<unsigned long long>(t / 1000u), n);
+}
+
+// VOTVCOOP_ENTITY_PROBE=camscreen: a camera renamed and a TV set to it by a client show on every peer. The camera is the
+// one of smallest key. CLIENT slot 1: 50 s a camera slot of its laptop (uicomp_camSlot_C) given that camera, its name
+// box committed with "ENTRANCE-CAM" through the slot's own commit event; 60 s the first TV (prop_tv2_C or a child)
+// bound to the camera by that name and set as a security screen, as the TV's search box does. HOST: 40 s a prop_tv2_C
+// spawned beside its player; 75 s the first TV set back from security. Every peer, each 5 s
+// from 45 s to 100 s (`[CAMS]`): the camera's name, and each TV's isSecurity and bound camera.
+bool CamScreenMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "camscreen";
+    return v;
+}
+
+void CamScreenStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    void* cam = nullptr;
+    std::wstring best;
+    for (const wchar_t* cls : {L"prop_camera_bad_C", L"prop_camera_C", L"prop_camera_good_C", L"prop_camera_ultra_C"}) {
+        static void* found[64];
+        const int n = ue_wrap::world_instances::Find(cls, found, 64);
+        for (int i = 0; i < n; ++i) {
+            const std::wstring k = coop::interactable_sync::CameraKeyOf(found[i]);
+            if (!k.empty() && (best.empty() || k < best)) {
+                best = k;
+                cam = found[i];
+            }
+        }
+    }
+    auto nameOf = [](void* c) {
+        const int32_t off = c ? R::FindPropertyOffset(R::ClassOf(c), L"cameraName") : -1;
+        return off >= 0 ? ue_wrap::field_io::ReadFStringAt(c, off) : std::wstring(L"?");
+    };
+    std::vector<void*> tvs;
+    for (const wchar_t* cls : {L"prop_tv2_C", L"prop_tv2_floor_C", L"prop_tv2_floor1_C", L"prop_tv_plasma_C", L"prop_minitv_C",
+                               L"prop_tv2_kerfur_C", L"prop_tv2_erie_C"})
+        for (void* o : R::FindObjectsByClass(cls))
+            if (o && R::IsLive(o) && !R::NameStartsWith(R::NameOf(o), L"Default__")) tvs.push_back(o);
+    static int s_hostStep = 0;
+    if (host && s_hostStep == 0 && t >= 40000u) {
+        s_hostStep = 1;
+        void* const me = coop::players::Registry::Get().Local();
+        ue_wrap::FVector at{};
+        void* const cls = CR::ResolveClass(L"prop_tv2_C", CR::AnyFamily(), CR::Load::Immediate).cls;
+        void* tv = nullptr;
+        if (me && cls && ue_wrap::engine::TryGetActorLocation(me, at)) tv = ue_wrap::engine::SpawnActor(cls, {at.X + 150.f, at.Y, at.Z});
+        UE_LOGI("[CAMS] host: a TV spawned beside its player %p", tv);
+    }
+    if (host && s_hostStep == 1 && t >= 75000u && !tvs.empty()) {
+        s_hostStep = 2;
+        ue_wrap::ParamFrame g(R::FindDispatchFunctionCached(R::ClassOf(tvs[0]), L"setAsSecurity"));
+        UE_LOGI("[CAMS] host: the first TV set back from security=%d",
+                g.valid() && g.Set<bool>(L"isSecurity", false) && ue_wrap::Call(tvs[0], g) ? 1 : 0);
+    }
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    if (cam && slot1 && s_step == 0 && t >= 50000u) {
+        s_step = 1;
+        void* slot = nullptr;
+        for (void* o : R::FindObjectsByClass(L"uicomp_camSlot_C"))
+            if (o && R::IsLive(o) && !R::NameStartsWith(R::NameOf(o), L"Default__")) { slot = o; break; }
+        bool ok = false;
+        if (slot) {
+            const int32_t off = R::FindPropertyOffset(R::ClassOf(slot), L"cam");
+            if (off >= 0) *reinterpret_cast<void**>(static_cast<char*>(slot) + off) = cam;
+            ue_wrap::ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(slot),
+                L"BndEvt__umg_camSlot_EditableTextBox_342_K2Node_ComponentBoundEvent_2_OnEditableTextBoxCommittedEvent__DelegateSignature"));
+            uint8_t text[ue_wrap::ftext_utils::kFTextSize] = {};
+            ok = off >= 0 && f.valid() && ue_wrap::ftext_utils::MintFText(L"ENTRANCE-CAM", text) &&
+                 f.SetRaw(L"Text", text, sizeof(text)) && f.Set<uint8_t>(L"CommitMethod", 1) && ue_wrap::Call(slot, f);
+        }
+        UE_LOGI("[CAMS] client: camera slot %p, '%ls' renamed by its commit=%d", slot, best.c_str(), ok ? 1 : 0);
+    }
+    if (cam && slot1 && s_step == 1 && t >= 60000u) {
+        s_step = 2;
+        bool valid = false, set = false;
+        if (!tvs.empty()) {
+            ue_wrap::ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(tvs[0]), L"bindCamera"));
+            const R::FName fname = ue_wrap::fname_utils::StringToFName(nameOf(cam));
+            if (f.valid() && f.SetRaw(L"name", &fname, sizeof(fname)) && ue_wrap::Call(tvs[0], f)) valid = f.Get<bool>(L"validCamera");
+            ue_wrap::ParamFrame g(R::FindDispatchFunctionCached(R::ClassOf(tvs[0]), L"setAsSecurity"));
+            set = g.valid() && g.Set<bool>(L"isSecurity", valid) && ue_wrap::Call(tvs[0], g);
+        }
+        UE_LOGI("[CAMS] client: %zu TV(s); the first bound to '%ls' valid=%d set=%d", tvs.size(), nameOf(cam).c_str(),
+                valid ? 1 : 0, set ? 1 : 0);
+    }
+    static uint64_t s_next = 0;
+    if (t < 45000u || t > 100000u || t < s_next) return;
+    s_next = t + 5000u;
+    std::wstring tvLine;
+    for (void* tv : tvs) {
+        int32_t off = -1;
+        uint8_t mask = 0;
+        const bool sec = R::FindBoolProperty(R::ClassOf(tv), L"isSecurity", off, mask) && (static_cast<const uint8_t*>(tv)[off] & mask);
+        const int32_t boff = R::FindPropertyOffset(R::ClassOf(tv), L"bindedCamera");
+        void* const b = boff >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(tv) + boff) : nullptr;
+        tvLine += L" [" + R::ToString(R::NameOf(tv)) + L" sec=" + (sec ? L"1" : L"0") + L" cam=" +
+                  (b && R::IsLive(b) ? coop::interactable_sync::CameraKeyOf(b) : std::wstring(L"-")) + L"]";
+    }
+    UE_LOGI("[CAMS] %s t=%llu: camera '%ls' named '%ls'; TVs:%ls", host ? "host" : "client",
+            static_cast<unsigned long long>(t / 1000u), best.c_str(), nameOf(cam).c_str(), tvLine.c_str());
+    if (host && t >= 95000u) UE_LOGI("[ENTITY] done");
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -2455,6 +2776,30 @@ void Tick(coop::net::Session* session) {
     }
     if (CamWatchMode()) {
         CamWatchStep(host, t);
+        return;
+    }
+    if (SndPathMode()) {
+        SndPathStep(host, t);
+        return;
+    }
+    if (CamAimMode()) {
+        CamAimStep(host, t);
+        return;
+    }
+    if (UiDumpMode()) {
+        UiDumpStep(host, t);
+        return;
+    }
+    if (BagPileMode()) {
+        BagPileStep(host, t);
+        return;
+    }
+    if (DiscListMode()) {
+        DiscListStep(host, t);
+        return;
+    }
+    if (CamScreenMode()) {
+        CamScreenStep(host, t);
         return;
     }
     if (Catalog()) {
