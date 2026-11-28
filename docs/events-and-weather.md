@@ -373,8 +373,8 @@ speed it rose at, and one sent whose gravity comes back on as a dropped row, by 
 (blocked, or asleep) is not sent. A client switches its own copy's gravity the same way and sets it rising at the host's
 speed, and once a second sets a lifted copy rising again when it has stopped and no drive row holds it (a host coast of
 a body the float knocked ends with its copy asleep where the host's was); a dropped copy, once it rests, asks the host
-where its prop rests (`coop/props/prop_rest_sync`), so every copy comes down where the host's did. The spin is not sent:
-each copy turns by its own `[?]` (`coop/world/agrav_sync`; `coop/dev/event_probe` with `agrav`, and
+where its prop rests (`coop/props/prop_rest_sync`), so every copy comes down where the host's did, and the lifted row
+carries the body's spin, which a copy is set to (`coop/world/agrav_sync`; `coop/dev/event_probe` with `agrav`, and
 `VOTVCOOP_AGRAV_TRACE=1` for each body's height at its lift and drop on every peer).
 
 ### The Arirals' shrimp

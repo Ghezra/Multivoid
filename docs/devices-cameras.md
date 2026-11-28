@@ -36,8 +36,11 @@ A Kerfur's camera is a child actor with no key of its own, so its key is its Ome
 The aim (`coop/interactables/camera_aim_sync`, issue 60): each machine turned its own copy only. A watch after each
 `setAngle` and `addAngle` marks the camera. A client's own turn runs at once, and the camera's three targets go to the
 host at most ten times a second (`CameraAimAsk`). The host writes them on its camera and runs `move`; after its own
-turn or a client's it sends the targets to every other player, at most ten times a second per camera
-(`CameraAimState`), and a client writes them and runs `move`, so the head turns there as it turned on the turner's.
+turn or a client's it sends the targets to every client, the turner too, at most ten times a second per camera
+(`CameraAimState`), and a client writes them and runs `move`, so the head turns there as it turned on the turner's. A
+client that is still turning that camera (a turn of its own in the last 0.4 s) keeps the host's targets and takes them
+once it stops, so its head does not jump back mid-turn, and two players turning one camera at once both end on the
+host's last turn.
 
 The names and the TVs (`coop/interactables/camera_screen_sync`, issue 54): a renamed camera kept its old name on the
 others, a TV showed its camera on its own machine alone, and a client that typed the host's name found no camera, its
@@ -91,8 +94,7 @@ slot's own name box is `[?]`: the drill's world held no camera slot.
 
 ## Known limits
 
-A player at the laptop when a host's turn arrives sees its own controls' values replaced. Two players turning one camera
-at once each see the last turn the host took.
+A player at the laptop when a host's turn arrives sees its own controls' values replaced.
 
 ## Code map
 

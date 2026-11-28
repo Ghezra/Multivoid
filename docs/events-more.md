@@ -31,7 +31,7 @@ switches that body's gravity. Its show is on the trigger: `cloak(true)` plays a 
 
 The fridge (`coop/world/fridge_knock_sync`): each player's fridge rolled its own dice against its own player, so a
 client never heard the host's knocks nor felt the shake (Ghezra/Multivoid issue 61). A client's two timers are now
-refused, and the host looks at its fridge ten times a second: `knocked` newly set is the big knock, sent as EventCue
+refused, and the host looks at its fridge every frame: `knocked` newly set is the big knock, sent as EventCue
 133; `knockamount` spent to 0 is the quiet knock, sent as EventCue 134 with its sound's volume and pitch. A client runs
 its own `startKnocking` for the big knock (the knocks, the shake on its own player, the figure) and plays its quiet
 knock sound at the host's volume and pitch. The props the quiet knock pushes are the host's, on their own lane.
@@ -100,8 +100,8 @@ ended the show at the host's end.
 
 ## Known limits
 
-A client's own fridge figure and knocks run on its own clock, a few hundred milliseconds off the host's. The fridge's
-quiet knock plays its sound alone on a client; its pushes come with the props.
+A client's fridge knocks start one network trip after the host's: the host looks at its fridge every frame and sends a
+knock the frame it starts. The fridge's quiet knock plays its sound alone on a client; its pushes come with the props.
 
 ## Code map
 
