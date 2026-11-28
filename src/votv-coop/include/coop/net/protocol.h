@@ -3052,22 +3052,22 @@ struct CarChargerIntentPayload {
 };
 static_assert(sizeof(CarChargerIntentPayload) == 16, "CarChargerIntentPayload must be 16 bytes");
 
-// AgravState. `lifted` 1: these bodies were seen rising on the host (lift them at `vz`); 0: their gravity came back on
-// (drop them; `vz` is zero).
+// AgravState. `lifted` 1: these bodies were seen rising on the host (lift them at `vz`, spinning at `w`); 0: their
+// gravity came back on (drop them; `vz` and `w` are zero).
 struct AgravRow {
     uint32_t eid;     // 4 -- host element id
     int16_t  vz;      // 2 -- the host body's rise, in tenths of a cm/s
-    uint16_t _pad;    // 2 -- zero
+    int16_t  w[3];    // 6 -- the host body's spin, in tenths of a degree a second
 };
-static_assert(sizeof(AgravRow) == 8, "AgravRow must be 8 bytes");
-inline constexpr int kAgravRowsMax = 28;   // 228 bytes in all, the reliable payload's most
+static_assert(sizeof(AgravRow) == 12, "AgravRow must be 12 bytes");
+inline constexpr int kAgravRowsMax = 18;   // 220 bytes in all, within the reliable payload's 228
 struct AgravStatePayload {
     uint8_t  lifted;                // 1 -- 1 lifted, 0 dropped
     uint8_t  _pad;                  // 1 -- zero
     uint16_t count;                 // 2 -- 1..kAgravRowsMax
-    AgravRow row[kAgravRowsMax];    // 224 -- only the first `count` are read
+    AgravRow row[kAgravRowsMax];    // 216 -- only the first `count` are read
 };
-static_assert(sizeof(AgravStatePayload) == 228, "AgravStatePayload must be 228 bytes");
+static_assert(sizeof(AgravStatePayload) == 220, "AgravStatePayload must be 220 bytes");
 static_assert(sizeof(AgravStatePayload) <= 256 - 20 - 8,
               "AgravStatePayload must fit in one reliable datagram (kMaxReliablePayload)");
 

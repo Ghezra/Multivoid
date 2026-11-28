@@ -82,8 +82,10 @@ bool Trace() {
 
 void TraceOne(const char* what, uint32_t eid, void* actor, float vz) {
     if (!Trace() || !actor) return;
-    ue_wrap::FVector at{};
-    if (E::TryGetActorLocation(actor, at)) UE_LOGI("[AGRAV] %s eid=%u z=%.1f vz=%.1f", what, eid, at.Z, vz);
+    ue_wrap::FVector at{}, lin{}, ang{};
+    E::GetActorRootPhysicsVelocity(actor, lin, ang);
+    if (E::TryGetActorLocation(actor, at))
+        UE_LOGI("[AGRAV] %s eid=%u z=%.1f vz=%.1f spin=(%.1f,%.1f,%.1f)", what, eid, at.Z, vz, ang.X, ang.Y, ang.Z);
 }
 
 uint32_t EidOf(void* actor) {
@@ -152,10 +154,16 @@ void Send(bool lifted, const std::vector<N::AgravRow>& rows) {
             static_cast<unsigned long long>(g_rowsDropped));
 }
 
-N::AgravRow Row(uint32_t eid, float vz) {
+// A row for `eid`: its rise, and for a lift the spin the float gave it (`actor`'s own, read when it is told).
+N::AgravRow Row(uint32_t eid, float vz, void* actor = nullptr) {
     N::AgravRow r{};
     r.eid = eid;
     r.vz = static_cast<int16_t>(std::clamp(vz * 10.f, -32000.f, 32000.f));
+    ue_wrap::FVector lin{}, ang{};
+    if (actor && E::GetActorRootPhysicsVelocity(actor, lin, ang)) {
+        const float w[3] = {ang.X, ang.Y, ang.Z};
+        for (int i = 0; i < 3; ++i) r.w[i] = static_cast<int16_t>(std::clamp(w[i] * 10.f, -32000.f, 32000.f));
+    }
     return r;
 }
 
@@ -190,7 +198,7 @@ void HostScan() {
             it = g_pending.erase(it);   // back on, gone, or never rose: nothing to tell
         } else if (rose > kRiseCm && waited >= kScanMs) {
             const float vz = rose * 1000.f / static_cast<float>(waited);
-            lift.push_back(Row(it->first, vz));
+            lift.push_back(Row(it->first, vz, actor));
             TraceOne("lift", it->first, actor, vz);
             g_lifted[it->first] = true;
             it = g_pending.erase(it);
@@ -396,12 +404,15 @@ void OnState(const N::AgravStatePayload& p) {
         void* const actor = ActorOf(eid);
         void* const root = actor ? E::RootComponentOf(actor) : nullptr;
         if (!root || !E::IsPrimitiveComponent(root)) { ++missing; continue; }
-        TraceOne(lifted ? "lift" : "drop", eid, actor, vz);
         E::SetComponentGravity(root, !lifted);
         if (lifted) {
             g_clientLifted[eid] = vz;
             E::SetComponentLinearVelocity(root, 0.f, 0.f, vz);
+            // The host's spin, so the copy turns as the host's does (before, each copy kept its own).
+            E::SetComponentAngularVelocity(root, p.row[i].w[0] / 10.f, p.row[i].w[1] / 10.f, p.row[i].w[2] / 10.f);
+            TraceOne("lift", eid, actor, vz);
         } else {
+            TraceOne("drop", eid, actor, vz);
             g_clientLifted.erase(eid);
             coop::prop_rest_sync::NoteLocalMove(actor);
         }

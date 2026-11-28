@@ -3,10 +3,10 @@
 // The event runs on the host alone. Five seconds in, the trigger gathers the physics bodies within 100 m of the host's
 // camera into `comps`, and for each in turn switches gravity off and sets it rising at 10 cm/s with a spin; after its
 // time it switches each back on. The HOST watches each simulating body in a live trigger's `comps`: one whose gravity
-// went off and that then rises 3 cm is an AgravState `lifted` row with the speed it rose at, and one whose gravity comes
-// back on a `dropped` row, by host element id. A CLIENT switches its copy's gravity the same way, sets it rising at the
-// host's speed (again once a second when it stopped and no drive row holds it), and once a dropped copy rests asks the
-// host where its prop rests (coop/props/prop_rest_sync).
+// went off and that then rises 3 cm is an AgravState `lifted` row with the speed it rose at and its spin, and one whose
+// gravity comes back on a `dropped` row, by host element id. A CLIENT switches its copy's gravity the same way, sets it
+// rising and spinning as the host's (rising again once a second when it stopped and no drive row holds it), and once a
+// dropped copy rests asks the host where its prop rests (coop/props/prop_rest_sync).
 //
 // The float's show -- its shimmer, a light at the player's camera, the hum -- is on the trigger, which a client lacks.
 // The HOST sends the trigger's cloak(true) as EventCue 135 at the trigger, cloak(false) as 136, and 135 to a joiner
