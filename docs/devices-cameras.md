@@ -89,8 +89,10 @@ closing the laptop off; a joiner got the light.
 reached slot 1 (zoom 80), and slot 2, joining later, took both once its Kerfur camera could be named. `camscreen` mode
 -- the host's and the clients' four cameras were numbered apart (the Kerfur's `CAM_0002` on the host, `CAM_0003` on
 slot 1) and both clients took the host's names at join; slot 1 bound a TV the host spawned to the camera by its own
-name, and the host's TV showed it; the host's turn of the TV back reached slot 1 and slot 2. A rename through a camera
-slot's own name box is `[?]`: the drill's world held no camera slot.
+name, and the host's TV showed it; the host's turn of the TV back reached slot 1 and slot 2. `[V]` (build 366):
+`camscreen` mode -- slot 1 opened its laptop on the cameras panel (its `genCams` built the camera slots), typed
+`ENTRANCE-CAM` into a slot's name box and committed it; the host's camera took the name. `camaim` mode -- the host and
+slot 1 turning the camera at once both ended at rot_x -39.
 
 ## Known limits
 
