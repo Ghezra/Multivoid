@@ -364,10 +364,10 @@ these on the peers' own copies, and its red arms withhold the send, the judge an
 ### The Ariral's float
 
 The Ariral's float (`trigger_agrav_C`, the `agrav` event) runs on the host alone: five seconds in, the trigger gathers
-the physics bodies within 100 m of the host's camera into its `buf`, shuffles them, turns each one's gravity off and
+the physics bodies within 100 m of the host's camera into `comps`, shuffles a copy, turns each one's gravity off and
 sets it rising at 10 cm/s (added to its own velocity) with a random spin, and after its time turns each back on, one a
 tick. A client ran none of it, so only the host saw the room float. The host now watches each body in a live trigger's
-`buf` that simulates (a frozen prop does not move), five times a second while any waits or is lifted and once a second
+`comps` that simulates (a frozen prop does not move), five times a second while any waits or is lifted and once a second
 otherwise: one whose gravity went off and that it then sees rise 3 cm is sent as an `AgravState` lifted row with the
 speed it rose at, and one sent whose gravity comes back on as a dropped row, by host element id; a body that never rises
 (blocked, or asleep) is not sent. A client switches its own copy's gravity the same way and sets it rising at the host's

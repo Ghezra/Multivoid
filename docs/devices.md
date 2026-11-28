@@ -182,6 +182,7 @@ is refused on a client: the host rolls it. A camera whose key is empty, or the k
 by default, is addressed by no lane: a client's press on it is refused and sends nothing, and a
 cursed one's tick stays that peer's own. A client's copy of a wisp still switches that client's own
 cameras off until the creature mirror stops running the wisp's world writes `[?]`.
+Who watches a camera and where it points: [devices-cameras.md](devices-cameras.md).
 
 ### What is inside a container
 
