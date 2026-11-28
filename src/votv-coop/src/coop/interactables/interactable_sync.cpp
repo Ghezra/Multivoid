@@ -10,6 +10,8 @@
 #include "coop/interactables/cremator_state.h"        // the cremator adapter's read and apply
 #include "coop/interactables/interactable_channel.h"  // the generic engine: Adapter and Channel
 #include "coop/interactables/swinger_join_pose.h"     // a joiner's open lids at their host's places
+#include "coop/element/element.h"
+#include "coop/element/registry.h"
 
 #include "coop/world/world_sound_sync.h"  // a faucet's click
 #include "ue_wrap/core/reflection.h"
@@ -25,6 +27,7 @@
 #include "ue_wrap/actors/prop.h"          // GetKeyString for swinger (it is an Aprop_C)
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/actors/swinger.h"
+#include "ue_wrap/world/world_instances.h"
 
 #include <chrono>
 #include <string>
@@ -212,6 +215,18 @@ const Adapter g_doorBoxAdapter = {
 // from a camera that carries its class's default. The `active` apply writes the bit, then updState() when the
 // write turns the camera on (the click the toggling peer heard), else upd(); a cursed camera's tick never clicks.
 // Either apply ends by repainting a laptop camera panel that has the camera selected.
+// A camera's key across peers: its own prop key, or for a child actor camera (a Kerfur Omega's `cam`, keyed afresh on
+// each machine) its parent's element id, which the host gives and every peer shares.
+std::wstring CameraKeyAcrossPeers(void* cam) {
+    std::wstring key = ue_wrap::security_camera::KeyOf(cam);
+    if (!key.empty()) return key;
+    void* const parent = ue_wrap::security_camera::IsCameraClass(cam) ? ue_wrap::security_camera::ParentActorOf(cam)
+                                                                       : nullptr;
+    const coop::element::ElementId eid = parent ? coop::element::Registry::Get().EidForActor(parent)
+                                                : coop::element::kInvalidId;
+    return eid == coop::element::kInvalidId ? std::wstring() : L"kerfur:" + std::to_wstring(eid) + L"#cam";
+}
+
 bool ApplyCameraActive(void* cam, bool on) {
     namespace sc = ue_wrap::security_camera;
     bool cur = false;
@@ -233,7 +248,7 @@ const Adapter g_cameraActiveAdapter = {
     "camera_active", coop::net::ReliableKind::CameraActiveState,
     &ue_wrap::security_camera::EnsureResolved,
     &ue_wrap::security_camera::IsCameraClass,
-    &ue_wrap::security_camera::KeyOf,
+    &CameraKeyAcrossPeers,
     &ue_wrap::security_camera::ReadActive,
     &ApplyCameraActive,
 };
@@ -241,7 +256,7 @@ const Adapter g_cameraLightAdapter = {
     "camera_light", coop::net::ReliableKind::CameraLightState,
     &ue_wrap::security_camera::EnsureResolved,
     &ue_wrap::security_camera::IsCameraClass,
-    &ue_wrap::security_camera::KeyOf,
+    &CameraKeyAcrossPeers,
     &ue_wrap::security_camera::ReadLight,
     &ApplyCameraLight,
 };
@@ -350,6 +365,20 @@ void OnCameraVerb(void* cam) {
 }
 
 std::wstring CameraKey(void* cam) { return g_cameraActive.KeyForActor(cam); }
+
+std::wstring CameraKeyOf(void* cam) { return CameraKeyAcrossPeers(cam); }
+
+void* FindCamera(const std::wstring& key) {
+    if (key.empty() || !ue_wrap::security_camera::EnsureResolved()) return nullptr;
+    static void* found[64];
+    for (const wchar_t* cls : {L"prop_camera_bad_C", L"prop_camera_C", L"prop_camera_good_C", L"prop_camera_ultra_C",
+                               L"prop_camera_s_C", L"prop_camera_cursed_C"}) {
+        const int n = ue_wrap::world_instances::Find(cls, found, 64);
+        for (int i = 0; i < n; ++i)
+            if (R::IsLive(found[i]) && CameraKeyAcrossPeers(found[i]) == key) return found[i];
+    }
+    return nullptr;
+}
 
 void* ResolveCamera(const std::wstring& key) {
     if (key.empty() || !ue_wrap::security_camera::EnsureResolved()) return nullptr;

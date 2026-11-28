@@ -6,10 +6,12 @@
 
 #include "ue_wrap/actors/prop.h"
 #include "ue_wrap/core/cached_obj_ref.h"
+#include "ue_wrap/core/call.h"
 #include "ue_wrap/core/component_calls.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
+#include "ue_wrap/core/reflection_props.h"
 
 #include <cstdint>
 
@@ -27,7 +29,7 @@ struct Bit { int32_t off = -1; uint8_t mask = 0; };
 
 CachedObjRef g_base;     // the base class as this world holds it
 CachedObjRef g_cursed;
-Bit  g_active, g_light;
+Bit  g_active, g_light, g_spec;
 bool g_bitsResolved = false;
 bool g_bitsUnusable = false;  // the class loaded and a bit did not resolve: said once, left out
 
@@ -99,6 +101,7 @@ bool EnsureResolved() {
     }
     g_active = active;
     g_light = light;
+    if (!R::FindBoolProperty(cls, L"spec", g_spec.off, g_spec.mask) || g_spec.off < 0) g_spec = Bit{};
     g_bitsResolved = true;
     UE_LOGI("security_camera: resolved %ls active@0x%04X/0x%02X isLight@0x%04X/0x%02X", kBaseClass,
             static_cast<unsigned>(active.off), static_cast<unsigned>(active.mask),
@@ -122,6 +125,9 @@ bool IsCursed(void* obj) {
 
 std::wstring KeyOf(void* cam) {
     if (!IsCameraClass(cam)) return std::wstring();
+    // A camera that is a child actor (a Kerfur Omega's, its `cam` component) is spawned with its parent on each machine
+    // and keyed afresh there, so its own key differs from peer to peer: withheld (the coop layer names it by its parent).
+    if (ParentActorOf(cam)) return std::wstring();
     std::wstring key = prop::GetKeyString(cam);
     if (key.empty() || key == L"None") return std::wstring();
     if (key == DefaultKeyOf(cam)) return std::wstring();
@@ -129,6 +135,14 @@ std::wstring KeyOf(void* cam) {
 }
 
 bool IsCamera(void* obj) { return IsCameraClass(obj) && !KeyOf(obj).empty(); }
+
+void* ParentActorOf(void* cam) {
+    if (!cam) return nullptr;
+    ParamFrame parentOf(R::FindDispatchFunctionCached(R::ClassOf(cam), L"GetParentActor"));
+    if (!parentOf.valid() || !Call(cam, parentOf)) return nullptr;
+    void* const parent = parentOf.Get<void*>(L"ReturnValue");
+    return parent && R::IsLive(parent) ? parent : nullptr;
+}
 
 bool ReadActive(void* cam, bool& on) {
     if (!cam || !EnsureResolved() || !IsCameraClass(cam)) return false;
@@ -152,6 +166,45 @@ bool WriteLight(void* cam, bool on) {
     if (!cam || !EnsureResolved() || !IsCameraClass(cam)) return false;
     WriteBit(cam, g_light, on);
     return true;
+}
+
+bool ReadWatched(void* cam, bool& on) {
+    if (!cam || !EnsureResolved() || !IsCameraClass(cam) || g_spec.off < 0) return false;
+    on = ReadBit(cam, g_spec);
+    return true;
+}
+
+bool WriteWatched(void* cam, bool on) {
+    if (!cam || !EnsureResolved() || !IsCameraClass(cam) || g_spec.off < 0) return false;
+    WriteBit(cam, g_spec, on);
+    return true;
+}
+
+void* LocalWatchedCamera() {
+    void* cls = object_index::ClassByName(kWidgetClass);
+    if (!cls) return nullptr;
+    struct Found { void* widgets[4]; int n = 0; } found{};
+    object_index::ForEachInstance(cls,
+        [](void* ctx, void* widget, int32_t) {
+            auto* f = static_cast<Found*>(ctx);
+            if (f->n < 4 && R::IsLive(widget) && !R::NameStartsWith(R::NameOf(widget), L"Default__"))
+                f->widgets[f->n++] = widget;
+        },
+        &found);
+    static R::InstanceOffset s_switcher{L"switcher"}, s_cams{L"canvas_cams"};
+    for (int i = 0; i < found.n; ++i) {
+        void* const w = found.widgets[i];
+        ParamFrame inView(R::FindDispatchFunctionCached(R::ClassOf(w), L"IsInViewport"));
+        if (!inView.valid() || !Call(w, inView) || !inView.Get<bool>(L"ReturnValue")) continue;
+        const int32_t so = s_switcher.Of(w), co = s_cams.Of(w);
+        void* const sw = so >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(w) + so) : nullptr;
+        void* const cams = co >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(w) + co) : nullptr;
+        if (!sw || !cams || !R::IsLive(sw)) continue;
+        ParamFrame active(R::FindDispatchFunctionCached(R::ClassOf(sw), L"GetActiveWidget"));
+        if (!active.valid() || !Call(sw, active) || active.Get<void*>(L"ReturnValue") != cams) continue;
+        if (void* const cam = LaptopCamOf(w)) return cam;
+    }
+    return nullptr;
 }
 
 bool CallUpd(void* cam) { return cam && component_calls::CallParamlessNamed(cam, L"upd"); }

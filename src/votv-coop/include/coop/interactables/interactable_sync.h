@@ -63,6 +63,13 @@ std::wstring CameraKey(void* cam);
 // The live camera the camera lane indexes under `key` in the current world, or null. Game thread.
 void* ResolveCamera(const std::wstring& key);
 
+// A camera's key across peers whether or not the lane has indexed it yet: its prop key, or a Kerfur camera's
+// "kerfur:<its Omega's element id>#cam". "" when it has none. Game thread.
+std::wstring CameraKeyOf(void* cam);
+
+// The live camera of that key, found by a walk of the camera classes rather than the lane's index. Game thread.
+void* FindCamera(const std::wstring& key);
+
 // The cremator lane's key for `cremator`, or "" when the lane does not index it in the current world: the name a
 // cremator press intent carries. Game thread.
 std::wstring CrematorKey(void* cremator);

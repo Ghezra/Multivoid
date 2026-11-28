@@ -34,7 +34,11 @@ bool IsCursed(void* obj);
 // The camera's prop Key, or "" when `obj` is no camera, its key is empty or None, or it is the key its class
 // carries by default (the cursed class's fixed "cursedcam": a copy that never took a key of its own, which no
 // per-key lane can name).
+// A child actor camera (a Kerfur Omega's) is keyed afresh on each machine: withheld, "" (coop names it by its parent).
 std::wstring KeyOf(void* cam);
+
+// The actor a child actor camera belongs to (AActor::GetParentActor), or null for a camera of its own.
+void* ParentActorOf(void* cam);
 
 // A camera a per-key lane can address: IsCameraClass and a KeyOf that is not empty.
 bool IsCamera(void* obj);
@@ -58,6 +62,16 @@ bool CallUpdCam(void* widget);
 
 // updCam() on every laptop widget that has `cam` selected. The number repainted.
 int RefreshLaptopsShowing(void* cam);
+
+// `spec`: the camera is being watched, which upd() shows as its green light (red off, blue on and unwatched). The
+// game sets it in the laptop's setCam on the camera picked and clears it on the one left; each machine's own laptop
+// alone. False when the camera or the bit did not resolve.
+bool ReadWatched(void* cam, bool& on);
+bool WriteWatched(void* cam, bool on);
+
+// The camera this machine's player is watching: a laptop widget in the viewport, on its cameras panel
+// (`canvas_cams`), with a camera selected. Null when none (the laptop shut, another panel, a drone or a Kerfur picked).
+void* LocalWatchedCamera();
 
 // [dev] The drills' hands on the laptop's camera panel: the interface widget this world holds (null before it
 // is built), the camera it has selected (setCam's own write of `cam`, without the camera slot it also builds),
