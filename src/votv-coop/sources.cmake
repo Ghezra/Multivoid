@@ -569,6 +569,7 @@ set(VOTVCOOP_SOURCES
     src/harness/autotest/autotest_hud_tint.cpp
     src/harness/autotest/autotest_eventforce.cpp
     src/harness/autotest/autotest_alarmforce.cpp
+    src/harness/autotest/autotest_board.cpp
     src/harness/autotest/autotest_piramidforce.cpp
     src/harness/autotest/autotest_wisplane.cpp
     src/harness/autotest/autotest_navprobe.cpp
@@ -696,6 +697,7 @@ set(VOTVCOOP_SOURCES
     src/coop/world/soltomia_sync.cpp
     src/coop/world/flyover_sync.cpp
     src/coop/world/hole_sync.cpp
+    src/coop/world/whiteboard_sync.cpp
     src/coop/creatures/firetank_sync.cpp
     src/coop/creatures/gray_sync.cpp
     src/coop/world/sirenpost_sync.cpp

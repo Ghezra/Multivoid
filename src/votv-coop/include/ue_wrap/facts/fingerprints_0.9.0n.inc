@@ -623,6 +623,7 @@ inline constexpr RefFn kRefFns[] = {
     {L"prop_uncalibrator_c", L"playerhanduse_lmb", L"prop_uncalibrator_c.playerhanduse_lmb", 0x5de5f12d89a97b5eull, 0xab406ed8495a737eull},
     {L"prop_vacuum2_c", L"gather", L"prop_vacuum2_c.gather", 0x6a2d5d90ab51fa2dull, 0xdddfd79655f10503ull},
     {L"prop_wallfixer_c", L"playerhanduse_lmb", L"prop_wallfixer_c.playerhanduse_lmb", 0x5de5f12d89a97b5eull, 0x548edb032a4ac4f8ull},
+{L"prop_whiteboard_c", L"release", L"prop_whiteboard_c.release", 0x97cf5a0f757bb7baull, 0xa1f1edde32afd397ull},
     {L"prop_wmannequin_c", L"executeubergraph_prop_wmannequin", L"prop_wmannequin_c.executeubergraph_prop_wmannequin", 0xd3c93c9d2749b427ull, 0xf617eb0582f8b10eull},
     {L"radialforcecomponent", L"fireimpulse", L"radialforcecomponent.fireimpulse", 0x6a2d5d90ab51fa2dull, 0xcbf29ce484222325ull},
     {L"radiotower_c", L"actionoptionindex", L"radiotower_c.actionoptionindex", 0x5a7351a33bbf62a6ull, 0x3e3b2f70a4daa7c7ull},

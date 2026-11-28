@@ -65,6 +65,8 @@ CFG_FLAG(weather_probe, "weather_probe", "dev", false, nullptr,
     "Diagnostic probe block for the weather subsystem.")
 CFG_FLAG(meadow_selftest, "meadow_selftest", "dev", false, "VOTVCOOP_MEADOW_SELFTEST",
     "Autonomous selftest: the laptop signal database lane, every writer on the host and a client's row.")
+CFG_FLAG(board_drill_off, "board_drill_off", "dev", false, "VOTVCOOP_BOARD_DRILL_OFF",
+         "Drill RED arm: the whiteboard lane's join answer is skipped, so the board drill must FAIL on the client.")
 CFG_FLAG(lid_drill, "lid_drill", "dev", false, "VOTVCOOP_LID_DRILL",
     "Autonomous drill: the portable PC's lid, opened on the host and closed on the client.")
 CFG_FLAG(laptop_power_drill, "laptop_power_drill", "dev", false, "VOTVCOOP_LAPTOP_POWER_DRILL",

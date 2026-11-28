@@ -1730,6 +1730,11 @@ enum class ReliableKind : uint16_t {
     // connect. Never relayed; not pre-world.
     WindowImage = 340,
 
+    // CLIENT->HOST a board's picture after a stroke, HOST->ALL the world's picture (coop/world/whiteboard_sync),
+    // chunked (BlobChunkPayload): [u64 board key][u32 picture length][base64 text]. Never relayed past the host; not
+    // pre-world.
+    BoardImage = 351,
+
     // CLIENT->HOST: water a client's bucket took on its own -- the game's own fill while the bucket is carried,
     // where the host's rows pin the copy and the client's change would otherwise be overwritten within a tick
     // (coop/props/bucket_sync, from the pin). The host judges the sender (its body within reach of its copy) and
