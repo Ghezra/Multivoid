@@ -44,7 +44,6 @@ bool g_running = false;          // CLIENT: this lane runs the fridge's own body
 // HOST: what the fridge showed at the last look, a tenth of a second apart: a knock that started since is sent.
 bool g_knockedSeen = false;
 int32_t g_amountSeen = 0;
-uint64_t g_nextLook = 0;
 uint32_t g_sent = 0, g_played = 0, g_refused = 0;
 
 bool IsHost() { return g_session && g_session->running() && g_session->role() == N::Role::Host; }
@@ -132,13 +131,8 @@ void Install(N::Session* session) { g_session = session; }
 void Tick() {
     if (!g_knockWatched && sg::WatchName(kRowKnockTimer, kTagKnock, &OnTimerPre, nullptr)) g_knockWatched = true;
     if (!g_obscureWatched && sg::WatchName(kRowObscureTimer, kTagObscure, &OnTimerPre, nullptr)) g_obscureWatched = true;
-    if (IsHost()) {
-        const uint64_t now = ::GetTickCount64();
-        if (now >= g_nextLook) {
-            g_nextLook = now + 100;
-            HostLook();
-        }
-    }
+    // Every tick: two field reads, and a knock is sent the frame it starts, not up to a tenth of a second later.
+    if (IsHost()) HostLook();
     if (!g_knockWatched || !g_obscureWatched || g_settled) return;
     sg::ResolvePendingNames();
     if (!sg::NameWatchSettled(kRowKnockTimer, kTagKnock) || !sg::NameWatchSettled(kRowObscureTimer, kTagObscure)) return;
@@ -181,7 +175,6 @@ void OnDisconnect() {
     g_running = false;
     g_knockedSeen = false;
     g_amountSeen = 0;
-    g_nextLook = 0;
 }
 
 }  // namespace coop::fridge_knock_sync
