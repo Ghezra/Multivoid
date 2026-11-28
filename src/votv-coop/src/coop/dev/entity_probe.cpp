@@ -55,6 +55,7 @@
 #include "ue_wrap/engine/data_table.h"
 #include "ue_wrap/engine/engine_pawn.h"
 #include "ue_wrap/world/world_instances.h"
+#include "ue_wrap/world/world_singleton.h"
 
 #include <windows.h>
 
@@ -1771,6 +1772,44 @@ void SkinMsgStep(coop::net::Session& session, bool host, uint64_t t) {
     }
 }
 
+// VOTVCOOP_ENTITY_PROBE=fog: the rolling fog's density on every peer. HOST 40 s: the day-night cycle's own spawnFog.
+// Every peer, each 5 s from 45 s (`[FOG]`): its fog controller's time, alpha, phase, duration and strength, and the
+// cycle's thickFog that they make.
+bool FogMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "fog";
+    return v;
+}
+
+void FogStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    void* const gm = ue_wrap::world_singleton::Gamemode();
+    const int32_t co = gm ? R::FindPropertyOffset(R::ClassOf(gm), L"daynightCycle") : -1;
+    void* const cycle = co >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(gm) + co) : nullptr;
+    if (!cycle || !R::IsLive(cycle)) return;
+    if (host && s_step == 0 && t >= 40000u) {
+        s_step = 1;
+        ue_wrap::ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(cycle), L"spawnFog"));
+        UE_LOGI("[FOG] host: the cycle's spawnFog ran=%d", f.valid() && ue_wrap::Call(cycle, f) ? 1 : 0);
+    }
+    static uint64_t s_next = 0;
+    if (t < 45000u || t > 120000u || t < s_next) return;
+    s_next = t + 5000u;
+    auto fl = [](void* o, const wchar_t* n) {
+        const int32_t off = o ? R::FindPropertyOffset(R::ClassOf(o), n) : -1;
+        float v = -1.f;
+        if (off >= 0) std::memcpy(&v, static_cast<char*>(o) + off, sizeof(v));
+        return v;
+    };
+    const int32_t eo = R::FindPropertyOffset(R::ClassOf(cycle), L"fogEventObject");
+    void* const fog = eo >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(cycle) + eo) : nullptr;
+    const bool live = fog && R::IsLive(fog);
+    UE_LOGI("[FOG] %s t=%llu: thickFog %.4f; controller %d time %.3f alpha %.4f phase %.1f duration %.1f strength %.3f",
+            host ? "host" : "client", static_cast<unsigned long long>(t / 1000u), fl(cycle, L"thickFog"), live ? 1 : 0,
+            live ? fl(fog, L"time") : 0.f, live ? fl(fog, L"alpha") : 0.f, live ? fl(fog, L"fogphase") : 0.f,
+            live ? fl(fog, L"duration") : 0.f, live ? fl(fog, L"strength") : 0.f);
+    if (host && t >= 115000u) UE_LOGI("[ENTITY] done");
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -2257,6 +2296,10 @@ void Tick(coop::net::Session* session) {
     }
     if (SkinMsgMode()) {
         SkinMsgStep(*session, host, t);
+        return;
+    }
+    if (FogMode()) {
+        FogStep(host, t);
         return;
     }
     if (Catalog()) {
