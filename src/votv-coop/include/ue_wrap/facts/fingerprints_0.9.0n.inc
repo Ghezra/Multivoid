@@ -84,6 +84,7 @@ inline constexpr RefFn kRefFns[] = {
     {L"printedobject_c", L"load", L"printedobject_c.load", 0x2f25c0b6553982baull, 0xf81e9616089cd432ull},
     {L"printedobject_c", L"loadfromprinter", L"printedobject_c.loadfromprinter", 0x65af99d1a46b0320ull, 0xfe121ae80c4fa6f4ull},
     {L"prop_beacon_c", L"open", L"prop_beacon_c.open", 0x9225a0602d9a2017ull, 0xcf479aa9b0460cf6ull},
+    {L"prop_bombbox_c", L"actionoptionindex", L"prop_bombbox_c.actionoptionindex", 0x5a7351a33bbf62a6ull, 0xf64f79a32a354f9dull},
     {L"prop_butterchurn_c", L"actionoptionindex", L"prop_butterchurn_c.actionoptionindex", 0x5a7351a33bbf62a6ull, 0x0b1e0dd415c375b7ull},
     {L"prop_butterchurn_c", L"playerusedon", L"prop_butterchurn_c.playerusedon", 0x2c4f0c15ebdccee4ull, 0x3593c7fff1316687ull},
     {L"prop_cookingfood_doughburger_c", L"actionoptionindex", L"prop_cookingfood_doughburger_c.actionoptionindex", 0x5a7351a33bbf62a6ull, 0x5dd319d14c3dd29eull},

@@ -271,7 +271,10 @@ UE_FACT_FN(kRowBurger,  "prop_act", L"prop_cookingFood_doughBurger_C", L"actionO
 UE_FACT_FN(kRowHotdog,  "prop_act", L"prop_cookingFood_doughHotdog_C", L"actionOptionIndex", Declared);
 // The lantern prank's notepad: any use of it leaves a plain notebook, sends an Ariral at the door and destroys it.
 UE_FACT_FN(kRowBusterNote, "prop_act", L"prop_notebook_busterSpawner_C", L"actionOptionIndex", Declared);
-constexpr int kTagConvert = 0x50414341;   // "PACA".."PACE", one per conversion row
+// The Arirals' bomb box (a trigger_eventer gift): its action 4 spawns an explosion at its `exp` and destroys it. A client's
+// blast is its own world's and the explosion lane removes it there, so the open is the host's, as a conversion is.
+UE_FACT_FN(kRowBombBox, "prop_act", L"prop_bombbox_C", L"actionOptionIndex", Declared);
+constexpr int kTagConvert = 0x50414341;   // "PACA".."PACF", one per conversion row
 constexpr int kBusterNote = 4;            // its conversion row, whatever the action
 constexpr int kTagPocket = 0x50414331, kTagHold = 0x50414332, kTagFood = 0x50414333,
               kTagMre = 0x50414334, kTagPills = 0x50414335, kTagSoap = 0x50414336,
@@ -302,7 +305,7 @@ struct ActionParams {
     R::ParamOffset lookAt{L"lookAtComponent"};
 };
 ActionParams g_foodParams, g_mreParams, g_pillsParams, g_snackParams, g_beerParams, g_kitParams;
-ActionParams g_convertParams[5];
+ActionParams g_convertParams[6];
 
 struct SoapParams {
     R::ParamOffset holdObject{L"holdObject"};
@@ -387,7 +390,7 @@ struct HitParam {
     int32_t size = -1;
 };
 HitParam g_foodHit, g_mreHit, g_pillsHit, g_soapHit, g_snackHit, g_beerHit, g_kitHit;
-HitParam g_convertHit[5];
+HitParam g_convertHit[6];
 
 // The hit of a use, as the replay writes it back: only its component and place matter.
 void CaptureHit(const sg::Call& c, HitParam& param, Pending& p) {
@@ -580,6 +583,7 @@ std::vector<Watch> g_watches = {
     {kRowBurger,  kTagConvert + 2, &PreConvert<2>, "use", WatchState::Pending},
     {kRowHotdog,  kTagConvert + 3, &PreConvert<3>, "use", WatchState::Pending},
     {kRowBusterNote, kTagConvert + 4, &PreConvert<4>, "use", WatchState::Pending},
+    {kRowBombBox, kTagConvert + 5, &PreConvert<5>, "use", WatchState::Pending},
 };
 bool g_watchesSettled = false;
 bool g_familyWatchesAdded = false;
