@@ -175,6 +175,7 @@
 #include "coop/world/wanderer_sync.h"     // the ghost log, booth, sheet ghost and William in one place
 #include "coop/world/anomaly_ask.h"       // a client asks the host to run an Anomalous act
 #include "coop/world/hexpillar_sync.h"    // the basalt pillars are the host's
+#include "coop/world/fridge_knock_sync.h"  // the basement fridge's knocks are the host's
 #include "coop/creatures/nisse_sync.h"    // the Nisse are the host's
 #include "coop/creatures/wolfgang_sync.h" // Wolfgang is the host's
 #include "coop/creatures/birch_sync.h"    // the Killer Birch is the host's
@@ -375,6 +376,7 @@ void Install(coop::net::Session& session) {
     coop::wanderer_sync::Install(&session);  // the Anomalous wanderers in one place for every player
     coop::anomaly_ask::Install(&session);    // a client asks the host to run an Anomalous act
     coop::hexpillar_sync::Install(&session); // the basalt pillars are the host's
+    coop::fridge_knock_sync::Install(&session);  // the basement fridge's knocks are the host's
     coop::nisse_sync::Install(&session);     // the Nisse are the host's
     coop::wolfgang_sync::Install(&session);  // Wolfgang is the host's
     coop::birch_sync::Install(&session);     // the Killer Birch is the host's
@@ -704,6 +706,7 @@ DisconnectStats DisconnectAll() {
     coop::wanderer_sync::OnDisconnect();
     coop::anomaly_ask::OnDisconnect();
     coop::hexpillar_sync::OnDisconnect();
+    coop::fridge_knock_sync::OnDisconnect();
     coop::nisse_sync::OnDisconnect();
     coop::wolfgang_sync::OnDisconnect();
     coop::birch_sync::OnDisconnect();
@@ -803,7 +806,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:atv"}; coop::atv_sync::Tick(); }  // ATV: the host judges its own seat and grab, a client asks the host; the syncer streams its pose (host+client)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:drone"}; coop::drone_sync::Tick(); }  // delivery drone: host streams transform / client suppresses tick + mirrors
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:turbine"}; coop::turbine_sync::Tick(); }  // wind turbines: host ~1 Hz driver-float poll / client deferred-apply retry
-    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:woodchipper"}; coop::woodchipper_sync::Tick(); coop::generator_sync::Tick(); coop::flood_sync::Tick(); coop::kerfur_dress_sync::Tick(); coop::chip_scrap_sync::Tick(); coop::prop_switch_sync::Tick(); coop::butter_churn_sync::Tick(); coop::rdrone_sync::Tick(); coop::photo_sync::Tick(); coop::tape_sync::Tick(); coop::bucket_pour::Tick(); coop::gasoline_sync::Tick(); coop::custom_picture_sync::Tick(); coop::kerfur_camera::Tick(session); coop::arir_ship_sync::Tick(); coop::shrimp_eater_authority::Tick(); coop::arir_rep_sync::Tick(); coop::arir_tower_ship_sync::Tick(); coop::obelisk_sync::Tick(); coop::scout_target::Tick(); coop::soltomia_sync::Tick(); coop::flyover_sync::Tick(); coop::hole_sync::Tick(); coop::firetank_sync::Tick(); coop::gray_sync::Tick(); coop::sirenpost_sync::Tick(); coop::wanderer_sync::Tick(); coop::hexpillar_sync::Tick(); coop::nisse_sync::Tick(); coop::wolfgang_sync::Tick(); coop::birch_sync::Tick(); coop::event_box_authority::Tick(); coop::cave_rock_sync::Tick(); coop::chair_seat::Tick(); }  // woodchippers: the host's intents and its changed chippers, the burn read once a second / the client's held states
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:woodchipper"}; coop::woodchipper_sync::Tick(); coop::generator_sync::Tick(); coop::flood_sync::Tick(); coop::kerfur_dress_sync::Tick(); coop::chip_scrap_sync::Tick(); coop::prop_switch_sync::Tick(); coop::butter_churn_sync::Tick(); coop::rdrone_sync::Tick(); coop::photo_sync::Tick(); coop::tape_sync::Tick(); coop::bucket_pour::Tick(); coop::gasoline_sync::Tick(); coop::custom_picture_sync::Tick(); coop::kerfur_camera::Tick(session); coop::arir_ship_sync::Tick(); coop::shrimp_eater_authority::Tick(); coop::arir_rep_sync::Tick(); coop::arir_tower_ship_sync::Tick(); coop::obelisk_sync::Tick(); coop::scout_target::Tick(); coop::soltomia_sync::Tick(); coop::flyover_sync::Tick(); coop::hole_sync::Tick(); coop::firetank_sync::Tick(); coop::gray_sync::Tick(); coop::sirenpost_sync::Tick(); coop::wanderer_sync::Tick(); coop::hexpillar_sync::Tick(); coop::fridge_knock_sync::Tick(); coop::nisse_sync::Tick(); coop::wolfgang_sync::Tick(); coop::birch_sync::Tick(); coop::event_box_authority::Tick(); coop::cave_rock_sync::Tick(); coop::chair_seat::Tick(); }  // woodchippers: the host's intents and its changed chippers, the burn read once a second / the client's held states
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:glowstick"}; coop::glowstick_sync::Tick(); }  // a glowstick's stick: the sticks a player ended published, the waits for a struck prop retried
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:atv_host"}; coop::atv_host_sync::Tick(); }  // the ATVs' fuel, health and modules
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:alarm"}; coop::alarm_sync::Tick(); }  // base radar alarm: 1 Hz active-bit poll BOTH roles (host broadcasts transitions; client forwards local ones)

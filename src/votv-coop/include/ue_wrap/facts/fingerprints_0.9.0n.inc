@@ -38,6 +38,8 @@ inline constexpr RefFn kRefFns[] = {
     {L"firetankdeploy_c", L"spawnparts", L"firetankdeploy_c.spawnparts", 0x6a2d5d90ab51fa2dull, 0x09c129c05e6edf19ull},
     {L"flamethrower_c", L"activate", L"flamethrower_c.activate", 0xae8c8478802b9b9aull, 0x1bef2083d9ae4c84ull},
     {L"fossilhound_skeleton_animblueprint_c", L"blueprintupdateanimation", L"fossilhound_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0xda42d95946a8af2dull},
+    {L"fridgeglow_c", L"timer_3knock", L"fridgeglow_c.timer_3knock", 0x6a2d5d90ab51fa2dull, 0x9f2d11d569de79a8ull},
+    {L"fridgeglow_c", L"timer_removeobscurity", L"fridgeglow_c.timer_removeobscurity", 0x6a2d5d90ab51fa2dull, 0xc2ee0d4e2d183059ull},
     {L"funguy_skeleton_animblueprint_c", L"blueprintupdateanimation", L"funguy_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0xa7d5ef48b1e8da10ull},
     {L"goat_c", L"lookplace", L"goat_c.lookplace", 0x6a2d5d90ab51fa2dull, 0x59ecb3a0844ec166ull},
     {L"goreslither_skeleton_animblueprint_c", L"blueprintupdateanimation", L"goreslither_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0x03d08d2322be0c33ull},

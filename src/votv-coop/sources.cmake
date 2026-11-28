@@ -698,6 +698,7 @@ set(VOTVCOOP_SOURCES
     src/coop/world/wanderer_sync.cpp
     src/coop/world/anomaly_ask.cpp
     src/coop/world/hexpillar_sync.cpp
+    src/coop/world/fridge_knock_sync.cpp
     src/coop/creatures/nisse_sync.cpp
     src/coop/creatures/wolfgang_sync.cpp
     src/coop/creatures/birch_sync.cpp
