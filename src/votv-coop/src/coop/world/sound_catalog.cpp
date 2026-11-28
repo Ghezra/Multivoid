@@ -33,6 +33,14 @@ constexpr const wchar_t* kWadePath = L"/Game/audio/effects/physics/footsteps/wad
 constexpr const wchar_t* kSplashPath = L"/Game/audio/effects/physics/water/water_splash_Cue.water_splash_Cue";
 constexpr const wchar_t* kPoopPath = L"/Game/audio/effects/poop_Cue.poop_Cue";
 constexpr const wchar_t* kFuelName = L"fuel1";
+// The Ariral follower's own sounds (npc_arirFollower_C's ubergraph; arirSlapper_C, the lantern prank's, is one): its eating,
+// its swing, its scream, a slap, and the laugh as it runs from a door it punched. The punch's own sound is the door's
+// impact sound, which the impact column holds.
+constexpr const wchar_t* kArirEatPath = L"/Game/audio/effects/eat.eat";
+constexpr const wchar_t* kArirSwingPath = L"/Game/audio/effects/swing.swing";
+constexpr const wchar_t* kArirScreamPath = L"/Game/audio/effects/argemusScream.argemusScream";
+constexpr const wchar_t* kArirSlapPath = L"/Game/audio/effects/physics/impact/impact_bodyH_slap_Cue.impact_bodyH_slap_Cue";
+constexpr const wchar_t* kArirLaughPath = L"/Game/audio/effects/outsideAlien_Cue.outsideAlien_Cue";
 
 constexpr uint64_t kRetryMs = 3000;
 
@@ -123,7 +131,8 @@ bool Ready() {
     }
     std::vector<Entry> entries;
     entries.reserve(cues.size() + 6);
-    for (const std::wstring& c : cues) entries.push_back({c, kAttack, kAttDefault, 1.f, 1.f, 1.f, 1.f});
+    for (const std::wstring& c : cues)
+        entries.push_back({c, static_cast<uint8_t>(kAttack | kArir), kAttDefault, 1.f, 1.f, 1.f, 1.f});
     entries.push_back({kKnockPath, kKnock, kAttDefaultNoAo, 1.f, 1.f, 0.5f, 0.5f});
     entries.push_back({kBellPath, kBell, nullptr, 1.f, 1.f, 0.8f, 1.f});
     // A path the impact column names already takes the cleaning callers on its one entry.
@@ -131,6 +140,12 @@ bool Ready() {
     Add(entries, {kWadePath, kHand, kAttDefault, 0.5f, 1.f, 1.f, 1.5f});
     Add(entries, {kSplashPath, kHand, kAttDefault, 0.5f, 0.5f, 1.f, 1.f});
     Add(entries, {fuel, kHand, kAttDefault, 0.5f, 0.5f, 1.f, 1.f});
+    Add(entries, {kArirEatPath, kArir, kAttDefault, 1.f, 1.f, 1.1f, 1.1f});
+    Add(entries, {kArirSwingPath, kArir, kAttDefault, 1.f, 1.f, 1.1f, 1.1f});
+    Add(entries, {kArirScreamPath, kArir, kAttDefault, 5.f, 5.f, 1.5f, 1.5f});
+    Add(entries, {kArirSlapPath, kArir, kAttDefault, 1.f, 1.f, 0.75f, 0.75f});
+    // Its pitch is 0.5 to 1.5 at the door, and 0 (the engine's floor) with a louder 1.5 as it runs.
+    Add(entries, {kArirLaughPath, kArir, kAttDefaultNoAo, 1.f, 1.5f, 0.f, 1.5f});
     std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return a.path < b.path; });
     // A path named twice would give one sound two indexes: not a table to speak by.
     if (std::adjacent_find(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return a.path == b.path; }) !=
@@ -144,7 +159,7 @@ bool Ready() {
     for (size_t i = 0; i < g_entries.size(); ++i) g_index.emplace(g_entries[i].path, static_cast<uint16_t>(i + 1));
     g_digest = DigestOf(g_entries);
     g_built = true;
-    UE_LOGI("sound_catalog: n=%zu digest=0x%08X (%zu impact sounds, the knock, the bell and the cleaning sounds)",
+    UE_LOGI("sound_catalog: n=%zu digest=0x%08X (%zu impact sounds, the knock, the bell, the cleaning and the Ariral's sounds)",
             g_entries.size(), g_digest, cues.size());
     return true;
 }

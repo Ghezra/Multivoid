@@ -12,6 +12,7 @@
 
 #include "ue_wrap/core/asset_load.h"
 #include "ue_wrap/core/cached_obj_ref.h"
+#include "ue_wrap/core/call.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_path.h"
 #include "ue_wrap/core/reflection.h"
@@ -20,6 +21,7 @@
 #include "ue_wrap/devices/grime.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_audio.h"
+#include "ue_wrap/engine/engine_component.h"
 #include "ue_wrap/engine/engine_mainplayer.h"
 #include "ue_wrap/facts/function_row.h"
 
@@ -44,6 +46,7 @@ using Verdict = ue_wrap::script_gate::Verdict;
 
 UE_FACT_FN(kRowPlaySoundAt, "sound_relay", L"GameplayStatics", L"PlaySoundAtLocation", Dispatch);
 UE_FACT_FN(kRowPlaySound2D, "sound_relay", L"GameplayStatics", L"PlaySound2D", Dispatch);
+UE_FACT_FN(kRowSpawnSoundAt, "sound_relay", L"GameplayStatics", L"SpawnSoundAtLocation", Dispatch);
 
 constexpr uint64_t kRefusalSayMs = 10000;
 
@@ -66,14 +69,27 @@ constexpr Caller kCallers[] = {
     // ubergraph holds every PlaySoundAtLocation of the chime, so that is the frame the call is seen from.
     {L"church_C", L"ExecuteUbergraph_church", From::kHostWorld, C::kBell},
     {L"grime_C", L"ExecuteUbergraph_grime", From::kGrime, C::kGrime},   // a scrubbed decal's squelch (its clean's Sound)
+    // The Ariral follower (Ghezra/Multivoid#63), the lantern prank's slapper among them: the npc lane's puppet on a client
+    // runs none of it, so its eating, swing, scream, slap, a door's punch (SpawnSoundAtLocation) and its laugh are the
+    // host's. A subclass's calls are this function's.
+    {L"npc_arirFollower_C", L"ExecuteUbergraph_npc_arirFollower", From::kHostWorld, C::kArir},
 };
 constexpr int kCallerCount = static_cast<int>(sizeof(kCallers) / sizeof(kCallers[0]));
 
 std::atomic<N::Session*> g_session{nullptr};
-void* g_fn = nullptr;
-bool g_installFailed = false;
-bool g_armed = false;
-int32_t g_offSound = -1, g_offLoc = -1, g_offVol = -1, g_offPitch = -1;
+// A placed sound's call and where its parameters lie: PlaySoundAtLocation and SpawnSoundAtLocation take the same ones.
+struct PlacedFn {
+    void* fn = nullptr;
+    bool armed = false, failed = false;
+    int32_t offSound = -1, offLoc = -1, offVol = -1, offPitch = -1;
+};
+PlacedFn g_play;
+// SpawnSoundAtLocation returns the AudioComponent it plays through, so no pre hook takes it (a refused call would leave
+// that unwritten): it is watched after the call, and the component it returns says the sound, the place, the volume
+// and the pitch. On a client a host-world caller's component is stopped before it is heard.
+void* g_spawnFn = nullptr;
+bool g_spawnArmed = false, g_spawnFailed = false;
+int32_t g_offAcSound = -1, g_offAcVol = -1, g_offAcPitch = -1;
 void* g_callerFn[kCallerCount] = {};
 std::unordered_set<void*> g_notCaller;   // functions judged not to be a listed caller
 bool g_cancelSaid[kCallerCount] = {};
@@ -134,7 +150,7 @@ void Refuse(int senderSlot, Refusal why, unsigned index) {
 void SendSound(N::Session& s, void* sound, uint8_t bit, const float at[3], float volume, float pitch, const wchar_t* cls,
                const wchar_t* fn);
 
-Verdict OnPlaySoundAtPre(void* /*context*/, void* source, const uint8_t* parms) {
+Verdict OnPlacedPre(const PlacedFn& at, void* source, const uint8_t* parms) {
     const int i = CallerIndex(H::CurrentCallerFrame().function);
     if (i < 0) return Verdict::Run;
     N::Session* const s = g_session.load(std::memory_order_acquire);
@@ -154,14 +170,46 @@ Verdict OnPlaySoundAtPre(void* /*context*/, void* source, const uint8_t* parms) 
         : from == From::kGrime   ? !ue_wrap::grime::IsGrime(source)
                                  : s->role() != N::Role::Host)
         return Verdict::Run;
-    void* const sound = *reinterpret_cast<void* const*>(parms + g_offSound);
+    void* const sound = *reinterpret_cast<void* const*>(parms + at.offSound);
     if (!sound) return Verdict::Run;
-    float at[3];
-    std::memcpy(at, parms + g_offLoc, sizeof(at));
-    SendSound(*s, sound, kCallers[i].bit, at, g_offVol >= 0 ? *reinterpret_cast<const float*>(parms + g_offVol) : 1.f,
-              g_offPitch >= 0 ? *reinterpret_cast<const float*>(parms + g_offPitch) : 1.f, kCallers[i].cls,
+    float loc[3];
+    std::memcpy(loc, parms + at.offLoc, sizeof(loc));
+    SendSound(*s, sound, kCallers[i].bit, loc, at.offVol >= 0 ? *reinterpret_cast<const float*>(parms + at.offVol) : 1.f,
+              at.offPitch >= 0 ? *reinterpret_cast<const float*>(parms + at.offPitch) : 1.f, kCallers[i].cls,
               kCallers[i].fn);
     return Verdict::Run;
+}
+
+Verdict OnPlaySoundAtPre(void* /*context*/, void* source, const uint8_t* parms) { return OnPlacedPre(g_play, source, parms); }
+void OnSpawnSoundAtPost(void* /*context*/, void* source, void* result) {
+    const int i = CallerIndex(H::CurrentCallerFrame().function);
+    if (i < 0 || kCallers[i].from != From::kHostWorld) return;
+    N::Session* const s = g_session.load(std::memory_order_acquire);
+    void* const ac = result;  // the call's return, the AudioComponent
+    if (!s || !s->connected() || !source || !ac || !R::IsLive(ac)) return;
+    if (s->role() == N::Role::Client) {
+        ue_wrap::ParamFrame stop(R::FindDispatchFunctionCached(R::ClassOf(ac), L"Stop"));
+        if (stop.valid()) ue_wrap::Call(ac, stop);
+        if (!g_cancelSaid[i]) {
+            g_cancelSaid[i] = true;
+            UE_LOGI("sound_relay: this client's %ls::%ls spawned sounds are stopped -- the host's relayed sound is the one "
+                    "it hears", kCallers[i].cls, kCallers[i].fn);
+        }
+        return;
+    }
+    if (g_offAcSound < 0) {
+        void* const cls = R::ClassOf(ac);
+        g_offAcSound = R::FindPropertyOffset(cls, L"Sound");
+        g_offAcVol = R::FindPropertyOffset(cls, L"VolumeMultiplier");
+        g_offAcPitch = R::FindPropertyOffset(cls, L"PitchMultiplier");
+        if (g_offAcSound < 0) return;
+    }
+    void* const sound = *reinterpret_cast<void* const*>(static_cast<const uint8_t*>(ac) + g_offAcSound);
+    ue_wrap::FVector where{};
+    if (!sound || !ue_wrap::engine::TryGetComponentLocation(ac, where)) return;
+    const float at[3] = {where.X, where.Y, where.Z};
+    const auto f = [ac](int32_t off) { return off >= 0 ? *reinterpret_cast<const float*>(static_cast<const uint8_t*>(ac) + off) : 1.f; };
+    SendSound(*s, sound, kCallers[i].bit, at, f(g_offAcVol), f(g_offAcPitch), kCallers[i].cls, kCallers[i].fn);
 }
 
 // A sound this machine played for a listed caller, sent by its index when the table holds it for that caller.
@@ -245,21 +293,39 @@ void Install2DHook() {
     g_fn2D = fn.Fn();
 }
 
-void InstallHook() {
-    if (g_fn || g_installFailed) return;
-    const ue_wrap::facts::Resolved fn = ue_wrap::facts::Resolve(kRowPlaySoundAt);
+void InstallPlaced(PlacedFn& at, const ue_wrap::facts::Function& row, H::PreNativeCallback hook, const char* name) {
+    if (at.fn || at.failed) return;
+    const ue_wrap::facts::Resolved fn = ue_wrap::facts::Resolve(row);
     if (!fn) return;
-    g_offSound = R::FindParamOffset(fn.Fn(), L"Sound");
-    g_offLoc = R::FindParamOffset(fn.Fn(), L"Location");
-    g_offVol = R::FindParamOffset(fn.Fn(), L"VolumeMultiplier");
-    g_offPitch = R::FindParamOffset(fn.Fn(), L"PitchMultiplier");
-    if (g_offSound < 0 || g_offLoc < 0 || !H::InstallPreHook(fn, &OnPlaySoundAtPre, /*armed=*/false)) {
-        g_installFailed = true;
-        UE_LOGE("sound_relay: no pre hook on PlaySoundAtLocation (Sound %d, Location %d) -- no sound is relayed", g_offSound,
-                g_offLoc);
+    at.offSound = R::FindParamOffset(fn.Fn(), L"Sound");
+    at.offLoc = R::FindParamOffset(fn.Fn(), L"Location");
+    at.offVol = R::FindParamOffset(fn.Fn(), L"VolumeMultiplier");
+    at.offPitch = R::FindParamOffset(fn.Fn(), L"PitchMultiplier");
+    if (at.offSound < 0 || at.offLoc < 0 || !H::InstallPreHook(fn, hook, /*armed=*/false)) {
+        at.failed = true;
+        UE_LOGE("sound_relay: no pre hook on %s (Sound %d, Location %d) -- its sounds are not relayed", name, at.offSound,
+                at.offLoc);
         return;
     }
-    g_fn = fn.Fn();
+    at.fn = fn.Fn();
+}
+
+void InstallHook() {
+    InstallPlaced(g_play, kRowPlaySoundAt, &OnPlaySoundAtPre, "PlaySoundAtLocation");
+    if (!g_spawnFn && !g_spawnFailed) {
+        const ue_wrap::facts::Resolved fn = ue_wrap::facts::Resolve(kRowSpawnSoundAt);
+        if (fn) {
+            if (H::InstallPostHook(fn, &OnSpawnSoundAtPost, /*armed=*/false)) g_spawnFn = fn.Fn();
+            else {
+                g_spawnFailed = true;
+                UE_LOGE("sound_relay: no post hook on SpawnSoundAtLocation -- its sounds are not relayed");
+            }
+        }
+    }
+}
+
+void ArmPlaced(PlacedFn& at, H::PreNativeCallback hook, bool want) {
+    if (at.fn && want != at.armed && H::SetArmed(at.fn, hook, want)) at.armed = want;
 }
 
 }  // namespace
@@ -284,7 +350,8 @@ void Install(N::Session* session) {
     InstallHook();
     Install2DHook();
     const bool want = session && session->connected();
-    if (g_fn && want != g_armed && H::SetArmed(g_fn, &OnPlaySoundAtPre, want)) g_armed = want;
+    ArmPlaced(g_play, &OnPlaySoundAtPre, want);
+    if (g_spawnFn && want != g_spawnArmed && H::SetArmed(g_spawnFn, &OnSpawnSoundAtPost, want)) g_spawnArmed = want;
     if (g_fn2D && want != g_armed2D && H::SetArmed(g_fn2D, &OnPlaySound2DPre, want)) g_armed2D = want;
 }
 
@@ -326,7 +393,8 @@ void OnSoundAt(int senderSlot, const N::SoundAtPayload& p) {
 }
 
 void OnDisconnect() {
-    if (g_fn && g_armed && H::SetArmed(g_fn, &OnPlaySoundAtPre, false)) g_armed = false;
+    ArmPlaced(g_play, &OnPlaySoundAtPre, false);
+    if (g_spawnFn && g_spawnArmed && H::SetArmed(g_spawnFn, &OnSpawnSoundAtPost, false)) g_spawnArmed = false;
     if (g_fn2D && g_armed2D && H::SetArmed(g_fn2D, &OnPlaySound2DPre, false)) g_armed2D = false;
     g_session.store(nullptr, std::memory_order_release);
 }

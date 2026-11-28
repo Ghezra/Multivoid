@@ -28,6 +28,7 @@ enum Caller : uint8_t {
     kBell   = 4,   // church_C's bell, an actor of the host's world
     kGrime  = 8,   // grime_C's clean: a scrubbed decal's squelch, from the machine whose player cleaned it
     kHand   = 16,  // a held cleaning item's PlaySound2D, sent placed at its player, from that player's machine
+    kArir   = 32,  // npc_arirFollower_C's ubergraph (the lantern prank's slapper too): an actor of the host's world
 };
 
 struct Entry {
