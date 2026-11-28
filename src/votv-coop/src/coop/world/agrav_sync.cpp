@@ -8,17 +8,24 @@
 #include "coop/net/session.h"
 #include "coop/props/prop_rest_sync.h"
 #include "coop/props/remote_prop.h"
+#include "ue_wrap/core/call.h"
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/core/object_index.h"
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/reflection_props.h"
+#include "ue_wrap/core/script_gate.h"
+#include "ue_wrap/core/sdk_profile_names.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_attach.h"
+#include "ue_wrap/engine/engine_pawn.h"
 #include "ue_wrap/engine/engine_physics.h"
+#include "ue_wrap/facts/function_row.h"
+#include "ue_wrap/world/world_singleton.h"
 
 #include <windows.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -44,7 +51,7 @@ constexpr uint64_t kQuietMs = 10000;
 N::Session* g_session = nullptr;
 uint64_t g_nextScan = 0;
 uint64_t g_quietSince = 0;
-// The `buf` a trigger last held (its data pointer and count): a new gather starts the scan again.
+// The `comps` a trigger last held (its data pointer and count): a new gather starts the scan again.
 const void* g_lastBuf = nullptr;
 int32_t g_lastNum = 0;
 
@@ -94,7 +101,10 @@ float ZOf(void* actor) {
     return actor && E::TryGetActorLocation(actor, at) ? at.Z : 0.f;
 }
 
-// A live trigger's `buf`: TArray<UPrimitiveComponent*>, read in place.
+// A live trigger's `comps`: TArray<UPrimitiveComponent*>, read in place. Its gather fills `comps`; the float copies it to
+// `buf` and takes each body off `buf` as it switches that body's gravity, so `buf` is empty a moment after each body
+// lifts or drops, and a scan of it saw at most the one body of that moment (Ghezra/Multivoid issue 59). `comps` holds
+// the gather until the next.
 struct Buf {
     void* const* data = nullptr;
     int32_t num = 0;
@@ -103,8 +113,8 @@ struct Buf {
 Buf BufOf(void* trigger) {
     static int32_t s_off = -2;
     if (s_off == -2) {
-        s_off = R::FindPropertyOffset(R::ClassOf(trigger), L"buf");
-        if (s_off < 0) UE_LOGW("agrav_sync: trigger_agrav_C has no `buf` -- the float is not followed");
+        s_off = R::FindPropertyOffset(R::ClassOf(trigger), L"comps");
+        if (s_off < 0) UE_LOGW("agrav_sync: trigger_agrav_C has no `comps` -- the float is not followed");
     }
     Buf b;
     if (s_off < 0) return b;
@@ -224,12 +234,139 @@ void Relift() {
     }
 }
 
+// ---- The float's show (EventCue 135, 136) ----
+
+namespace sg = ue_wrap::script_gate;
+UE_FACT_FN(kRowCloak, "agrav_sync", L"trigger_agrav_C", L"cloak", Declared);
+constexpr int kCloakTag = 0x41475601;  // 'AGV'
+bool g_cloakWatched = false, g_cloakSettled = false;
+bool g_floating = false;                 // HOST: the show is on
+float g_floatAt[3] = {};
+void* g_localTrigger = nullptr;          // CLIENT: its own copy of the trigger, which only shows
+uint32_t g_cuesSent = 0, g_cuesShown = 0;
+
+void* ObjField(void* o, const wchar_t* name) {
+    const int32_t off = o ? R::FindPropertyOffset(R::ClassOf(o), name) : -1;
+    void* const v = off >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(o) + off) : nullptr;
+    return v && R::IsLive(v) ? v : nullptr;
+}
+
+bool CallBool2(void* o, const wchar_t* fn, const wchar_t* a, bool va, const wchar_t* b, bool vb) {
+    ue_wrap::ParamFrame f(o ? R::FindDispatchFunctionCached(R::ClassOf(o), fn) : nullptr);
+    return f.valid() && f.Set<bool>(a, va) && (!b || f.Set<bool>(b, vb)) && ue_wrap::Call(o, f);
+}
+
+void SendFloatCue(uint32_t cue, int slot) {
+    N::EventCuePayload p{};
+    p.cueId = cue;
+    p.x = g_floatAt[0];
+    p.y = g_floatAt[1];
+    p.z = g_floatAt[2];
+    const bool ok = slot >= 0 ? g_session->SendReliableToSlot(static_cast<uint8_t>(slot), N::ReliableKind::EventCue, &p, sizeof(p))
+                              : g_session->SendReliable(N::ReliableKind::EventCue, &p, sizeof(p));
+    if (ok) ++g_cuesSent;
+}
+
+// HOST: the trigger's cloak is its show's begin (forward) and end (back).
+void OnCloakPost(const sg::Call& call) {
+    if (!g_session || g_session->role() != N::Role::Host || !g_session->connected() || !call.object || !call.locals)
+        return;
+    int32_t off = -1;
+    uint8_t mask = 0;
+    if (!R::FindBoolProperty(call.function, L"forward", off, mask)) return;
+    const bool forward = (call.locals[off] & mask) != 0;
+    if (forward == g_floating) return;
+    g_floating = forward;
+    ue_wrap::FVector at{};
+    if (E::TryGetActorLocation(call.object, at)) g_floatAt[0] = at.X, g_floatAt[1] = at.Y, g_floatAt[2] = at.Z;
+    SendFloatCue(forward ? kCueFloatBegin : kCueFloatEnd, -1);
+    UE_LOGI("agrav_sync: HOST the float's show %s at (%.0f,%.0f,%.0f) -- sent", forward ? "begins" : "ends",
+            g_floatAt[0], g_floatAt[1], g_floatAt[2]);
+}
+
+// CLIENT: its own trigger at the host's, spawned on the first begin and kept for the next.
+void* LocalTrigger(const float at[3]) {
+    if (g_localTrigger && R::IsLive(g_localTrigger)) return g_localTrigger;
+    g_localTrigger = nullptr;
+    void* const cls = OI::ClassByName(L"trigger_agrav_C");
+    if (cls) g_localTrigger = E::SpawnActor(cls, ue_wrap::FVector{at[0], at[1], at[2]});
+    return g_localTrigger;
+}
+
+void ShowBegin(const float at[3]) {
+    void* const t = LocalTrigger(at);
+    if (!t) {
+        UE_LOGW("agrav_sync: CLIENT no trigger of its own to show the float on");
+        return;
+    }
+    CallBool2(t, L"cloak", L"forward", true, nullptr, false);
+    void* const light = ObjField(t, L"pointlight");
+    void* const cam = ue_wrap::world_singleton::Find(ue_wrap::profile::name::PlayerCameraManagerClass);
+    void* const camRoot = cam ? E::RootComponentOf(cam) : nullptr;
+    if (light && camRoot) {
+        ue_wrap::ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(light), L"K2_AttachToComponent"));
+        const R::FName none{};
+        if (f.valid() && f.Set<void*>(L"Parent", camRoot) && f.SetRaw(L"SocketName", &none, sizeof(none))) {
+            f.Set<uint8_t>(L"LocationRule", 0);
+            f.Set<uint8_t>(L"RotationRule", 0);
+            f.Set<uint8_t>(L"ScaleRule", 0);
+            f.Set<bool>(L"bWeldSimulatedBodies", false);
+            ue_wrap::Call(light, f);
+        }
+        CallBool2(light, L"SetVisibility", L"bNewVisibility", true, L"bPropagateToChildren", false);
+    }
+    const bool hum = CallBool2(ObjField(t, L"arirhover_cue"), L"SetActive", L"bNewActive", true, L"bReset", false);
+    ++g_cuesShown;
+    UE_LOGI("agrav_sync: CLIENT the float's show begins (light=%d hum=%d)", light && camRoot ? 1 : 0, hum ? 1 : 0);
+}
+
+void ShowEnd() {
+    void* const t = g_localTrigger && R::IsLive(g_localTrigger) ? g_localTrigger : nullptr;
+    if (!t) return;
+    CallBool2(ObjField(t, L"arirhover_cue"), L"SetActive", L"bNewActive", false, L"bReset", false);
+    CallBool2(ObjField(t, L"pointlight"), L"SetVisibility", L"bNewVisibility", false, L"bPropagateToChildren", false);
+    CallBool2(t, L"cloak", L"forward", false, nullptr, false);
+    ++g_cuesShown;
+    UE_LOGI("agrav_sync: CLIENT the float's show ends");
+}
+
+void TickCloakWatch() {
+    if (!g_cloakWatched) {
+        if (!sg::WatchName(kRowCloak, kCloakTag, nullptr, &OnCloakPost)) return;
+        g_cloakWatched = true;
+    }
+    if (g_cloakSettled) return;
+    sg::ResolvePendingNames();
+    if (!sg::NameWatchSettled(kRowCloak, kCloakTag)) return;
+    g_cloakSettled = true;
+    if (sg::NameWatchLive(kRowCloak, kCloakTag)) UE_LOGI("agrav_sync: the watch on the float's cloak is live");
+    else UE_LOGE("agrav_sync: the cloak watch is not live -- a client sees no float's show");
+}
+
 }  // namespace
 
 void Install(N::Session* session) { g_session = session; }
 
+bool OnCue(const N::EventCuePayload& p) {
+    if (p.cueId != kCueFloatBegin && p.cueId != kCueFloatEnd) return false;
+    if (!g_session || g_session->role() != N::Role::Client) return true;
+    if (p.cueId == kCueFloatBegin) {
+        const float at[3] = {p.x, p.y, p.z};
+        if (std::isfinite(at[0]) && std::isfinite(at[1]) && std::isfinite(at[2])) ShowBegin(at);
+    } else {
+        ShowEnd();
+    }
+    return true;
+}
+
+void SendJoinSnapshotForSlot(int slot) {
+    if (!g_session || g_session->role() != N::Role::Host || slot <= 0 || !g_floating) return;
+    SendFloatCue(kCueFloatBegin, slot);
+}
+
 void Tick() {
     if (!g_session) return;
+    TickCloakWatch();
     if (g_session->role() == N::Role::Client) {
         Relift();
         return;
@@ -277,6 +414,12 @@ void OnState(const N::AgravStatePayload& p) {
 }
 
 void OnDisconnect() {
+    if (g_cuesSent || g_cuesShown)
+        UE_LOGI("agrav_sync: session end -- float show cues sent %u, shown %u", g_cuesSent, g_cuesShown);
+    g_cuesSent = g_cuesShown = 0;
+    g_floating = false;
+    if (g_localTrigger && R::IsLive(g_localTrigger)) E::DestroyActor(g_localTrigger);
+    g_localTrigger = nullptr;
     g_pending.clear();
     g_lifted.clear();
     g_clientLifted.clear();
