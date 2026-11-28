@@ -16,6 +16,8 @@
 #include "player_handshake_detail.h"  // co-located private header (src tree, not include/)
 
 #include "coop/comms/chat_feed.h"
+#include "coop/config/config.h"
+#include "coop/config/config_registry.h"
 #include "coop/net/latest_wins.h"
 #include "coop/net/net_clock.h"
 #include "coop/net/refusal_tally.h"
@@ -64,8 +66,16 @@ std::vector<uint8_t> BuildNickColorChangePayload(uint8_t slot, uint32_t packed) 
 }
 
 // The "<nick> changed skin to <skin>" line, History: something a PEER did, the same family as a
-// peer-action line. The skin is its registry token, shown as the name it is.
+// peer-action line. The skin is its registry token, shown as the name it is. Shown only while both the
+// host's chat.skin_changes (for the whole session) and this player's own ui.chat.skin_changes are on
+// (Ghezra/Multivoid issue 56); the skin itself changes either way.
 void PushSkinChangedLine(uint8_t describedSlot, const std::string& skin) {
+    const bool session = coop::config::ResolveFlag(::coop::config_registry::rows::chat_skin_changes);
+    if (!session || !coop::config::ResolveFlag(::coop::config_registry::rows::ui_chat_skin_changes)) {
+        UE_LOGI("handshake: slot %u's skin change to '%s' not shown (%s)", static_cast<unsigned>(describedSlot),
+                skin.c_str(), session ? "this player's setting" : "the host's setting");
+        return;
+    }
     const std::string nickUtf8 = coop::chat_feed::ToUtf8(NicknameForSlot(describedSlot));
     char line[256];
     if (l10n::Fmt(line, sizeof(line), l10n::T("%1$s changed skin to %2$s"), nickUtf8.c_str(),

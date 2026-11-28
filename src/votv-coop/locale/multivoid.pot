@@ -1526,9 +1526,20 @@ msgstr ""
 
 #: src/ui/dev_menu.cpp
 msgid ""
+"Show a chat line when another player changes their skin.\n"
+"Local preference; the host can also turn these off for\n"
+"everyone (ui.chat.skin_changes)."
+msgstr ""
+
+#: src/ui/dev_menu.cpp
+msgid ""
 "Show a chat line when another player does a shared action\n"
 "(e.g. deletes an email). Local preference; persists across\n"
 "sessions (ui.chat.peer_actions)."
+msgstr ""
+
+#: include/coop/config/config_registry_rows.inc
+msgid "Show every player a chat line when someone changes their skin. Off, nobody in this session sees them, whatever their own setting."
 msgstr ""
 
 #: src/ui/bug_report_pane.cpp
@@ -1559,6 +1570,10 @@ msgstr ""
 #: src/coop/player/local_body.cpp
 #, c-format
 msgid "Skin '%s' is not installed here -- keeping your current one"
+msgstr ""
+
+#: include/coop/config/config_registry_rows.inc src/ui/dev_menu.cpp
+msgid "Skin change messages"
 msgstr ""
 
 #: src/coop/player/local_body.cpp

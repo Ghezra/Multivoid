@@ -214,6 +214,9 @@ CFG_FLAG(ui_netstats, "ui.netstats", "ui", false, nullptr,
     "Show the network statistics overlay.")
 CFG_FLAG(ui_chat_peer_actions, "ui.chat.peer_actions", "ui", true, nullptr,
     "Show peer action lines (joins, pickups, device use) in the chat feed.")
+CFG_FLAG(ui_chat_skin_changes, "ui.chat.skin_changes", "ui", true, nullptr,
+    "Show a chat line when another player changes their skin. This player's own view; the host's "
+    "chat.skin_changes turns the lines off for everyone.")
 CFG_STRING(ui_language, "ui.language", "ui", "auto", "VOTVCOOP_UI_LANGUAGE", false,
     "The language of the mod's own interface: auto follows the Windows display language, or name "
     "a locale such as zh_CN. A language without a catalogue shows English. Takes effect at the "
@@ -282,6 +285,11 @@ CFG_FLOAT(voice_distance_cm, "voice.distance_cm", "voice", 4800.0f, 0, 1000000, 
     "host's to choose."))
 CFG_ROWFLAGS(voice_distance_cm, kRowServer | kRowReplicated | kRowLive | kRowNotify)
 CFG_LABEL(voice_distance_cm, L10N_MARK("Voice range"))
+CFG_FLAG(chat_skin_changes, "chat.skin_changes", "ui", true, nullptr,
+    L10N_MARK("Show every player a chat line when someone changes their skin. Off, nobody in this session sees "
+    "them, whatever their own setting."))
+CFG_ROWFLAGS(chat_skin_changes, kRowServer | kRowReplicated | kRowLive | kRowNotify)
+CFG_LABEL(chat_skin_changes, L10N_MARK("Skin change messages"))
 CFG_FLAG(net_allow_other_builds, "net.allow_other_builds", "net", false, "VOTVCOOP_NET_ALLOW_OTHER_BUILDS",
     L10N_MARK("Let players whose Multivoid build differs from this server's join -- an unofficial build when this server runs "
     "the official one, the official build when this server runs a modified one. Applies to the next joins; players "

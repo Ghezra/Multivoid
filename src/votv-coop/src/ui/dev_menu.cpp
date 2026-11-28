@@ -93,6 +93,12 @@ void RenderChatPref() {
     ImGui::TextDisabled("%s", l10n::T("Show a chat line when another player does a shared action\n"
                                       "(e.g. deletes an email). Local preference; persists across\n"
                                       "sessions (ui.chat.peer_actions)."));
+    bool skins = coop::config::ResolveFlag(::coop::config_registry::rows::ui_chat_skin_changes);
+    if (ImGui::Checkbox(l10n::Label(l10n::T("Skin change messages"), "skin_change_messages"), &skins))
+        coop::config::SetValue(::coop::config_registry::rows::ui_chat_skin_changes, skins ? "1" : "0");
+    ImGui::TextDisabled("%s", l10n::T("Show a chat line when another player changes their skin.\n"
+                                      "Local preference; the host can also turn these off for\n"
+                                      "everyone (ui.chat.skin_changes)."));
 }
 
 // The local player's plate-visibility preference. SYNCED (a live NameplateChange plus the

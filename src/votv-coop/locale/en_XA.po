@@ -1217,6 +1217,15 @@ msgid "Sets the game's own clock. Jumping the day forward runs every event sched
 msgstr "[[Sets the game's own clock. Jumping the day forward runs every event scheduled in between at once.]]"
 
 msgid ""
+"Show a chat line when another player changes their skin.\n"
+"Local preference; the host can also turn these off for\n"
+"everyone (ui.chat.skin_changes)."
+msgstr ""
+"[[Show a chat line when another player changes their skin.\n"
+"Local preference; the host can also turn these off for\n"
+"everyone (ui.chat.skin_changes).]]"
+
+msgid ""
 "Show a chat line when another player does a shared action\n"
 "(e.g. deletes an email). Local preference; persists across\n"
 "sessions (ui.chat.peer_actions)."
@@ -1224,6 +1233,9 @@ msgstr ""
 "[[Show a chat line when another player does a shared action\n"
 "(e.g. deletes an email). Local preference; persists across\n"
 "sessions (ui.chat.peer_actions).]]"
+
+msgid "Show every player a chat line when someone changes their skin. Off, nobody in this session sees them, whatever their own setting."
+msgstr "[[Show every player a chat line when someone changes their skin. Off, nobody in this session sees them, whatever their own setting.]]"
 
 msgid "Show in folder"
 msgstr "[[Show in folder]]"
@@ -1247,6 +1259,9 @@ msgstr "[[Signal]]"
 #, c-format
 msgid "Skin '%s' is not installed here -- keeping your current one"
 msgstr "[[Skin '%s' is not installed here -- keeping your current one]]"
+
+msgid "Skin change messages"
+msgstr "[[Skin change messages]]"
 
 #, c-format
 msgid "Skin: %s"
