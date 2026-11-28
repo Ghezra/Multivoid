@@ -139,6 +139,8 @@ panel), World (the rules this peer runs under), Voice, Report a bug (saves a rep
 your logs; nothing is sent), and on the host Administration (online,
 offline and banned players with teleport, kick, ban and unban, and the server's settings, changed
 through the same `/set` and `/reset` commands a person types).
+The "changed skin" chat lines show while both the player's own `ui.chat.skin_changes` (Cosmetics, beside the peer
+action lines) and the host's `chat.skin_changes` (a server setting) are on (Ghezra/Multivoid issue 56).
 
 The host, and a solo player, also see **Host tools**, with no developer switch: Items (every prop the
 game lists, from its own prop renderer's name table, searchable, with a count, spawned in front of the host

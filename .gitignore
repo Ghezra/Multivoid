@@ -271,6 +271,7 @@ docs/**
 !docs/deployables.md
 !docs/fuel-machines.md
 !docs/events-and-weather.md
+!docs/events-more.md
 !docs/join.md
 !docs/master-server.md
 !docs/npcs-and-kerfur.md

@@ -82,7 +82,8 @@ the host did not command (`coop/world/weather_event_births`). The black fog's wh
 camera and runs on its own clock for about three minutes, so the host's weather state carries whether one lives: a
 client spawns its own copy at the host's start, or at a join while it runs, and destroys it at the host's end; the
 eyes its timer spawns stay the host's, a client's copy refused them (`coop/world/weather_fog`) `[V]` (`coop/dev/blackfog_probe`:
-the client's fog began and ended in the same second as the host's).
+the client's fog began and ended in the same second as the host's). The rolling fog's density follows a noise its controller seeds at random on
+each peer; the host's state carries its time, pace and duration too, which a client writes on its copy (issue 55).
 
 Fireflies are the one peer-symmetric weather: the spawner rolls a ring around the local camera,
 so every peer keeps its own and shares each spawn, and the union is fireflies near everyone
