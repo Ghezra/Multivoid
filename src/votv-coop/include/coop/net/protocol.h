@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 362;
+inline constexpr uint16_t kProtocolVersion = 363;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -5027,8 +5027,15 @@ struct WeatherStatePayload {
     float    windTargetX;       // AdirectionalWind_C::windTarget->RelativeLocation.X
     float    windTargetY;       //                                              .Y
     float    windTargetZ;       //                                              .Z
+    // The rolling fog's noise: its density is (perlin(time) + 1) / 2 * Strength, faded by Alpha, and time starts at a
+    // random -1000..1000 on each peer and advances by dt / fogPhase, Alpha by dt / Duration. Without these a client's
+    // fog sat at another point of the noise, thin where the host's was dense (Ghezra/Multivoid issue 55). 0 when the
+    // host has no rolling-fog actor.
+    float    fogTime;           // AweatherFogController_C::time
+    float    fogPhase;          // AweatherFogController_C::fogphase
+    float    fogDuration;       // AweatherFogController_C::duration
 };
-static_assert(sizeof(WeatherStatePayload) == 68, "WeatherStatePayload must be 68 bytes");
+static_assert(sizeof(WeatherStatePayload) == 80, "WeatherStatePayload must be 80 bytes");
 static_assert(sizeof(WeatherStatePayload) <= 256 - 20 - 8,
               "WeatherStatePayload must fit in one reliable datagram");
 

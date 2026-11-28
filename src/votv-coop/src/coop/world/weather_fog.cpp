@@ -14,6 +14,7 @@
 #include "ue_wrap/facts/function_row.h"
 #include "ue_wrap/world/world_singleton.h"
 
+#include <cmath>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -175,6 +176,9 @@ void ReadHostFogState(void* cycle, coop::net::WeatherStatePayload& out) {
         auto* ab = reinterpret_cast<uint8_t*>(actor);
         out.fogAlpha    = *reinterpret_cast<float*>(ab + P::off::WeatherFogController_Alpha);
         out.fogStrength = *reinterpret_cast<float*>(ab + P::off::WeatherFogController_Strength);
+        out.fogTime     = *reinterpret_cast<float*>(ab + P::off::WeatherFogController_Time);
+        out.fogPhase    = *reinterpret_cast<float*>(ab + P::off::WeatherFogController_fogPhase);
+        out.fogDuration = *reinterpret_cast<float*>(ab + P::off::WeatherFogController_Duration);
     }
 }
 
@@ -228,11 +232,19 @@ void ApplyFromHost(void* cycle, const coop::net::WeatherStatePayload& payload) {
             auto* ab = reinterpret_cast<uint8_t*>(actor);
             *reinterpret_cast<float*>(ab + P::off::WeatherFogController_Alpha)    = payload.fogAlpha;
             *reinterpret_cast<float*>(ab + P::off::WeatherFogController_Strength) = payload.fogStrength;
+            // The noise the density rides, and the paces of it and of alpha: the client's own were rolled at random.
+            if (std::isfinite(payload.fogTime))
+                *reinterpret_cast<float*>(ab + P::off::WeatherFogController_Time) = payload.fogTime;
+            if (payload.fogPhase > 0.f && std::isfinite(payload.fogPhase))
+                *reinterpret_cast<float*>(ab + P::off::WeatherFogController_fogPhase) = payload.fogPhase;
+            if (payload.fogDuration > 0.f && std::isfinite(payload.fogDuration))
+                *reinterpret_cast<float*>(ab + P::off::WeatherFogController_Duration) = payload.fogDuration;
         }
         // The visible height-fog density snap is unconditional below: a host-clear apply also pins
         // the client's base haze, not just the fog case.
-        UE_LOGI("weather_fog: host FOG snap -> Alpha=%.4f Strength=%.4f finalFogDensity=%.4f",
-                payload.fogAlpha, payload.fogStrength, payload.finalFogDensity);
+        UE_LOGI("weather_fog: host FOG snap -> Alpha=%.4f Strength=%.4f time=%.2f phase=%.0f duration=%.0f "
+                "finalFogDensity=%.4f", payload.fogAlpha, payload.fogStrength, payload.fogTime, payload.fogPhase,
+                payload.fogDuration, payload.finalFogDensity);
     }
 
     // The black fog: the client's own copy from the host's start edge (or a join while it runs) to its end edge. Its

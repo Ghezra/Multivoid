@@ -570,10 +570,10 @@ inline constexpr size_t AdaynightCycle_permanentFog         = 0x042D;  // bool (
 // AweatherFogController_C (held in fogEventObject@0x0338). Its ReceiveTick ramps the height-fog
 // density over Duration from 0, so a joiner is snapped to the host's fog by copying the host
 // actor's ramp state onto the mirror. From weatherFogController.hpp; confirmed by the fog probe.
-inline constexpr size_t WeatherFogController_Time     = 0x0238;  // float (elapsed lifetime clock)
+inline constexpr size_t WeatherFogController_Time     = 0x0238;  // float (the Perlin input: random -1000..1000 at begin play, + dt/fogPhase a tick)
 inline constexpr size_t WeatherFogController_Alpha    = 0x023C;  // float (current ramp intensity)
-inline constexpr size_t WeatherFogController_Duration = 0x0240;  // float (total lifetime)
-inline constexpr size_t WeatherFogController_fogPhase = 0x0244;  // float (eased progress 0..1)
+inline constexpr size_t WeatherFogController_Duration = 0x0240;  // float (seconds alpha takes from 0 to 1)
+inline constexpr size_t WeatherFogController_fogPhase = 0x0244;  // float (seconds per unit of time: the noise's pace)
 inline constexpr size_t WeatherFogController_Strength = 0x024C;  // float (max density scale)
 
 // AdirectionalWind_C (a singleton, mainGamemode.directionalWind@0x0F70). The visible leaf shake
