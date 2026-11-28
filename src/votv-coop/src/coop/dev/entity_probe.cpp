@@ -1665,15 +1665,23 @@ void MopStep(bool host, uint64_t t) {
         UE_LOGI("[MOP] client: a mop in hand ok=%d",
                 coop::dev::drill_hand::TakeIntoHandNow(L"mop", L"prop_mop_C") ? 1 : 0);
     }
+    // VOTVCOOP_MOPDIP_AWAY=1: the view turns from the bucket in the frame after each press and back 1.5 s later, so the
+    // grant's replay of the click traces past it.
+    static const bool s_away = coop::config::ReadEnv("VOTVCOOP_MOPDIP_AWAY") == "1";
+    static uint64_t s_awayUntil = 0;
     ue_wrap::FVector eye{}, b{};
-    if (t >= 52000u && bucket && E::TryGetActorLocation(bucket, b) && E::ReadMainPlayerCameraLocation(me, eye))
-        E::SetControlRotation(E::GetController(me), coop::director::LookAt(eye, ue_wrap::FVector{b.X, b.Y, b.Z + 20.f}));
+    if (t >= 52000u && bucket && E::TryGetActorLocation(bucket, b) && E::ReadMainPlayerCameraLocation(me, eye)) {
+        ue_wrap::FRotator look = coop::director::LookAt(eye, ue_wrap::FVector{b.X, b.Y, b.Z + 20.f});
+        if (t < s_awayUntil) look.Yaw += 180.f;
+        E::SetControlRotation(E::GetController(me), look);
+    }
     const uint64_t pressAt = 55000u + 3000u * static_cast<uint64_t>(s_press);
     if (s_press < 10 && s_step == 1 && t >= pressAt) {
         void* const mop = held();
         if (float* const pw = power(mop)) *pw = 0.f;
         s_before = water(bucket);
         const bool ran = mop && ue_wrap::bucket::CallHandUseLmb(mop, me);
+        if (s_away) s_awayUntil = t + 1500u;
         UE_LOGI("[MOP] client: press %d (held %ls, ran=%d), its bucket %.1f", s_press + 1,
                 mop ? R::ToString(R::NameOf(R::ClassOf(mop))).c_str() : L"nothing", ran ? 1 : 0, s_before);
         s_step = 2;
