@@ -12,6 +12,7 @@
 #include "coop/element/registry.h"
 #include "atv_seat.h"
 #include "coop/dev/director/aimed_grab.h"
+#include "coop/props/prop_drive_stream.h"
 #include "coop/interactables/atv_sync.h"
 #include "coop/interactables/interactable_sync.h"
 #include "coop/dev/director/director.h"
@@ -36,6 +37,8 @@
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/engine/engine_attach.h"
+#include "ue_wrap/core/sdk_profile_names.h"
+#include "ue_wrap/engine/engine_mainplayer.h"
 #include "ue_wrap/engine/engine_physics.h"
 #include "ue_wrap/engine/engine_component.h"
 #include "ue_wrap/actors/bucket.h"
@@ -75,6 +78,7 @@
 #include <map>
 #include <memory>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -2038,12 +2042,51 @@ void CamAimStep(bool host, uint64_t t) {
         s_step = 1;
         UE_LOGI("[CAMA] host: setAngle(-20, 5, 80) on '%ls'=%d", best.c_str(), angle(L"setAngle", -20.f, 5.f, 80.f) ? 1 : 0);
     }
+    // Both at once: slot 1 from 100 s turns the camera by -1 a tick for sixty ticks; the host, from 100 s, takes the
+    // camera's rot_x and starts turning it by +1 a tick for sixty ticks the moment slot 1's turn arrives (rot_x below
+    // what it took), so the two turns overlap. 8 s after each starts it says where the camera points (`final`), and
+    // slot 2 at 140 s: the three must agree.
+    static int s_both = 0, s_bothTicks = 0;
+    static uint64_t s_bothAt = 0;
+    static float s_base = 0.f;
+    if (cam && (host || slot1) && t >= 100000u) {
+        if (s_both == 0 && host && s_base == 0.f) s_base = field(L"rot_x") + 1000.f;   // +1000: taken
+        const bool go = slot1 ? true : (s_base != 0.f && field(L"rot_x") < s_base - 1000.f - 0.5f);
+        if (s_both == 0 && go) {
+            s_both = 1;
+            s_bothAt = t;
+            UE_LOGI("[CAMA] %s: turning at once from rot_x=%.1f", host ? "host" : "client", field(L"rot_x"));
+        }
+        if (s_both == 1 && s_bothTicks < 60) {
+            ++s_bothTicks;
+            angle(L"addAngle", host ? 1.f : -1.f, 0.f, 0.f);
+        }
+        if (s_both == 1 && t >= s_bothAt + 8000u) {
+            s_both = 2;
+            UE_LOGI("[CAMA] %s final: camera '%ls' rot_x=%.1f rot_y=%.1f zoom=%.1f", host ? "host" : "client",
+                    best.c_str(), field(L"rot_x"), field(L"rot_y"), field(L"zoom"));
+        }
+        if (host && s_both == 2 && t >= s_bothAt + 60000u) {
+            s_both = 3;
+            UE_LOGI("[CAMA] host final again: rot_x=%.1f", field(L"rot_x"));
+            UE_LOGI("[ENTITY] done");
+        }
+    }
+    if (cam && !host && !slot1 && t >= 100000u) {
+        static bool s_said = false;
+        static uint64_t s_at = 0;
+        if (!s_at) s_at = t + 20000u;
+        if (!s_said && t >= s_at) {
+            s_said = true;
+            UE_LOGI("[CAMA] client2 final: camera '%ls' rot_x=%.1f rot_y=%.1f zoom=%.1f", best.c_str(), field(L"rot_x"),
+                    field(L"rot_y"), field(L"zoom"));
+        }
+    }
     static uint64_t s_next = 0;
     if (t < 45000u || t > 100000u || t < s_next) return;
     s_next = t + 5000u;
     UE_LOGI("[CAMA] %s t=%llu: camera '%ls' rot_x=%.1f rot_y=%.1f zoom=%.1f", host ? "host" : "client",
             static_cast<unsigned long long>(t / 1000u), best.c_str(), field(L"rot_x"), field(L"rot_y"), field(L"zoom"));
-    if (host && t >= 95000u) UE_LOGI("[ENTITY] done");
 }
 
 // VOTVCOOP_ENTITY_PROBE=uidump: HOST 40 s: every loaded widget or Blueprint class whose name holds one of
@@ -2230,11 +2273,36 @@ void CamScreenStep(bool host, uint64_t t) {
                 g.valid() && g.Set<bool>(L"isSecurity", false) && ue_wrap::Call(tvs[0], g) ? 1 : 0);
     }
     const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    // The laptop opened on its cameras panel first, so its camera slots are built.
+    static bool s_opened = false;
+    if (cam && slot1 && !s_opened && t >= 46000u) {
+        s_opened = true;
+        void* const w = ue_wrap::security_camera::LaptopWidget();
+        auto fieldOf = [](void* o, const wchar_t* name) -> void* {
+            const int32_t off = o ? R::FindPropertyOffset(R::ClassOf(o), name) : -1;
+            return off >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(o) + off) : nullptr;
+        };
+        ue_wrap::ParamFrame add(w ? R::FindDispatchFunctionCached(R::ClassOf(w), L"AddToViewport") : nullptr);
+        const bool added = add.valid() && ue_wrap::Call(w, add);
+        void* const sw = fieldOf(w, L"switcher");
+        ue_wrap::ParamFrame f(sw ? R::FindDispatchFunctionCached(R::ClassOf(sw), L"SetActiveWidget") : nullptr);
+        const bool shown = f.valid() && f.Set<void*>(L"Widget", fieldOf(w, L"canvas_cams")) && ue_wrap::Call(sw, f);
+        ue_wrap::ParamFrame gen(w ? R::FindDispatchFunctionCached(R::ClassOf(w), L"genCams") : nullptr);
+        const bool built = gen.valid() && ue_wrap::Call(w, gen);
+        UE_LOGI("[CAMS] client: laptop open=%d, cameras panel=%d, genCams=%d", added ? 1 : 0, shown ? 1 : 0, built ? 1 : 0);
+    }
     if (cam && slot1 && s_step == 0 && t >= 50000u) {
         s_step = 1;
         void* slot = nullptr;
-        for (void* o : R::FindObjectsByClass(L"uicomp_camSlot_C"))
-            if (o && R::IsLive(o) && !R::NameStartsWith(R::NameOf(o), L"Default__")) { slot = o; break; }
+        size_t slots = 0;
+        for (void* o : R::FindObjectsByClass(L"uicomp_camSlot_C")) {
+            if (!o || !R::IsLive(o) || R::NameStartsWith(R::NameOf(o), L"Default__")) continue;
+            ++slots;
+            const int32_t co = R::FindPropertyOffset(R::ClassOf(o), L"cam");
+            void* const c = co >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(o) + co) : nullptr;
+            if (!slot || c == cam) slot = o;
+        }
+        UE_LOGI("[CAMS] client: %zu camera slot(s) built", slots);
         bool ok = false;
         if (slot) {
             const int32_t off = R::FindPropertyOffset(R::ClassOf(slot), L"cam");
@@ -2242,6 +2310,13 @@ void CamScreenStep(bool host, uint64_t t) {
             ue_wrap::ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(slot),
                 L"BndEvt__umg_camSlot_EditableTextBox_342_K2Node_ComponentBoundEvent_2_OnEditableTextBoxCommittedEvent__DelegateSignature"));
             uint8_t text[ue_wrap::ftext_utils::kFTextSize] = {};
+            // The commit reads the box's own text, as a player's typing leaves it: typed in first.
+            const int32_t boxOff = R::FindPropertyOffset(R::ClassOf(slot), L"EditableTextBox_342");
+            void* const box = boxOff >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(slot) + boxOff) : nullptr;
+            ue_wrap::ParamFrame set(box ? R::FindDispatchFunctionCached(R::ClassOf(box), L"SetText") : nullptr);
+            const bool typed = set.valid() && ue_wrap::ftext_utils::MintFText(L"ENTRANCE-CAM", text) &&
+                               set.SetRaw(L"InText", text, sizeof(text)) && ue_wrap::Call(box, set);
+            UE_LOGI("[CAMS] client: typed into the name box=%d", typed ? 1 : 0);
             ok = off >= 0 && f.valid() && ue_wrap::ftext_utils::MintFText(L"ENTRANCE-CAM", text) &&
                  f.SetRaw(L"Text", text, sizeof(text)) && f.Set<uint8_t>(L"CommitMethod", 1) && ue_wrap::Call(slot, f);
         }
@@ -2276,6 +2351,228 @@ void CamScreenStep(bool host, uint64_t t) {
     UE_LOGI("[CAMS] %s t=%llu: camera '%ls' named '%ls'; TVs:%ls", host ? "host" : "client",
             static_cast<unsigned long long>(t / 1000u), best.c_str(), nameOf(cam).c_str(), tvLine.c_str());
     if (host && t >= 95000u) UE_LOGI("[ENTITY] done");
+}
+
+// VOTVCOOP_ENTITY_PROBE=bagselect: how soon a client can look at and take a trash bag, against a resting floppy disc
+// (Ghezra/Multivoid issue 45). HOST: 70 s a garbage bag spawned 1.5 m in front of its player (it falls and coasts);
+// 90 s one dropped 60 cm above the surface of the water volume nearest it. CLIENT slot 1, for each new bag and once for the floppy
+// disc nearest it: stands 1.2 m from it (the far bag and the disc only), aims at it, and logs the milliseconds until its
+// look-at names it and until a press of use takes it into its hand, or that it never did within 8 s (`[BAGS]`).
+bool BagSelectMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "bagselect";
+    return v;
+}
+
+void BagSelectStep(bool host, uint64_t t) {
+    namespace E = ue_wrap::engine;
+    void* const me = coop::players::Registry::Get().Local();
+    if (!me) return;
+    ue_wrap::FVector mine{};
+    E::TryGetActorLocation(me, mine);
+    static int s_hostPhase = 0;
+    if (host) {
+        auto spawnBag = [&](const ue_wrap::FVector& at, const char* what) {
+            void* const cls = CR::ResolveClass(L"prop_garbageBag_C", CR::AnyFamily(), CR::Load::Immediate).cls;
+            void* const bag = cls ? E::SpawnActor(cls, at) : nullptr;
+            UE_LOGI("[BAGS] host: a bag %s at (%.0f,%.0f,%.0f) %p", what, at.X, at.Y, at.Z, bag);
+        };
+        if (s_hostPhase == 0 && t >= 70000u) {
+            s_hostPhase = 1;
+            const ue_wrap::FRotator rot = E::GetCameraRotation();
+            const float yaw = rot.Yaw * 3.14159265f / 180.f;
+            spawnBag({mine.X + 150.f * std::cos(yaw), mine.Y + 150.f * std::sin(yaw), mine.Z + 40.f}, "dropped in front");
+        }
+        if (s_hostPhase == 1 && t >= 80000u) {
+            s_hostPhase = 4;
+            const ue_wrap::FRotator rot = E::GetCameraRotation();
+            const float yaw = rot.Yaw * 3.14159265f / 180.f;
+            void* const cls = CR::ResolveClass(L"prop_floppyDisc_R_C", CR::AnyFamily(), CR::Load::Immediate).cls;
+            const ue_wrap::FVector at{mine.X + 150.f * std::cos(yaw), mine.Y + 150.f * std::sin(yaw), mine.Z + 80.f};
+            void* const disc = cls ? E::SpawnActor(cls, at) : nullptr;
+            UE_LOGI("[BAGS] host: a floppy disc dropped in front at (%.0f,%.0f,%.0f) %p", at.X, at.Y, at.Z, disc);
+        }
+        if (s_hostPhase == 4 && t >= 90000u) {
+            s_hostPhase = 2;
+            static void* found[64];
+            const int n = ue_wrap::world_instances::Find(L"waterVolume_C", found, 64);
+            void* best = nullptr;
+            float bestD = 1e30f;
+            ue_wrap::FVector bestAt{};
+            for (int i = 0; i < n; ++i) {
+                ue_wrap::FVector at{};
+                if (!E::TryGetActorLocation(found[i], at)) continue;
+                const float d = (at.X - mine.X) * (at.X - mine.X) + (at.Y - mine.Y) * (at.Y - mine.Y);
+                if (d < bestD) { bestD = d; best = found[i]; bestAt = at; }
+            }
+            UE_LOGI("[BAGS] host: %d water volume(s), the nearest %.0f m away", n, best ? std::sqrt(bestD) / 100.f : -1.f);
+            // Above the water's surface, the top of its box, as a player drops a bag into it.
+            float top = bestAt.Z;
+            const int32_t boxOff = best ? R::FindPropertyOffset(R::ClassOf(best), L"Box") : -1;
+            void* const box = boxOff >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(best) + boxOff) : nullptr;
+            ue_wrap::ParamFrame ext(box ? R::FindDispatchFunctionCached(R::ClassOf(box), L"GetScaledBoxExtent") : nullptr);
+            if (ext.valid() && ue_wrap::Call(box, ext)) {
+                ue_wrap::FVector c{};
+                E::TryGetComponentLocation(box, c);
+                top = c.Z + ext.Get<ue_wrap::FVector>(L"ReturnValue").Z;
+            }
+            if (best) spawnBag({bestAt.X, bestAt.Y, top + 60.f}, "dropped above the water");
+        }
+        if (t >= 150000u && s_hostPhase == 2) {
+            s_hostPhase = 3;
+            UE_LOGI("[ENTITY] done");
+        }
+        return;
+    }
+    if (coop::players::Registry::Get().LocalPeerId() != 1 || t < 50000u) return;
+    // The target being measured, and when it was first aimed at.
+    static void* s_target = nullptr;
+    static const char* s_what = "";
+    static uint64_t s_aimAt = 0, s_lookMs = 0;
+    static std::set<void*> s_seen;
+    static void* s_retry = nullptr;
+    static uint64_t s_retryAt = 0;
+    static bool s_discDone = false;
+    auto standBy = [&](void* target) {
+        ue_wrap::FVector at{};
+        if (!E::TryGetActorLocation(target, at)) return;
+        const float dx = mine.X - at.X, dy = mine.Y - at.Y, d = std::sqrt(dx * dx + dy * dy);
+        const ue_wrap::FVector to{at.X + (d > 1.f ? dx / d : 1.f) * 120.f, at.Y + (d > 1.f ? dy / d : 0.f) * 120.f, at.Z + 60.f};
+        E::TeleportTo(me, to, {0.f, 0.f, 0.f});
+    };
+    // The save's own bags, as the drill first finds them, are not the drill's.
+    static bool s_baseline = false;
+    if (!s_baseline) {
+        s_baseline = true;
+        for (void* o : R::FindObjectsByClass(L"prop_garbageBag_C")) s_seen.insert(o);
+        for (void* o : R::FindObjectsByClass(L"prop_floppyDisc_R_C")) s_seen.insert(o);
+    }
+    if (!s_target) {
+        // A new bag the host spawned, else (once) the nearest floppy disc.
+        for (void* o : R::FindObjectsByClass(L"prop_garbageBag_C")) {
+            if (!o || !R::IsLive(o) || R::NameStartsWith(R::NameOf(o), L"Default__") || s_seen.count(o)) continue;
+            s_seen.insert(o);
+            ue_wrap::FVector at{};
+            E::TryGetActorLocation(o, at);
+            const float d = std::sqrt((at.X - mine.X) * (at.X - mine.X) + (at.Y - mine.Y) * (at.Y - mine.Y));
+            s_target = o;
+            s_what = d > 600.f ? "the bag in the water" : "the dropped bag";
+            standBy(o);
+            break;
+        }
+        // The rested retry of the dropped disc.
+        if (!s_target && s_retry && ::GetTickCount64() >= s_retryAt) {
+            if (R::IsLive(s_retry)) {
+                s_target = s_retry;
+                s_what = "the dropped floppy disc, rested";
+                standBy(s_retry);
+            }
+            s_retry = nullptr;
+        }
+        // A floppy disc the host just dropped, coasting.
+        if (!s_target)
+            for (void* o : R::FindObjectsByClass(L"prop_floppyDisc_R_C")) {
+                if (!o || !R::IsLive(o) || R::NameStartsWith(R::NameOf(o), L"Default__") || s_seen.count(o)) continue;
+                s_seen.insert(o);
+                s_target = o;
+                s_what = "the dropped floppy disc";
+                standBy(o);
+                break;
+            }
+        // The control: a bag of the save's own, at rest, which no coast parks.
+        static bool s_restDone = false;
+        if (!s_target && s_discDone && !s_restDone) {
+            s_restDone = true;
+            void* best = nullptr;
+            float bestD = 1e30f;
+            for (void* o : R::FindObjectsByClass(L"prop_garbageBag_C")) {
+                ue_wrap::FVector at{};
+                if (!o || !R::IsLive(o) || R::NameStartsWith(R::NameOf(o), L"Default__") || !E::TryGetActorLocation(o, at)) continue;
+                const float d = (at.X - mine.X) * (at.X - mine.X) + (at.Y - mine.Y) * (at.Y - mine.Y);
+                if (d < bestD && d > 1.f) { bestD = d; best = o; }
+            }
+            if (best) {
+                s_target = best;
+                s_what = "a resting bag of the save's";
+                standBy(best);
+            }
+        }
+        if (!s_target && !s_discDone && t >= 60000u) {
+            s_discDone = true;
+            void* best = nullptr;
+            float bestD = 1e30f;
+            for (const wchar_t* cls : {L"prop_floppyDisc_R_C", L"prop_floppyDisc_G_C", L"prop_floppyDisc_Y_C"})
+                for (void* o : R::FindObjectsByClass(cls)) {
+                    ue_wrap::FVector at{};
+                    if (!o || !R::IsLive(o) || R::NameStartsWith(R::NameOf(o), L"Default__") || !E::TryGetActorLocation(o, at)) continue;
+                    const float d = (at.X - mine.X) * (at.X - mine.X) + (at.Y - mine.Y) * (at.Y - mine.Y);
+                    if (d < bestD) { bestD = d; best = o; }
+                }
+            if (best) {
+                s_target = best;
+                s_what = "the floppy disc";
+                standBy(best);
+            }
+        }
+        if (!s_target) return;
+        s_aimAt = ::GetTickCount64();
+        s_lookMs = 0;
+        ue_wrap::FVector at{}, now{};
+        E::TryGetActorLocation(s_target, at);
+        E::TryGetActorLocation(me, now);
+        UE_LOGI("[BAGS] client: aiming at %s at (%.0f,%.0f,%.0f) from (%.0f,%.0f,%.0f), parked by the coast=%d", s_what, at.X,
+                at.Y, at.Z, now.X, now.Y, now.Z, coop::prop_drive_stream::IsParked(s_target) ? 1 : 0);
+    }
+    const uint64_t now = ::GetTickCount64();
+    static std::unique_ptr<coop::director::AimedGrab> s_grab;
+    static void* s_grabFor = nullptr;
+    if (s_grabFor != s_target) {
+        s_grab = std::make_unique<coop::director::AimedGrab>(me, s_target);
+        s_grabFor = s_target;
+    }
+    const coop::director::GrabState gstate = s_grab->Tick();
+    if (!s_lookMs && s_grab->Aimed()) {
+        s_lookMs = now - s_aimAt + 1;
+        UE_LOGI("[BAGS] client: the trace took %s after %llu ms", s_what, static_cast<unsigned long long>(s_lookMs - 1));
+    }
+    if (gstate != coop::director::GrabState::Working || now - s_aimAt > 8000u) {
+        const bool held = gstate == coop::director::GrabState::Grabbed;
+        UE_LOGI("[BAGS] client: %s %s after %llu ms (trace took it: %s%s%s)", s_what, held ? "taken into the hand" : "NOT taken",
+                static_cast<unsigned long long>(now - s_aimAt), s_lookMs ? "yes" : "NO", held ? "" : "; ",
+                held ? "" : (s_grab->Why() ? s_grab->Why() : "timed out"));
+        if (held) ue_wrap::engine::ReleaseMainPlayerGrabIfHolding(me, s_target);
+        // A dropped disc that was not taken is tried once more once it has rested, which tells a coast's park from
+        // anything else about the copy.
+        if (!held && std::strcmp(s_what, "the dropped floppy disc") == 0) {
+            s_retry = s_target;
+            s_retryAt = now + 6000u;
+        }
+        s_target = nullptr;
+        s_grabFor = nullptr;
+        s_grab.reset();
+    }
+}
+
+// VOTVCOOP_ENTITY_PROBE=quitgame: HOST 150 s (after both clients have joined): KismetSystemLibrary::QuitGame, as the
+// game's ending does last (lib_C::End, Ghezra/Multivoid issue 10), logged before and after (`[QUIT]`). The runner
+// says whether the host's process went away.
+bool QuitGameMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "quitgame";
+    return v;
+}
+
+void QuitGameStep(bool host, uint64_t t) {
+    static bool s_done = false;
+    if (!host || s_done || t < 150000u) return;
+    s_done = true;
+    void* const lib = R::FindClass(L"KismetSystemLibrary");
+    void* const fn = lib ? R::FindFunction(lib, L"QuitGame") : nullptr;
+    void* const cdo = R::FindClassDefaultObject(L"KismetSystemLibrary");
+    void* const me = coop::players::Registry::Get().Local();
+    UE_LOGI("[QUIT] host: QuitGame as the ending does (fn=%p)", fn);
+    ue_wrap::ParamFrame f(fn);
+    const bool ok = f.valid() && f.Set<void*>(L"WorldContextObject", me) && f.Set<uint8_t>(L"QuitPreference", 0) &&
+                    f.Set<bool>(L"bIgnorePlatformRestrictions", true) && cdo && ue_wrap::Call(cdo, f);
+    UE_LOGI("[QUIT] host: QuitGame returned (ok=%d)", ok ? 1 : 0);
 }
 
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
@@ -2800,6 +3097,14 @@ void Tick(coop::net::Session* session) {
     }
     if (CamScreenMode()) {
         CamScreenStep(host, t);
+        return;
+    }
+    if (BagSelectMode()) {
+        BagSelectStep(host, t);
+        return;
+    }
+    if (QuitGameMode()) {
+        QuitGameStep(host, t);
         return;
     }
     if (Catalog()) {
