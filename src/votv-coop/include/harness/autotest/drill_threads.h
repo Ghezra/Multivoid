@@ -153,6 +153,7 @@ DWORD WINAPI EventForceTestThread(LPVOID arg);
 // VOTVCOOP_RUN_ALARMFORCE_TEST, host -- harness/autotest/autotest_alarmforce.cpp
 void RunAutonomousAlarmForceTest();
 DWORD WINAPI AlarmForceTestThread(LPVOID arg);
+DWORD WINAPI BoardDrillThread(LPVOID arg);
 
 // VOTVCOOP_RUN_WISPLANE_TEST, host -- harness/autotest/autotest_wisplane.cpp
 void RunAutonomousWispLaneTest();

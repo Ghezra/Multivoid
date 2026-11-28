@@ -2,6 +2,8 @@
 
 #include "coop/world/whiteboard_sync.h"
 
+#include "coop/config/config.h"
+#include "coop/config/config_registry.h"
 #include "coop/net/blob_chunks.h"
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
@@ -322,6 +324,22 @@ void OnPeerWorldReady(int slot) {
         if (W::CanRead(g_boards[i].surface) && SendBoard(g_boards[i], slot, -1)) ++g_counts[static_cast<size_t>(Count::JoinSent)];
     UE_LOGI("whiteboard_sync: slot %d's world is up -- %zu board picture(s) sent", slot, g_boardCount);
 }
+
+// The drill's red arm: the join answer is skipped, so the drill must go red.
+bool RedArm() { return coop::config::ResolveFlag(::coop::config_registry::rows::board_drill_off); }
+
+void ForceJoinAnswer(int slot) {
+    if (RedArm()) { UE_LOGI("whiteboard_sync: board drill red arm -- the join answer is skipped"); return; }
+    OnPeerWorldReady(slot);
+}
+
+uint64_t SentCount() { return g_counts[static_cast<size_t>(Count::Sent)]; }
+bool SlotReady(int slot) {
+    N::Session* const s = g_session.load(std::memory_order_acquire);
+    return s && slot > 0 && s->IsSlotWorldReady(slot);
+}
+
+uint64_t AppliedCount() { return g_counts[static_cast<size_t>(Count::Applied)]; }
 
 void OnDisconnect() {
     g_watchLive = false;

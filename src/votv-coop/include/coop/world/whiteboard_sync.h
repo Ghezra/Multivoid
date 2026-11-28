@@ -33,6 +33,12 @@ void OnPeerWorldReady(int slot);
 
 void OnDisconnect();
 
+// The drill's door: the host's join answer for one slot, and the counters it asserts on.
+void ForceJoinAnswer(int slot);
+uint64_t SentCount();
+uint64_t AppliedCount();
+bool SlotReady(int slot);
+
 enum class Count : uint8_t { Sent, Applied, Refused, JoinSent, kCount };
 
 }  // namespace coop::whiteboard_sync

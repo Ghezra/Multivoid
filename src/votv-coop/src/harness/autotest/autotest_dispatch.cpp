@@ -307,6 +307,8 @@ void SpawnEnvGatedTests(coop::net::Role role) {
     // The ambient creatures: deer and walking trees; dirt holes and beehive branches; a sus hole around a client.
     SpawnIf("VOTVCOOP_RUN_AMBIENT_CREATURE", "ambient creature drill", &AmbientCreatureThread, role);
     SpawnIf("VOTVCOOP_RUN_AMBIENT_FIELD", "ambient field drill", &AmbientFieldThread, role);
+    // The whiteboard drill: the host's join answer carries a board's picture to the client, which must apply it.
+    SpawnIf("VOTVCOOP_RUN_BOARD_TEST", "whiteboard picture drill", &BoardDrillThread, role);
     SpawnIf("VOTVCOOP_RUN_SUS_HOLE", "sus hole drill", &SusHoleThread, role);
     // The cremator drill: the host pulls its lever and the client's copy must show the run, then show it again after a
     // rejoin (1); a client sent into the running machine must die by it (g3).
