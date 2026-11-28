@@ -1810,6 +1810,41 @@ void FogStep(bool host, uint64_t t) {
     if (host && t >= 115000u) UE_LOGI("[ENTITY] done");
 }
 
+// VOTVCOOP_ENTITY_PROBE=fridge: the basement fridge's knocks. HOST 45 s: its startKnocking (the big knock); 70 s: its
+// knockamount to 3; 71 s: its knockObscurity (the quiet knock). The fridge knock lane says what each peer sent and played.
+bool FridgeMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "fridge";
+    return v;
+}
+
+void FridgeStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    if (!host) return;
+    void* const fridge = First(L"fridgeGlow_C");
+    if (!fridge) return;
+    auto call = [&](const wchar_t* fn) {
+        ue_wrap::ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(fridge), fn));
+        return f.valid() && ue_wrap::Call(fridge, f);
+    };
+    if (s_step == 0 && t >= 45000u) {
+        s_step = 1;
+        UE_LOGI("[FRIDGE] host: startKnocking ran=%d", call(L"startKnocking") ? 1 : 0);
+    }
+    if (s_step == 1 && t >= 70000u) {   // as props pushed against its door would, a second before its timer
+        s_step = 2;
+        const int32_t off = R::FindPropertyOffset(R::ClassOf(fridge), L"knockamount");
+        if (off >= 0) *reinterpret_cast<int32_t*>(static_cast<char*>(fridge) + off) = 3;
+    }
+    if (s_step == 2 && t >= 71000u) {
+        s_step = 3;
+        UE_LOGI("[FRIDGE] host: knockObscurity ran=%d", call(L"knockObscurity") ? 1 : 0);
+    }
+    if (s_step == 3 && t >= 85000u) {
+        s_step = 4;
+        UE_LOGI("[ENTITY] done");
+    }
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -2300,6 +2335,10 @@ void Tick(coop::net::Session* session) {
     }
     if (FogMode()) {
         FogStep(host, t);
+        return;
+    }
+    if (FridgeMode()) {
+        FridgeStep(host, t);
         return;
     }
     if (Catalog()) {
