@@ -13,6 +13,7 @@
 #include "atv_seat.h"
 #include "coop/dev/director/aimed_grab.h"
 #include "coop/interactables/atv_sync.h"
+#include "coop/interactables/interactable_sync.h"
 #include "coop/dev/director/director.h"
 #include "coop/dev/drill_hand.h"
 #include "coop/config/config_registry.h"
@@ -42,6 +43,7 @@
 #include "ue_wrap/engine/engine_physics.h"
 #include "ue_wrap/devices/atv.h"
 #include "ue_wrap/devices/cremator.h"
+#include "ue_wrap/devices/security_camera.h"
 #include "ue_wrap/core/fname_utils.h"
 #include "ue_wrap/actors/floppy_disc.h"
 #include "ue_wrap/core/field_io.h"
@@ -1845,6 +1847,98 @@ void FridgeStep(bool host, uint64_t t) {
     }
 }
 
+// VOTVCOOP_ENTITY_PROBE=camwatch: a camera's green light follows whoever watches it. The camera is the one of smallest
+// key on every peer. CLIENT slot 1: 50 s its laptop added to the viewport, on its cameras panel, the camera picked
+// through the laptop's own setCam; 65 s the panel switched away; 75 s back; 115 s the laptop taken from the viewport.
+// Every peer, each 3 s from 45 s (`[CAMW]`): the camera's `spec`.
+bool CamWatchMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "camwatch";
+    return v;
+}
+
+void CamWatchStep(bool host, uint64_t t) {
+    namespace SC = ue_wrap::security_camera;
+    static int s_step = 0;
+    static void* found[64];
+    void* cam = nullptr;
+    std::wstring best;
+    for (const wchar_t* cls : {L"prop_camera_bad_C", L"prop_camera_C", L"prop_camera_good_C", L"prop_camera_ultra_C",
+                               L"prop_camera_s_C", L"prop_camera_cursed_C"}) {
+        const int n = ue_wrap::world_instances::Find(cls, found, 64);
+        for (int i = 0; i < n; ++i) {
+            const std::wstring k = coop::interactable_sync::CameraKeyOf(found[i]);
+            static int s_listed = 0;
+            if (t >= 45000u && s_listed < 12) {
+                ++s_listed;
+                ue_wrap::FVector at{};
+                E::TryGetActorLocation(found[i], at);
+                void* owner = nullptr;
+                ue_wrap::engine::GetAttachParentActor(found[i], owner);
+                UE_LOGI("[CAMW] %s: %ls key '%ls' at (%.0f,%.0f,%.0f) on %ls (eid %u)", host ? "host" : "client", cls,
+                        k.c_str(), at.X, at.Y, at.Z, owner ? R::ToString(R::NameOf(R::ClassOf(owner))).c_str() : L"-",
+                        owner ? static_cast<unsigned>(coop::element::Registry::Get().EidForActor(owner)) : 0u);
+            }
+            // A Kerfur's camera first (keyed by its Omega), the hardest to name; else the smallest key.
+            const bool kerf = k.rfind(L"kerfur:", 0) == 0, bestKerf = best.rfind(L"kerfur:", 0) == 0;
+            if (!k.empty() && (best.empty() || (kerf && !bestKerf) || (kerf == bestKerf && k < best))) {
+                best = k;
+                cam = found[i];
+            }
+        }
+    }
+    void* const w = SC::LaptopWidget();
+    auto call0 = [](void* o, const wchar_t* fn) {
+        ue_wrap::ParamFrame f(o ? R::FindDispatchFunctionCached(R::ClassOf(o), fn) : nullptr);
+        return f.valid() && ue_wrap::Call(o, f);
+    };
+    auto field = [](void* o, const wchar_t* name) -> void* {
+        const int32_t off = o ? R::FindPropertyOffset(R::ClassOf(o), name) : -1;
+        return off >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(o) + off) : nullptr;
+    };
+    auto show = [&](bool cams) {
+        void* const sw = field(w, L"switcher");
+        if (!sw) return false;
+        if (cams) {
+            ue_wrap::ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(sw), L"SetActiveWidget"));
+            return f.valid() && f.Set<void*>(L"Widget", field(w, L"canvas_cams")) && ue_wrap::Call(sw, f);
+        }
+        ue_wrap::ParamFrame f(R::FindDispatchFunctionCached(R::ClassOf(sw), L"SetActiveWidgetIndex"));
+        return f.valid() && f.Set<int32_t>(L"Index", 0) && ue_wrap::Call(sw, f);
+    };
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    if (slot1 && w && cam) {
+        if (s_step == 0 && t >= 50000u) {
+            s_step = 1;
+            ue_wrap::ParamFrame add(R::FindDispatchFunctionCached(R::ClassOf(w), L"AddToViewport"));
+            const bool added = add.valid() && ue_wrap::Call(w, add);
+            ue_wrap::ParamFrame pick(R::FindDispatchFunctionCached(R::ClassOf(w), L"setCam"));
+            const bool picked = pick.valid() && pick.Set<void*>(L"cam", cam) && ue_wrap::Call(w, pick);
+            UE_LOGI("[CAMW] client: laptop open=%d, cameras panel=%d, picked '%ls'=%d", added ? 1 : 0, show(true) ? 1 : 0,
+                    best.c_str(), picked ? 1 : 0);
+        }
+        if (s_step == 1 && t >= 65000u) {
+            s_step = 2;
+            UE_LOGI("[CAMW] client: another panel=%d", show(false) ? 1 : 0);
+        }
+        if (s_step == 2 && t >= 75000u) {
+            s_step = 3;
+            UE_LOGI("[CAMW] client: the cameras panel again=%d", show(true) ? 1 : 0);
+        }
+        if (s_step == 3 && t >= 115000u) {
+            s_step = 4;
+            UE_LOGI("[CAMW] client: laptop closed=%d", call0(w, L"RemoveFromParent") ? 1 : 0);
+        }
+    }
+    static uint64_t s_next = 0;
+    if (t < 45000u || t > 130000u || t < s_next) return;
+    s_next = t + 3000u;
+    bool spec = false;
+    const bool read = cam && SC::ReadWatched(cam, spec);
+    UE_LOGI("[CAMW] %s t=%llu: camera '%ls' watched=%d (read=%d)", host ? "host" : "client",
+            static_cast<unsigned long long>(t / 1000u), best.c_str(), spec ? 1 : 0, read ? 1 : 0);
+    if (host && t >= 127000u) UE_LOGI("[ENTITY] done");
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -2339,6 +2433,10 @@ void Tick(coop::net::Session* session) {
     }
     if (FridgeMode()) {
         FridgeStep(host, t);
+        return;
+    }
+    if (CamWatchMode()) {
+        CamWatchStep(host, t);
         return;
     }
     if (Catalog()) {
