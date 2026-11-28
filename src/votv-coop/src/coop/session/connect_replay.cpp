@@ -115,6 +115,10 @@
 #include "coop/props/prop_rest_sync.h"  // the joiner's rest rest pass
 #include "coop/interactables/gasoline_sync.h"  // every cremator's fuel and every gas can's
 #include "coop/interactables/window_dirt_sync.h"
+#include "coop/world/agrav_sync.h"  // the float's show, while it floats
+#include "coop/interactables/camera_screen_sync.h"  // every camera renamed, every TV set
+#include "coop/interactables/camera_aim_sync.h"  // every camera turned
+#include "coop/interactables/door_dent_sync.h"  // every hit door's leaves
 #include "coop/interactables/camera_watch_sync.h"  // every watched camera  // the bay window's grime picture
 #include "coop/props/custom_picture_sync.h"  // every named frame and held poster
 #include "coop/props/photo_sync.h"  // every printed picture
@@ -280,6 +284,14 @@ void ConnectReplayForSlot(int slot) {
     coop::window_dirt_sync::SendJoinSnapshotForSlot(slot);
     // Every camera some player watches.
     coop::camera_watch_sync::SendJoinSnapshotForSlot(slot);
+    // Every door a hit left ajar, as it stands.
+    coop::door_dent_sync::SendJoinSnapshotForSlot(slot);
+    // Every camera turned this session, as it points.
+    coop::camera_aim_sync::SendJoinSnapshotForSlot(slot);
+    // Every camera renamed and every TV set to a camera this session.
+    coop::camera_screen_sync::SendJoinSnapshotForSlot(slot);
+    // The Ariral float's show, while it floats.
+    coop::agrav_sync::SendJoinSnapshotForSlot(slot);
     // The desk's back plates and every transformer station's door.
     coop::cover_sync::SendJoinSnapshotForSlot(slot);
     // Every spray, every thrusting extinguisher and every partly spent charge.

@@ -30,6 +30,9 @@
 #include "coop/props/tape_sync.h"
 #include "coop/props/custom_picture_sync.h"
 #include "coop/interactables/window_dirt_sync.h"
+#include "coop/interactables/camera_screen_sync.h"  // a camera's name and a TV's camera, the host's
+#include "coop/interactables/camera_aim_sync.h"  // a camera turned by any player, the host's
+#include "coop/interactables/door_dent_sync.h"  // a hit door's leaves, the host's
 #include "coop/interactables/camera_watch_sync.h"  // a camera watched by any player, the host's  // the bay window's grime picture, the host's  // a frame's or poster's custom picture name, the host's
 #include "coop/props/bucket_pour.h"
 #include "coop/interactables/gasoline_sync.h"  // the cremator's fuel and a gas can's, the host's  // a client's tipped bucket's pour, the host's to spawn   // a tape's repair, the host's
@@ -600,6 +603,63 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         ::coop::bucket_pour::OnAsk(msg.senderPeerSlot, p);
+        break;
+    }
+    case net::ReliableKind::CameraNameAsk:
+    case net::ReliableKind::CameraNameState:
+    case net::ReliableKind::TvCameraAsk:
+    case net::ReliableKind::TvCameraState: {
+        // CLIENT->HOST a rename or a TV's camera; HOST->ALL the same (coop/interactables/camera_screen_sync).
+        const bool name = msg.kind == net::ReliableKind::CameraNameAsk || msg.kind == net::ReliableKind::CameraNameState;
+        const bool state = msg.kind == net::ReliableKind::CameraNameState || msg.kind == net::ReliableKind::TvCameraState;
+        const size_t want = name ? sizeof(net::CameraNamePayload) : sizeof(net::TvCameraPayload);
+        if ((session.role() == net::Role::Host) == state || msg.payloadLen != want) {
+            UE_LOGW("event_feed: a camera name or TV row the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        if (name) {
+            net::CameraNamePayload p{};
+            std::memcpy(&p, msg.payload, sizeof(p));
+            if (p.key.len > sizeof(p.key.data) || p.len > net::kCameraNameMax) break;
+            if (state) ::coop::camera_screen_sync::OnNameState(p);
+            else ::coop::camera_screen_sync::OnNameAsk(msg.senderPeerSlot, p);
+        } else {
+            net::TvCameraPayload p{};
+            std::memcpy(&p, msg.payload, sizeof(p));
+            if (p.camKey.len > sizeof(p.camKey.data)) break;
+            if (state) ::coop::camera_screen_sync::OnTvState(p);
+            else ::coop::camera_screen_sync::OnTvAsk(msg.senderPeerSlot, p);
+        }
+        break;
+    }
+    case net::ReliableKind::CameraAimAsk:
+    case net::ReliableKind::CameraAimState: {
+        // CLIENT->HOST a camera it turned; HOST->ALL a camera's aim (coop/interactables/camera_aim_sync).
+        const bool state = msg.kind == net::ReliableKind::CameraAimState;
+        if ((session.role() == net::Role::Host) == state || msg.payloadLen != sizeof(net::CameraAimPayload)) {
+            UE_LOGW("event_feed: a camera aim row the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        net::CameraAimPayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.key.len > sizeof(p.key.data)) break;
+        if (state) ::coop::camera_aim_sync::OnState(p);
+        else ::coop::camera_aim_sync::OnAsk(msg.senderPeerSlot, p);
+        break;
+    }
+    case net::ReliableKind::DoorDentState: {
+        // HOST->ALL a hit door's leaves (coop/interactables/door_dent_sync).
+        if (session.role() == net::Role::Host || msg.payloadLen != sizeof(net::DoorDentStatePayload)) {
+            UE_LOGW("event_feed: a door dent row the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        net::DoorDentStatePayload p{};
+        std::memcpy(&p, msg.payload, sizeof(p));
+        if (p.key.len > sizeof(p.key.data)) break;
+        ::coop::door_dent_sync::OnState(p);
         break;
     }
     case net::ReliableKind::CameraWatchAsk:

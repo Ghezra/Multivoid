@@ -53,6 +53,9 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::BucketPourAsk:
     case ReliableKind::BucketFillAsk:
     case ReliableKind::CameraWatchAsk:
+    case ReliableKind::CameraAimAsk:
+    case ReliableKind::CameraNameAsk:
+    case ReliableKind::TvCameraAsk:
     case ReliableKind::GasCanSpend:
     case ReliableKind::PictureAsk:
     case ReliableKind::MinerIntent:
@@ -324,6 +327,10 @@ constexpr ClientAuthorship AuthorshipOf(ReliableKind k) {
     case ReliableKind::PictureState:
     case ReliableKind::WindowImage:
     case ReliableKind::CameraWatchState:
+    case ReliableKind::DoorDentState:
+    case ReliableKind::CameraAimState:
+    case ReliableKind::CameraNameState:
+    case ReliableKind::TvCameraState:
     case ReliableKind::MinerState:
     case ReliableKind::FireExtState:
     case ReliableKind::CoverState:

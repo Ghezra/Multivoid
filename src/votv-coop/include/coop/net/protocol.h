@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 364;
+inline constexpr uint16_t kProtocolVersion = 365;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1741,6 +1741,27 @@ enum class ReliableKind : uint16_t {
     // HOST->ALL: a camera watched by any player, or by none any more; to a joiner, every watched camera. Never relayed;
     // not pre-world. CameraWatchStatePayload.
     CameraWatchState = 343,
+    // HOST->ALL: a base door's two leaves where the host's addDamage left them (coop/interactables/door_dent_sync); to a
+    // joiner, every door sent. Never relayed; not pre-world. DoorDentStatePayload.
+    DoorDentState = 344,
+    // CLIENT->HOST: a security camera this client's player turned, its aim targets after the turn
+    // (coop/interactables/camera_aim_sync). Never relayed; not pre-world. CameraAimPayload.
+    CameraAimAsk = 345,
+    // HOST->ALL: a camera's aim targets after a turn, the turning client's skipped; to a joiner, every camera turned.
+    // Never relayed; not pre-world. CameraAimPayload.
+    CameraAimState = 346,
+    // CLIENT->HOST: a security camera this client's player renamed at the laptop (coop/interactables/camera_screen_sync).
+    // Never relayed; not pre-world. CameraNamePayload.
+    CameraNameAsk = 347,
+    // HOST->ALL: a camera's name, the renaming client's skipped; to a joiner, every camera renamed. Never relayed; not
+    // pre-world. CameraNamePayload.
+    CameraNameState = 348,
+    // CLIENT->HOST: the camera a TV this client's player set shows, or none (camera_screen_sync). Never relayed; not
+    // pre-world. TvCameraPayload.
+    TvCameraAsk = 349,
+    // HOST->ALL: the camera a TV shows, or none, the setting client's skipped; to a joiner, every TV set. Never relayed;
+    // not pre-world. TvCameraPayload.
+    TvCameraState = 350,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2809,6 +2830,41 @@ struct CameraWatchStatePayload {
     uint8_t pad[3];   // zero
 };
 static_assert(sizeof(CameraWatchStatePayload) == 36, "CameraWatchStatePayload must be 36 bytes");
+
+// A base door's leaves (DoorDentState), by the door lane's key: door_r_root's and door_l_root's relative locations, cm.
+struct DoorDentStatePayload {
+    WireKey key;
+    float right[3];
+    float left[3];
+};
+static_assert(sizeof(DoorDentStatePayload) == 56, "DoorDentStatePayload must be 56 bytes");
+
+// A security camera's aim (CameraAimAsk, CameraAimState), by the camera lane's key: its `rot_x`, `rot_y` and `zoom`.
+struct CameraAimPayload {
+    WireKey key;
+    float rotX;
+    float rotY;
+    float zoom;
+};
+static_assert(sizeof(CameraAimPayload) == 44, "CameraAimPayload must be 44 bytes");
+
+// A security camera's name (CameraNameAsk, CameraNameState), by the camera lane's key: its `cameraName`, UTF-16.
+inline constexpr uint16_t kCameraNameMax = 64;
+struct CameraNamePayload {
+    WireKey key;
+    uint16_t len;   // name units, at most kCameraNameMax
+    uint16_t pad;   // zero
+    uint16_t name[kCameraNameMax];
+};
+static_assert(sizeof(CameraNamePayload) == 164, "CameraNamePayload must be 164 bytes");
+
+// The camera a TV shows (TvCameraAsk, TvCameraState): the TV by host element id, the camera by the camera lane's key,
+// empty for none.
+struct TvCameraPayload {
+    uint32_t tvEid;
+    WireKey camKey;
+};
+static_assert(sizeof(TvCameraPayload) == 36, "TvCameraPayload must be 36 bytes");
 
 // A cremator's fuel and valve (CrematorFuel), named by the cremator lane's key.
 struct CrematorFuelPayload {
