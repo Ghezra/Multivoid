@@ -14,6 +14,7 @@
 #include "coop/dev/director/aimed_grab.h"
 #include "coop/interactables/atv_sync.h"
 #include "coop/dev/director/director.h"
+#include "coop/dev/drill_hand.h"
 #include "coop/props/bucket_pour.h"
 #include "coop/props/bucket_sync.h"
 #include "coop/net/session.h"
@@ -1598,6 +1599,96 @@ void FillStep(bool host, uint64_t t) {
     if (host && t >= 110000u) UE_LOGI("[ENTITY] done");
 }
 
+// VOTVCOOP_ENTITY_PROBE=mopdip: whether a client's mop gets wet from a bucket each press. HOST 40 s: a full bucket 1.5 m
+// before it (its own tick on). CLIENT slot 1, 48 s: a mop in its hand; from 52 s it looks at the bucket every frame, and
+// each 3 s from 55 s (ten presses) its mop is made dry (`power` 0) and pressed on the bucket through the mop's own
+// playerHandUse_LMB. 2.5 s after each press (`[MOP]`): the mop's power and both copies' water.
+bool MopMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "mopdip";
+    return v;
+}
+
+void MopStep(bool host, uint64_t t) {
+    static int s_step = 0;
+    static int s_press = 0;
+    static float s_before = 0.f;
+    void* const me = coop::players::Registry::Get().Local();
+    if (!me) return;
+    void* const bucket = First(L"prop_bucket_C");
+    auto water = [](void* b) {
+        ue_wrap::bucket::Plain p;
+        return b && ue_wrap::bucket::ReadPlain(b, p) ? p.height : -1.f;
+    };
+    static R::InstanceOffset s_holding(L"holding_actor");
+    static R::InstanceOffset s_power(L"power");
+    auto held = [&]() -> void* {
+        const int32_t off = s_holding.Of(me);
+        void* const h = off >= 0 ? *reinterpret_cast<void**>(static_cast<char*>(me) + off) : nullptr;
+        return h && R::IsLive(h) ? h : nullptr;
+    };
+    auto power = [&](void* mop) -> float* {
+        const int32_t off = mop ? s_power.Of(mop) : -1;
+        return off >= 0 ? reinterpret_cast<float*>(static_cast<char*>(mop) + off) : nullptr;
+    };
+    if (host && s_step == 0 && t >= 40000u) {
+        s_step = 1;
+        ue_wrap::FVector at{};
+        ue_wrap::FRotator rot{};
+        E::TryGetActorLocation(me, at);
+        E::TryGetActorRotation(me, rot);
+        const float yaw = rot.Yaw * 0.0174532925f;
+        const ue_wrap::FVector to{at.X + 150.f * std::cos(yaw), at.Y + 150.f * std::sin(yaw), at.Z - 60.f};
+        const CR::Resolved rc = CR::ResolveClass(L"prop_bucket_C", CR::AnyFamily(), CR::Load::Immediate);
+        void* const b = rc.cls ? E::SpawnActor(rc.cls, to) : nullptr;
+        if (b) {
+            ue_wrap::bucket::WritePlain(b, 38.f, 0, 0.f, false, false);
+            ue_wrap::bucket::CallUpd(b);
+            coop::bucket_sync::MarkDirty(b);
+        }
+        UE_LOGI("[MOP] host: a full bucket spawned=%d", b ? 1 : 0);
+    }
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    if (!slot1) {
+        static uint64_t s_next = 0;
+        if (host && t >= 45000u && t >= s_next && t <= 95000u) {
+            s_next = t + 5000u;
+            UE_LOGI("[MOP] host t=%llu: its bucket %.1f", static_cast<unsigned long long>(t / 1000u), water(bucket));
+        }
+        if (host && t >= 96000u && s_step == 1) {
+            s_step = 2;
+            UE_LOGI("[ENTITY] done");
+        }
+        return;
+    }
+    if (s_step == 0 && t >= 48000u) {
+        s_step = 1;
+        UE_LOGI("[MOP] client: a mop in hand ok=%d",
+                coop::dev::drill_hand::TakeIntoHandNow(L"mop", L"prop_mop_C") ? 1 : 0);
+    }
+    ue_wrap::FVector eye{}, b{};
+    if (t >= 52000u && bucket && E::TryGetActorLocation(bucket, b) && E::ReadMainPlayerCameraLocation(me, eye))
+        E::SetControlRotation(E::GetController(me), coop::director::LookAt(eye, ue_wrap::FVector{b.X, b.Y, b.Z + 20.f}));
+    const uint64_t pressAt = 55000u + 3000u * static_cast<uint64_t>(s_press);
+    if (s_press < 10 && s_step == 1 && t >= pressAt) {
+        void* const mop = held();
+        if (float* const pw = power(mop)) *pw = 0.f;
+        s_before = water(bucket);
+        const bool ran = mop && ue_wrap::bucket::CallHandUseLmb(mop, me);
+        UE_LOGI("[MOP] client: press %d (held %ls, ran=%d), its bucket %.1f", s_press + 1,
+                mop ? R::ToString(R::NameOf(R::ClassOf(mop))).c_str() : L"nothing", ran ? 1 : 0, s_before);
+        s_step = 2;
+    }
+    if (s_step == 2 && t >= pressAt + 2500u) {
+        void* const mop = held();
+        const float* const pw = power(mop);
+        const float now = water(bucket);
+        UE_LOGI("[MOP] client: press %d -> mop power %.2f (%s), its bucket %.1f -> %.1f (%.1f taken)", s_press + 1,
+                pw ? *pw : -1.f, pw && *pw > 0.f ? "wet" : "DRY", s_before, now, s_before - now);
+        ++s_press;
+        s_step = 1;
+    }
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -2072,6 +2163,10 @@ void Tick(coop::net::Session* session) {
     }
     if (FillMode()) {
         FillStep(host, t);
+        return;
+    }
+    if (MopMode()) {
+        MopStep(host, t);
         return;
     }
     if (Catalog()) {
