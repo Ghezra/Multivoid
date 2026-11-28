@@ -15,6 +15,9 @@
 #include "coop/interactables/atv_sync.h"
 #include "coop/dev/director/director.h"
 #include "coop/dev/drill_hand.h"
+#include "coop/config/config_registry.h"
+#include "coop/player/skin_registry.h"
+#include "coop/session/player_handshake.h"
 #include "coop/props/bucket_pour.h"
 #include "coop/props/bucket_sync.h"
 #include "coop/net/session.h"
@@ -1738,6 +1741,36 @@ void BombStep(bool host, uint64_t t) {
     if (host && t >= 95000u) UE_LOGI("[ENTITY] done");
 }
 
+// VOTVCOOP_ENTITY_PROBE=skinmsg: the skin change line and the host's switch for it. CLIENT slot 1, 50 s: changes its skin
+// (the menu's own announce). HOST 60 s: turns chat.skin_changes off. CLIENT slot 1, 70 s: changes its skin again. Each
+// peer's handshake log says whether it showed the line.
+bool SkinMsgMode() {
+    static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "skinmsg";
+    return v;
+}
+
+void SkinMsgStep(coop::net::Session& session, bool host, uint64_t t) {
+    static int s_step = 0;
+    const auto& skins = coop::skins::Entries();
+    const bool slot1 = !host && coop::players::Registry::Get().LocalPeerId() == 1;
+    if (slot1 && (s_step == 0 || s_step == 1) && t >= (s_step == 0 ? 50000u : 70000u) && skins.size() >= 2) {
+        const std::string& name = skins[s_step].name;
+        coop::player_handshake::AnnounceLocalSkin(session, name);
+        UE_LOGI("[SKIN] client: changed its skin to '%s'", name.c_str());
+        ++s_step;
+    }
+    if (host && s_step == 0 && t >= 60000u) {
+        s_step = 1;
+        coop::config::SetValue(::coop::config_registry::rows::chat_skin_changes, "0");
+        UE_LOGI("[SKIN] host: chat.skin_changes off");
+    }
+    if (host && s_step == 1 && t >= 90000u) {
+        s_step = 2;
+        coop::config::SetValue(::coop::config_registry::rows::chat_skin_changes, "1");
+        UE_LOGI("[ENTITY] done");
+    }
+}
+
 // VOTVCOOP_ENTITY_PROBE=catalog: HOST, at 20 s, the game's store table (list_store) and prop table (list_props), a row a
 // line (`[CATALOG]`, the table, the row, then each column's name and value), every column read through the engine's own
 // column getter.
@@ -2220,6 +2253,10 @@ void Tick(coop::net::Session* session) {
     }
     if (BombMode()) {
         BombStep(host, t);
+        return;
+    }
+    if (SkinMsgMode()) {
+        SkinMsgStep(*session, host, t);
         return;
     }
     if (Catalog()) {
