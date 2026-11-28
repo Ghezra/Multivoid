@@ -140,6 +140,7 @@ inline constexpr RefFn kRefFns[] = {
     {L"ui_console_c", L"coorddishbroken", L"ui_console_c.coorddishbroken", 0x57ecdeb235719b48ull, 0x32a1e65ddb6ef279ull},
     {L"ui_console_c", L"radiotowerbroken", L"ui_console_c.radiotowerbroken", 0x6a8831e17990f8fdull, 0x87c9e3180acc05beull},
     {L"ui_console_c", L"serverbroken", L"ui_console_c.serverbroken", 0xfe4e6ac80618a45eull, 0xfdd8e261c8863ab3ull},
+    {L"ui_laptop_c", L"setcam", L"ui_laptop_c.setcam", 0x4486ee0c22dd538dull, 0x5206451b8646df45ull},
     {L"wallpcunit_tapes_anim_skeleton_animblueprint_c", L"blueprintupdateanimation", L"wallpcunit_tapes_anim_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0x6f8572ea8b9ec959ull},
     {L"wendussy_dream_skeleton_animblueprint_c", L"blueprintupdateanimation", L"wendussy_dream_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0x2418befa93d17b56ull},
     {L"wendussy_skeleton_animblueprint_c", L"blueprintupdateanimation", L"wendussy_skeleton_animblueprint_c.blueprintupdateanimation", 0x86ca63c8a831a98full, 0x8cee65917e1ed772ull},

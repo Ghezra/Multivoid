@@ -29,7 +29,8 @@
 #include "coop/props/photo_sync.h"  // a printed photo's picture, the host's save's
 #include "coop/props/tape_sync.h"
 #include "coop/props/custom_picture_sync.h"
-#include "coop/interactables/window_dirt_sync.h"  // the bay window's grime picture, the host's  // a frame's or poster's custom picture name, the host's
+#include "coop/interactables/window_dirt_sync.h"
+#include "coop/interactables/camera_watch_sync.h"  // a camera watched by any player, the host's  // the bay window's grime picture, the host's  // a frame's or poster's custom picture name, the host's
 #include "coop/props/bucket_pour.h"
 #include "coop/interactables/gasoline_sync.h"  // the cremator's fuel and a gas can's, the host's  // a client's tipped bucket's pour, the host's to spawn   // a tape's repair, the host's
 #include "coop/props/rdrone_sync.h"  // a remote drone's flight, switch and energy, the host's
@@ -599,6 +600,29 @@ bool HandlePropDriveEvent(net::Session& session,
             break;
         }
         ::coop::bucket_pour::OnAsk(msg.senderPeerSlot, p);
+        break;
+    }
+    case net::ReliableKind::CameraWatchAsk:
+    case net::ReliableKind::CameraWatchState: {
+        // CLIENT->HOST what its player watches; HOST->ALL a camera's watched bit (coop/interactables/camera_watch_sync).
+        const bool state = msg.kind == net::ReliableKind::CameraWatchState;
+        const size_t want = state ? sizeof(net::CameraWatchStatePayload) : sizeof(net::CameraWatchAskPayload);
+        if ((session.role() == net::Role::Host) == state || msg.payloadLen != want) {
+            UE_LOGW("event_feed: a camera watch row the wrong way or of %zu bytes from slot %d -- dropping",
+                    static_cast<size_t>(msg.payloadLen), msg.senderPeerSlot);
+            break;
+        }
+        if (state) {
+            net::CameraWatchStatePayload p{};
+            std::memcpy(&p, msg.payload, sizeof(p));
+            if (p.key.len > sizeof(p.key.data) || p.watched > 1) break;
+            ::coop::camera_watch_sync::OnState(p);
+        } else {
+            net::CameraWatchAskPayload p{};
+            std::memcpy(&p, msg.payload, sizeof(p));
+            if (p.key.len > sizeof(p.key.data)) break;
+            ::coop::camera_watch_sync::OnAsk(msg.senderPeerSlot, p);
+        }
         break;
     }
     case net::ReliableKind::BucketFillAsk: {

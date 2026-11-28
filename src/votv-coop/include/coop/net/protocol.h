@@ -34,7 +34,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // This file is past the 1500-line hard cap and stays there: it is the single-feature exception the
 // rule names. One wire format, whose enum, payload structs and static_asserts are read together;
 // splitting it would put a kind's number in one file and its bytes in another.
-inline constexpr uint16_t kProtocolVersion = 363;
+inline constexpr uint16_t kProtocolVersion = 364;
 
 // The build line. Ghezra/Multivoid's builds are their own line, shown "bg283" where upstream's are "b283": its numbers
 // are minted apart from upstream's, so the same number names two different wires. A line build sets kLineBit, and
@@ -1735,6 +1735,12 @@ enum class ReliableKind : uint16_t {
     // (coop/props/bucket_sync, from the pin). The host judges the sender (its body within reach of its copy) and
     // writes the level on its own bucket, which goes out as a BucketState row. Never relayed; not pre-world.
     BucketFillAsk = 341,
+    // CLIENT->HOST: the camera this client's player watches (coop/interactables/camera_watch_sync): its laptop open on the
+    // cameras panel with a camera selected, or none. Never relayed; not pre-world. CameraWatchAskPayload.
+    CameraWatchAsk = 342,
+    // HOST->ALL: a camera watched by any player, or by none any more; to a joiner, every watched camera. Never relayed;
+    // not pre-world. CameraWatchStatePayload.
+    CameraWatchState = 343,
 
     // Client to host: this client's work on an ATV's wheels or spare (atv_part's op): a wheel unbolted, a held wheel
     // fitted or stowed as the spare, the spare taken. The client's own body is cancelled; the host judges the sender
@@ -2789,6 +2795,20 @@ struct BucketFillAskPayload {
     float    level;  // the client's copy's `height` after the fill, cm
 };
 static_assert(sizeof(BucketFillAskPayload) == 8, "BucketFillAskPayload must be 8 bytes");
+
+// The camera a client's player watches (CameraWatchAsk), by the camera lane's key; an empty key is none.
+struct CameraWatchAskPayload {
+    WireKey key;
+};
+static_assert(sizeof(CameraWatchAskPayload) == 32, "CameraWatchAskPayload must be 32 bytes");
+
+// A camera's watched bit (CameraWatchState): `spec`, which its light shows green.
+struct CameraWatchStatePayload {
+    WireKey key;
+    uint8_t watched;  // 1 some player watches it
+    uint8_t pad[3];   // zero
+};
+static_assert(sizeof(CameraWatchStatePayload) == 36, "CameraWatchStatePayload must be 36 bytes");
 
 // A cremator's fuel and valve (CrematorFuel), named by the cremator lane's key.
 struct CrematorFuelPayload {

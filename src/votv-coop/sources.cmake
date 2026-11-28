@@ -346,6 +346,7 @@ set(VOTVCOOP_SOURCES
     src/coop/interactables/drone_call_intent.cpp
     src/coop/interactables/door_verb_intent.cpp
     src/coop/interactables/camera_toggle_intent.cpp
+    src/coop/interactables/camera_watch_sync.cpp
     src/coop/interactables/door_state_verbs.cpp
     src/coop/interactables/lightgroup_verbs.cpp
     src/coop/interactables/verb_lanes.cpp
