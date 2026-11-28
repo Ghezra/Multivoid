@@ -222,6 +222,12 @@ bool ClassesReady(const SaveRecord& r, ClassLoad load) {
 
 namespace {
 void WriteFlat(uint8_t* base, const SaveRecord& r, ClassLoad load);
+
+// The class of the actor ApplyRecord or ApplyRecordVia is loading the record into, while it writes it: a record that
+// names that class (its own, as ApplyRecord takes it from the actor's getData, and a build piece's) has it written as
+// the actor's class, not looked up by name in the prop family, which a build piece's class (a wall poster, a custom
+// wall) is not in. Null otherwise.
+void* g_ownClass = nullptr;
 }  // namespace
 
 void WriteSaveRecord(uint8_t* base, const SaveRecord& r, ClassLoad load) {
@@ -242,7 +248,10 @@ void WriteFlat(uint8_t* base, const SaveRecord& r, ClassLoad load) {
     int classMiss = 0;          // non-empty class leaves that did not resolve, said once below
     std::wstring firstMiss;     // the first one's name, so an honest single miss is still debuggable
     auto noteMiss = [&](const std::wstring& leaf) { if (firstMiss.empty()) firstMiss = leaf; ++classMiss; };
-    if (!WriteClassField(base + kSave_class, r.className, load, ue_wrap::prop::PropFamily())) noteMiss(r.className);
+    if (g_ownClass && R::NameEquals(R::NameOf(g_ownClass), r.className.c_str()))
+        std::memcpy(base + kSave_class, &g_ownClass, sizeof(void*));
+    else if (!WriteClassField(base + kSave_class, r.className, load, ue_wrap::prop::PropFamily()))
+        noteMiss(r.className);
     ue_wrap::FTransform t;  // identity defaults; we set all 10 packed floats
     t.RotX = r.xform[0]; t.RotY = r.xform[1]; t.RotZ = r.xform[2]; t.RotW = r.xform[3];
     t.TX = r.xform[4]; t.TY = r.xform[5]; t.TZ = r.xform[6];
@@ -258,7 +267,11 @@ void WriteFlat(uint8_t* base, const SaveRecord& r, ClassLoad load) {
     WriteGroups(base, kSave_strings, 16, r.strings,
                 [](uint8_t* e, const std::wstring& v) { ue_wrap::fstring_utils::MintFString(v, e); });
     WriteGroups(base, kSave_classes, 8, r.classes,
-                [&](uint8_t* e, const std::wstring& v) { if (!WriteClassField(e, v, load, ue_wrap::class_resolve::AnyFamily())) noteMiss(v); });
+                [&](uint8_t* e, const std::wstring& v) {
+                    // A build piece's record names its own class here too (a wall poster, a custom wall): the actor's.
+                    if (g_ownClass && R::NameEquals(R::NameOf(g_ownClass), v.c_str())) std::memcpy(e, &g_ownClass, sizeof(void*));
+                    else if (!WriteClassField(e, v, load, ue_wrap::class_resolve::AnyFamily())) noteMiss(v);
+                });
     // One line per record, not per leaf. A record with a null class is an item the game cannot
     // materialise, said out loud rather than lost -- but a crafted `classes` group is thousands of
     // unknown names, and the old per-leaf line was its own flood on exactly that input. The first
@@ -266,8 +279,9 @@ void WriteFlat(uint8_t* base, const SaveRecord& r, ClassLoad load) {
     if (classMiss > 0)
         // %.64ls, never %ls: the name is attacker-chosen and the wire admits up to 262144 chars, so
         // an unbounded print would be a 256 KB log line per crafted record.
-        UE_LOGE("save_record: %d class name(s) in this record are not loaded (first: '%.64ls') -- "
-                "written WITHOUT their class", classMiss, firstMiss.c_str());
+        UE_LOGE("save_record: %d class name(s) in this record are not loaded (first: '%.64ls'; the record's own '%.64ls', "
+                "loaded into a %ls) -- written WITHOUT their class", classMiss, firstMiss.c_str(), r.className.c_str(),
+                g_ownClass ? R::ToString(R::NameOf(g_ownClass)).c_str() : L"(no actor)");
     WriteGroups(base, kSave_vectors, 12, r.vectors,
                 [](uint8_t* e, const std::array<float, 3>& v) { std::memcpy(e, v.data(), 12); });
     WriteGroups(base, kSave_rotators, 12, r.rotators,
@@ -545,7 +559,9 @@ bool ApplyRecord(void* actor, const SaveRecord& r, ClassLoad load) {
     const int32_t off = f.ParamOffset(L"data");
     if (!f.valid() || off < 0 || off + kSaveRecordBytes > f.FrameSize()) return false;
     // The frame arrives zeroed, which is WriteSaveRecord's stated precondition.
+    g_ownClass = R::ClassOf(actor);
     WriteSaveRecord(static_cast<uint8_t*>(f.data()) + off, merged, load);
+    g_ownClass = nullptr;
     return Call(actor, f);
 }
 
@@ -562,7 +578,10 @@ bool ApplyRecordVia(void* actor, void* loadFn, const SaveRecord& r, ClassLoad lo
     // The slot must be zeroed before WriteSaveRecord: it constructs engine-owned TArrays in place
     // and reads nothing, so a dirty slot would leave the engine dereferencing whatever was there.
     std::memset(static_cast<uint8_t*>(f.data()) + off, 0, static_cast<size_t>(kSaveRecordBytes));
+    // A build piece's record (a wall, a poster) names the piece's own class, which is not a prop's.
+    g_ownClass = R::ClassOf(actor);
     WriteSaveRecord(static_cast<uint8_t*>(f.data()) + off, r, load);
+    g_ownClass = nullptr;
     return Call(actor, f);
 }
 
