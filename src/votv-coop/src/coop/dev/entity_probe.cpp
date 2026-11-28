@@ -43,6 +43,7 @@
 #include "ue_wrap/engine/engine_physics.h"
 #include "ue_wrap/devices/atv.h"
 #include "ue_wrap/devices/cremator.h"
+#include "ue_wrap/devices/laptop.h"
 #include "ue_wrap/devices/security_camera.h"
 #include "ue_wrap/core/fname_utils.h"
 #include "ue_wrap/actors/floppy_disc.h"
@@ -1849,7 +1850,7 @@ void FridgeStep(bool host, uint64_t t) {
 
 // VOTVCOOP_ENTITY_PROBE=camwatch: a camera's green light follows whoever watches it. The camera is the one of smallest
 // key on every peer. CLIENT slot 1: 50 s its laptop added to the viewport, on its cameras panel, the camera picked
-// through the laptop's own setCam; 65 s the panel switched away; 75 s back; 115 s the laptop taken from the viewport.
+// through the laptop's own setCam; 58 s its light button clicked; 65 s the panel switched away; 75 s back; 115 s the laptop taken from the viewport.
 // Every peer, each 3 s from 45 s (`[CAMW]`): the camera's `spec`.
 bool CamWatchMode() {
     static const bool v = coop::config::ReadEnv("VOTVCOOP_ENTITY_PROBE") == "camwatch";
@@ -1916,7 +1917,23 @@ void CamWatchStep(bool host, uint64_t t) {
             UE_LOGI("[CAMW] client: laptop open=%d, cameras panel=%d, picked '%ls'=%d", added ? 1 : 0, show(true) ? 1 : 0,
                     best.c_str(), picked ? 1 : 0);
         }
-        if (s_step == 1 && t >= 65000u) {
+        if (s_step == 1 && t >= 55000u) {   // at the base laptop, as a player at its screen stands
+            s_step = 11;
+            void* const laptop = ue_wrap::laptop::Instance();
+            ue_wrap::FVector at{};
+            ue_wrap::FRotator rot{};
+            bool ok = laptop && E::TryGetActorLocation(laptop, at) && E::TryGetActorRotation(laptop, rot);
+            const float yaw = rot.Yaw * 0.0174532925f;   // 1.2 m before its screen, standing height
+            const ue_wrap::FVector to{at.X + 120.f * std::cos(yaw), at.Y + 120.f * std::sin(yaw), at.Z + 60.f};
+            ok = ok && E::TeleportTo(coop::players::Registry::Get().Local(), to, {});
+            UE_LOGI("[CAMW] client: before the base laptop at (%.0f,%.0f,%.0f) yaw %.0f -> (%.0f,%.0f,%.0f) ok=%d", at.X,
+                    at.Y, at.Z, rot.Yaw, to.X, to.Y, to.Z, ok ? 1 : 0);
+        }
+        if (s_step == 11 && t >= 58000u) {   // the camera panel's light button, as the player clicks it
+            s_step = 10;
+            UE_LOGI("[CAMW] client: the light button clicked=%d", SC::CallLaptopLightClick(w) ? 1 : 0);
+        }
+        if (s_step == 10 && t >= 65000u) {
             s_step = 2;
             UE_LOGI("[CAMW] client: another panel=%d", show(false) ? 1 : 0);
         }
@@ -1932,10 +1949,11 @@ void CamWatchStep(bool host, uint64_t t) {
     static uint64_t s_next = 0;
     if (t < 45000u || t > 130000u || t < s_next) return;
     s_next = t + 3000u;
-    bool spec = false;
+    bool spec = false, light = false;
     const bool read = cam && SC::ReadWatched(cam, spec);
-    UE_LOGI("[CAMW] %s t=%llu: camera '%ls' watched=%d (read=%d)", host ? "host" : "client",
-            static_cast<unsigned long long>(t / 1000u), best.c_str(), spec ? 1 : 0, read ? 1 : 0);
+    if (cam) SC::ReadLight(cam, light);
+    UE_LOGI("[CAMW] %s t=%llu: camera '%ls' watched=%d light=%d (read=%d)", host ? "host" : "client",
+            static_cast<unsigned long long>(t / 1000u), best.c_str(), spec ? 1 : 0, light ? 1 : 0, read ? 1 : 0);
     if (host && t >= 127000u) UE_LOGI("[ENTITY] done");
 }
 
